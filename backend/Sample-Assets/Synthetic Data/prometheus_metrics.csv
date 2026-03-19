@@ -1,0 +1,39 @@
+timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_id,label_area,label_env,help_text
+2026-03-05T08:00:00.000Z,jvm_memory_used_bytes,gauge,314572800,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,Used bytes of JVM heap memory
+2026-03-05T08:00:00.000Z,jvm_memory_max_bytes,gauge,1073741824,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,Max bytes of JVM heap memory
+2026-03-05T08:00:00.000Z,process_cpu_usage,gauge,0.08,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Process CPU usage fraction
+2026-03-05T08:00:00.000Z,jvm_threads_live_threads,gauge,28,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Live JVM thread count
+2026-03-05T08:00:00.000Z,jvm_gc_pause_seconds_sum,counter,0.45,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Total time spent in GC pauses
+2026-03-05T08:00:00.000Z,db_connection_pool_active,gauge,2,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Active DB connections
+2026-03-05T08:00:00.000Z,db_connection_pool_idle,gauge,8,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Idle DB connections
+2026-03-05T08:00:00.000Z,terminal_handler_transactions_processed_total,counter,45,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Total transactions processed
+2026-03-05T08:00:00.000Z,terminal_handler_transactions_failed_total,counter,0,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Total transactions failed
+2026-03-05T08:15:00.000Z,jvm_memory_used_bytes,gauge,367001600,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,Used bytes of JVM heap memory
+2026-03-05T08:15:00.000Z,process_cpu_usage,gauge,0.09,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Process CPU usage fraction
+2026-03-05T08:15:00.000Z,jvm_gc_pause_seconds_sum,counter,0.61,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Total time spent in GC pauses
+2026-03-05T08:15:00.000Z,db_connection_pool_active,gauge,3,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Active DB connections
+2026-03-05T08:30:00.000Z,jvm_memory_used_bytes,gauge,429916160,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,Used bytes of JVM heap memory
+2026-03-05T08:30:00.000Z,process_cpu_usage,gauge,0.11,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Process CPU usage fraction
+2026-03-05T08:30:00.000Z,jvm_gc_pause_seconds_sum,counter,0.98,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Total time spent in GC pauses
+2026-03-05T08:45:00.000Z,jvm_memory_used_bytes,gauge,503316480,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,ANOMALY A3 - heap climbing steadily
+2026-03-05T08:45:00.000Z,jvm_gc_pause_seconds_sum,counter,1.80,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,GC pauses increasing
+2026-03-05T09:00:00.000Z,jvm_memory_used_bytes,gauge,671088640,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,ANOMALY A3 - heap at 62.5% of max
+2026-03-05T09:00:00.000Z,jvm_gc_pause_seconds_sum,counter,4.10,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,GC pause sum increasing rapidly
+2026-03-05T09:00:00.000Z,process_cpu_usage,gauge,0.34,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,CPU up due to GC pressure
+2026-03-05T09:15:00.000Z,jvm_memory_used_bytes,gauge,838860800,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,ANOMALY A3 - heap at 78% of max
+2026-03-05T09:15:00.000Z,jvm_gc_pause_seconds_sum,counter,9.30,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,GC thrashing
+2026-03-05T09:15:00.000Z,process_cpu_usage,gauge,0.61,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,High CPU from GC
+2026-03-05T09:15:00.000Z,db_connection_pool_active,gauge,9,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Pool nearly exhausted
+2026-03-05T09:15:00.000Z,db_connection_pool_idle,gauge,1,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Only 1 idle connection left
+2026-03-05T09:29:45.000Z,jvm_memory_used_bytes,gauge,1040187392,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,heap,prod-sim,ANOMALY A3 - heap at 96.9% - OOM imminent
+2026-03-05T09:29:45.000Z,jvm_gc_pause_seconds_sum,counter,24.70,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,GC spending almost all time collecting
+2026-03-05T09:29:45.000Z,process_cpu_usage,gauge,0.94,terminal-handler,terminal-handler-pod-7d9f-xk2lp,a3f2b19c04d1,,prod-sim,Near 100% CPU from GC
+2026-03-05T09:30:15.000Z,jvm_memory_used_bytes,gauge,209715200,terminal-handler,terminal-handler-pod-7d9f-xk2lp,b7e91d33ff02,heap,prod-sim,ANOMALY A4 - new container after restart 1 - heap reset
+2026-03-05T09:30:15.000Z,jvm_gc_pause_seconds_sum,counter,0.05,terminal-handler,terminal-handler-pod-7d9f-xk2lp,b7e91d33ff02,,prod-sim,GC reset after restart
+2026-03-05T09:30:15.000Z,process_cpu_usage,gauge,0.07,terminal-handler,terminal-handler-pod-7d9f-xk2lp,b7e91d33ff02,,prod-sim,CPU reset after restart
+2026-03-05T09:33:00.000Z,jvm_memory_used_bytes,gauge,890iembre,terminal-handler,terminal-handler-pod-7d9f-xk2lp,b7e91d33ff02,heap,prod-sim,ANOMALY A4 - heap climbing again fast (leak persists)
+2026-03-05T09:33:40.000Z,jvm_memory_used_bytes,gauge,1040187392,terminal-handler,terminal-handler-pod-7d9f-xk2lp,b7e91d33ff02,heap,prod-sim,ANOMALY A4 - OOM again before second restart
+2026-03-05T09:33:55.000Z,jvm_memory_used_bytes,gauge,209715200,terminal-handler,terminal-handler-pod-7d9f-xk2lp,c9d04e55aa11,heap,prod-sim,ANOMALY A4 - new container after restart 2
+2026-03-05T10:00:00.000Z,jvm_memory_used_bytes,gauge,262144000,terminal-handler,terminal-handler-pod-7d9f-xk2lp,c9d04e55aa11,heap,prod-sim,Heap stable after restart 2 (leak rate slowing)
+2026-03-05T10:00:00.000Z,terminal_handler_transactions_processed_total,counter,412,terminal-handler,terminal-handler-pod-7d9f-xk2lp,c9d04e55aa11,,prod-sim,Total transactions processed
+2026-03-05T10:00:00.000Z,terminal_handler_transactions_failed_total,counter,23,terminal-handler,terminal-handler-pod-7d9f-xk2lp,c9d04e55aa11,,prod-sim,Total failed transactions - elevated due to anomalies

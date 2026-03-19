@@ -1,0 +1,101 @@
+{
+  "source": "Prometheus Metrics Endpoint",
+  "description": "Time-series metrics scraped from the Terminal Handler Java application's /metrics endpoint (Prometheus exposition format). Each record represents one scraped metric sample.",
+  "format": "Prometheus text exposition format (converted to structured JSON for ingestion)",
+  "scrape_interval": "15s",
+  "fields": [
+    {
+      "field": "timestamp",
+      "type": "ISO 8601 datetime",
+      "example": "2026-03-05T09:14:45.000Z",
+      "description": "UTC timestamp of the Prometheus scrape.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "metric_name",
+      "type": "string",
+      "example": "jvm_memory_used_bytes",
+      "description": "Prometheus metric name following snake_case convention.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "metric_type",
+      "type": "enum",
+      "values": ["counter", "gauge", "histogram", "summary", "untyped"],
+      "example": "gauge",
+      "description": "Prometheus metric type.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "metric_value",
+      "type": "number",
+      "example": 134217728,
+      "description": "The numeric value of the metric sample.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "labels",
+      "type": "object",
+      "example": { "area": "heap", "service": "terminal-handler", "pod": "terminal-handler-pod-7d9f-xk2lp" },
+      "description": "Key-value label pairs attached to the metric sample.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "help_text",
+      "type": "string",
+      "example": "Used bytes of a given JVM memory area.",
+      "description": "Prometheus HELP descriptor for the metric.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "service_name",
+      "type": "string",
+      "example": "terminal-handler",
+      "description": "Name of the service exposing the metric.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "pod_name",
+      "type": "string",
+      "example": "terminal-handler-pod-7d9f-xk2lp",
+      "description": "Kubernetes pod name (synthetic).",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "container_id",
+      "type": "string",
+      "example": "a3f2b19c04d1",
+      "description": "Docker container short ID.",
+      "required": false,
+      "nullable": true
+    }
+  ],
+  "example_metrics": [
+    "jvm_memory_used_bytes",
+    "jvm_memory_max_bytes",
+    "jvm_threads_live_threads",
+    "jvm_gc_pause_seconds_count",
+    "jvm_gc_pause_seconds_sum",
+    "http_server_requests_seconds_count",
+    "http_server_requests_seconds_sum",
+    "http_server_requests_seconds_max",
+    "process_cpu_usage",
+    "process_uptime_seconds",
+    "kafka_producer_record_send_total",
+    "kafka_producer_record_error_total",
+    "db_connection_pool_active",
+    "db_connection_pool_idle",
+    "db_connection_pool_pending",
+    "terminal_handler_atm_connected_total",
+    "terminal_handler_transactions_processed_total",
+    "terminal_handler_transactions_failed_total"
+  ]
+}

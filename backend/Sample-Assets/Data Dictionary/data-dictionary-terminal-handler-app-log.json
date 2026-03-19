@@ -1,0 +1,173 @@
+{
+  "source": "Terminal Handler Application Log",
+  "description": "Structured logs from the Java-based Terminal Handler server application running in Docker containers on GCP.",
+  "format": "JSON (structured logging via SLF4J/Logback or similar)",
+  "fields": [
+    {
+      "field": "timestamp",
+      "type": "ISO 8601 datetime",
+      "example": "2026-03-05T09:14:33.450Z",
+      "description": "UTC timestamp of the log event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "log_level",
+      "type": "enum",
+      "values": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"],
+      "example": "WARN",
+      "description": "Log severity level.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "service_name",
+      "type": "string",
+      "example": "terminal-handler",
+      "description": "Name of the microservice or application emitting the log.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "service_version",
+      "type": "string",
+      "example": "2.7.0-SNAPSHOT",
+      "description": "Deployed version of the Terminal Handler application.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "container_id",
+      "type": "string",
+      "pattern": "[a-f0-9]{12}",
+      "example": "a3f2b19c04d1",
+      "description": "Short Docker container ID (synthetic).",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "pod_name",
+      "type": "string",
+      "example": "terminal-handler-pod-7d9f-xk2lp",
+      "description": "GCP/Kubernetes pod name (synthetic).",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "correlation_id",
+      "type": "UUID v4",
+      "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "description": "Cross-channel correlation ID shared with the originating ATM event.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "transaction_id",
+      "type": "UUID v4",
+      "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "description": "Unique identifier for the banking transaction being processed.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "atm_id",
+      "type": "string",
+      "pattern": "ATM-[A-Z]{2}-[0-9]{4}",
+      "example": "ATM-GB-0042",
+      "description": "Identifier of the ATM that initiated the request.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "event_type",
+      "type": "enum",
+      "values": [
+        "REQUEST_RECEIVED", "REQUEST_FORWARDED", "RESPONSE_SENT",
+        "AUTH_SUCCESS", "AUTH_FAILURE", "DB_QUERY", "DB_ERROR",
+        "KAFKA_PUBLISH", "KAFKA_CONSUME", "NETWORK_TIMEOUT",
+        "HEALTH_CHECK", "STARTUP", "SHUTDOWN", "EXCEPTION", "UNKNOWN"
+      ],
+      "example": "REQUEST_RECEIVED",
+      "description": "Categorised event type.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "message",
+      "type": "string",
+      "max_length": 1024,
+      "example": "Received withdrawal request from ATM-GB-0042 for processing.",
+      "description": "Human-readable log message.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "logger_name",
+      "type": "string",
+      "example": "com.synthbank.terminalhandler.TransactionService",
+      "description": "Fully qualified Java logger/class name.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "thread_name",
+      "type": "string",
+      "example": "http-nio-8080-exec-3",
+      "description": "JVM thread name that produced the log.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "response_time_ms",
+      "type": "integer",
+      "unit": "milliseconds",
+      "example": 145,
+      "description": "End-to-end processing time for the request. Null for non-request events.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "http_status_code",
+      "type": "integer",
+      "example": 200,
+      "description": "HTTP status code for inbound/outbound HTTP calls. Null if not applicable.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "exception_class",
+      "type": "string",
+      "example": "java.sql.SQLException",
+      "description": "Java exception class name if an exception occurred. Null otherwise.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "exception_message",
+      "type": "string",
+      "max_length": 2048,
+      "example": "Timeout waiting for connection from pool after 5000ms",
+      "description": "Exception message and partial stack trace. Null otherwise.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "db_query_time_ms",
+      "type": "integer",
+      "unit": "milliseconds",
+      "example": 23,
+      "description": "Time taken for database query execution. Null if no DB operation.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "environment",
+      "type": "enum",
+      "values": ["dev", "staging", "prod-sim"],
+      "example": "prod-sim",
+      "description": "Deployment environment label.",
+      "required": true,
+      "nullable": false
+    }
+  ]
+}
