@@ -1,0 +1,55 @@
+import unittest
+import tempfile
+import os
+import sqlite3
+import json
+
+from backend.ingestion.parsers.terminal_handler import TerminalHandlerParser
+
+
+class TestTerminalHandlerParser(unittest.TestCase):
+    def setUp(self):
+        fd, path = tempfile.mkstemp(prefix='test_db_', suffix='.sqlite')
+        os.close(fd)
+        self.db_path = path
+        with open('backend/database/schema.sql', 'r') as f:
+            schema = f.read()
+        conn = sqlite3.connect(self.db_path)
+        conn.executescript(schema)
+        conn.commit()
+        conn.close()
+        self.parser = TerminalHandlerParser(db_path=self.db_path, batch_size=10)
+
+    def tearDown(self):
+        try:
+            os.remove(self.db_path)
+        except Exception:
+            pass
+
+    def test_terminal_good_and_bad_rows(self):
+        with open('backend/Sample-Assets/Synthetic Data/terminal_handler_app_log.json', 'r') as f:
+            arr = json.load(f)
+
+        good = [json.dumps(arr[0]), json.dumps(arr[1])]
+        for ln in good:
+            self.assertTrue(self.parser.process_line(ln, source='TERMINAL_HANDLER'))
+
+        # bad json
+        bad = '{not: valid json}'
+        self.assertFalse(self.parser.process_line(bad, source='TERMINAL_HANDLER'))
+
+        self.parser.flush()
+        conn = sqlite3.connect(self.db_path)
+        cur = conn.cursor()
+        cur.execute('SELECT COUNT(*) FROM events')
+        ecount = cur.fetchone()[0]
+        cur.execute('SELECT COUNT(*) FROM ingestion_errors')
+        err = cur.fetchone()[0]
+        conn.close()
+
+        self.assertEqual(ecount, len(good))
+        self.assertGreaterEqual(err, 1)
+
+
+if __name__ == '__main__':
+    unittest.main()
