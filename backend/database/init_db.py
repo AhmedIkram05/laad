@@ -52,7 +52,7 @@ def init_db(db_path='database.db', schema_path='schema.sql'):
     return True
 
 def seed_recommendations(cursor):
-    """Seed the recommendation templates into the feedback table."""
+    """Seed the recommendation templates into the recommendations table."""
     # Recommendation templates from the project spec
     recommendations_data = [
         (
