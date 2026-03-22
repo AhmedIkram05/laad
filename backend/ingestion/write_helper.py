@@ -33,6 +33,11 @@ def write_batch(conn: sqlite3.Connection, sql: str, rows: Iterable[tuple],
             return
         except sqlite3.OperationalError as e:
             if 'locked' in str(e).lower() and attempt < retries:
+                # Ensure any open transaction is rolled back before retrying
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 wait = min(backoff_max, backoff_base * (2 ** attempt))
                 logger.warning('Database locked during write; retrying in %.3fs (attempt %d)', wait, attempt + 1)
                 time.sleep(wait)

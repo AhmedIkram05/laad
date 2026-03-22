@@ -82,13 +82,17 @@ class PrometheusParser(MetricDataParser):
 
         entity = data.get('pod_name') or data.get('container_id') or data.get('service_name')
 
+        metric_name = data.get('metric_name')
+        if not metric_name:
+            raise ValueError('missing metric_name')
+
         payload = {k: v for k, v in data.items() if k not in ('timestamp', 'metric_name', 'metric_value')}
 
         return {
             'timestamp': ts,
             'source': 'PROMETHEUS',
             'entity_id': entity or 'unknown',
-            'metric_name': data.get('metric_name'),
+            'metric_name': metric_name,
             'metric_value': metric_value,
             'payload': __import__('json').dumps(payload),
         }

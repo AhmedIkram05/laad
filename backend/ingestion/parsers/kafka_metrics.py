@@ -36,10 +36,14 @@ class KafkaMetricsParser(MetricDataParser):
         if metric_value is None:
             raise ValueError('no metric value present')
 
+        entity_id = obj.get('atm_id') or obj.get('entity_id')
+        if not entity_id:
+            raise ValueError('missing entity_id')
+
         row = {
             'timestamp': ts,
             'source': 'KAFKA',
-            'entity_id': obj.get('atm_id') or obj.get('entity_id'),
+            'entity_id': entity_id,
             'metric_name': metric_name,
             'metric_value': float(metric_value),
             'payload': json.dumps({k: v for k, v in obj.items() if k not in ('timestamp', 'atm_id', 'transaction_rate_tps', 'response_time_ms')})

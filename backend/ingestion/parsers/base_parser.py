@@ -172,23 +172,5 @@ class MetricDataParser(BaseParser):
                 pass
             self._buffer.clear()
 
-    def insert_ingestion_error(self, error_detail: str, raw_input: str, source: str = 'UNKNOWN') -> None:
-        """Write a row to `ingestion_errors` table, best-effort.
-
-        This never raises; failures are logged only.
-        """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO ingestion_errors (timestamp, source, error_detail, raw_input) VALUES (?, ?, ?, ?)",
-                (datetime.now(timezone.utc).isoformat(), source, error_detail, raw_input),
-            )
-            conn.commit()
-        except Exception:
-            logger.exception("Unable to write ingestion_errors row")
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+    # Inherit `insert_ingestion_error` from BaseParser to ensure consistent
+    # PRAGMA and connection behaviour (avoid raw sqlite3.connect here).

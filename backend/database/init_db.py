@@ -3,8 +3,6 @@ import os
 import json
 import logging
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-
 def init_db(db_path='database.db', schema_path='schema.sql'):
     """Initialise the database with the defined schema."""
     
@@ -102,4 +100,5 @@ def seed_recommendations(cursor):
     logging.info(f"Seeded {len(recommendations_data)} recommendation templates.")
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     init_db()
