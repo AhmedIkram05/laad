@@ -13,11 +13,11 @@ function MainLayout() {
 
     <div className="container">
       {/* Side Navbar */}
-      <SideNavbar />
+      <SideNavbar/>
 
       {/* Page content */}
       <div className="page">
-        <Outlet />
+        <Outlet/>
       </div>
     </div>
 
