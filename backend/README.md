@@ -67,3 +67,7 @@ To run the tests, execute from the repository root:
 pytest backend/tests/ -v
 # or simply 'pytest', should work
 ```
+
+### Note on test data
+
+The test suite uses a small, deterministic dataset that is generated automatically by the pytest session fixture. Tests expect the generated dataset (exposed via the `TEST_DATA_DIR` environment variable) and no longer use the Sample-Assets sources. If `TEST_DATA_DIR` is not present the tests will raise an error — run `pytest` normally to have the fixture create the dataset.
