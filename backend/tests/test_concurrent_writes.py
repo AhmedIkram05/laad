@@ -74,16 +74,11 @@ class ConcurrencySmokeTest(unittest.TestCase):
             conn = get_db(str(self.db_path))
             cur = conn.cursor()
             cur.executescript(schema_sql)
-            # seed recommendations if available
-            try:
-                from backend.database.init_db import seed_recommendations
-                seed_recommendations(cur)
-            except Exception:
-                pass
+
             conn.commit()
             conn.close()
         except Exception as e:
-            self.skipTest(f'Unable to initialize test DB: {e}')
+            self.skipTest(f'Unable to initialise test DB: {e}')
 
     def tearDown(self):
         try:
