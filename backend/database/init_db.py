@@ -34,7 +34,7 @@ def init_db(db_path='database.db', schema_path='schema.sql'):
         conn.commit()
         logging.info("Schema applied successfully.")
 
-        seed_recommendations(cursor)
+        seed_atms(cursor)
         conn.commit()
 
     except sqlite3.Error as e:
@@ -49,55 +49,36 @@ def init_db(db_path='database.db', schema_path='schema.sql'):
             
     return True
 
-def seed_recommendations(cursor):
-    """Seed the recommendation templates into the recommendations table."""
-    # Recommendation templates from the project spec
-    recommendations_data = [
-        (
-            'A1', 
-            'Network Timeout Cascade', 
-            json.dumps(['Check Core Banking network route', 'Failover to secondary switch'])
-        ),
-        (
-            'A2', 
-            'Cash Cassette Depletion -> Out of Service', 
-            json.dumps(['Dispatch CIT for replenishment', 'Update ATM status to Out of Service'])
-        ),
-        (
-            'A3', 
-            'JVM Memory Leak -> OOM', 
-            json.dumps(['Restart Java application service', 'Trigger heap dump for analysis'])
-        ),
-        (
-            'A4', 
-            'Container Restart Loop', 
-            json.dumps(['Check container orchestrator logs', 'Rollback to previous container image'])
-        ),
-        (
-            'A5', 
-            'High Response Time Spike + Success Rate Drop', 
-            json.dumps(['Investigate downstream API latency', 'Scale up processing nodes'])
-        ),
-        (
-            'A6', 
-            'OS Memory Pressure -> Application Timeout', 
-            json.dumps(['Kill non-essential background processes', 'Schedule remote ATM reboot'])
-        ),
-        (
-            'A7', 
-            'Malformed / Out-of-Order Kafka Events', 
-            json.dumps(['Validate message schema versions', 'Check producer clock synchronisation'])
-        )
-    ]
+def seed_atms(cursor):
+    """Seed the reference table of ATMs tracked by the system.
     
-    logging.info("Seeding recommendation templates...")
-    
+    Derives all ATM reference data directly from the generator constants so
+    the database always reflects the active synthetic fleet. No hardcoded
+    ATM IDs should exist here.
+    """
+    try:
+        from backend.ingestion.custom_data_generator import ATMS, OS_VERSION, ATM_LOCATIONS
+    except ImportError:
+        # Fallback if generator is temporarily unavailable — must match generator fleet
+        ATMS = ['ATM-GB-0001', 'ATM-GB-0002', 'ATM-GB-0003', 'ATM-GB-0004']
+        OS_VERSION = 'Windows-Server-2019'
+        ATM_LOCATIONS = {
+            'ATM-GB-0001': 'LOC-001',
+            'ATM-GB-0002': 'LOC-002',
+            'ATM-GB-0003': 'LOC-003',
+            'ATM-GB-0004': 'LOC-004',
+        }
+
+    # Seed exactly the ATMs defined in the generator — nothing more, nothing less
+    atms_data = [(atm_id, OS_VERSION, ATM_LOCATIONS.get(atm_id, 'LOC-UNKNOWN')) for atm_id in ATMS]
+
+    logging.info("Seeding ATM reference data...")
     cursor.executemany('''
-        INSERT OR IGNORE INTO recommendations (anomaly_type, root_cause, actions)
+        INSERT OR IGNORE INTO atms (atm_id, os_version, location_code)
         VALUES (?, ?, ?)
-    ''', recommendations_data)
-    
-    logging.info(f"Seeded {len(recommendations_data)} recommendation templates.")
+    ''', atms_data)
+    logging.info(f"Seeded {len(atms_data)} ATMs.")
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

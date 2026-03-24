@@ -29,6 +29,10 @@ class BaseParser(ABC):
         self.batch_size = int(batch_size)
         self._buffer: list[Dict[str, Any]] = []
 
+        # Buffer for ATM reference data updates
+        self._atm_ref_cache: Dict[str, dict] = {}
+        self.ref_buffer: list[tuple] = []
+
     @abstractmethod
     def parse_line(self, line: str) -> Optional[Dict[str, Any]]:
         """Parse a single input line and return a mapping or raise on error."""
@@ -57,6 +61,89 @@ class BaseParser(ABC):
         Subclasses should override to perform batch inserts.
         """
         self._buffer.clear()
+
+    def _upsert_atm_reference(self, atm_id: str, os_version: str = None, location_code: str = None):
+        """Buffer ATM reference data discovered dynamically in the logging streams."""
+        cached = self._atm_ref_cache.setdefault(atm_id, {'os_version': None, 'location_code': None})
+        
+        needs_update = False
+        if os_version and cached['os_version'] != os_version:
+            cached['os_version'] = os_version
+            needs_update = True
+        if location_code and cached['location_code'] != location_code:
+            cached['location_code'] = location_code
+            needs_update = True
+            
+        if needs_update:
+            self.ref_buffer.append((atm_id, os_version, location_code))
+            if len(self.ref_buffer) >= self.batch_size:
+                conn = None
+                try:
+                    from backend.database.connection import get_db
+                    conn = get_db(self.db_path)
+                    self._flush_ref_buffer(conn)
+                finally:
+                    if conn:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+
+    def _flush_ref_buffer(self, conn) -> None:
+        if not self.ref_buffer:
+            return
+        sql = '''
+            INSERT INTO atms (atm_id, os_version, location_code)
+            VALUES (?, ?, ?)
+            ON CONFLICT(atm_id) DO UPDATE SET 
+                os_version = COALESCE(excluded.os_version, atms.os_version),
+                location_code = COALESCE(excluded.location_code, atms.location_code)
+        '''
+        try:
+            from backend.ingestion.write_helper import write_batch
+            write_batch(conn, sql, self.ref_buffer)
+        except Exception:
+            logger.exception('Failed to flush dynamic ATM reference updates')
+        self.ref_buffer.clear()
+
+    @classmethod
+    def validate_sample(cls, file_path: str, db_path: Optional[str] = None, sample_lines: int = 10, max_fail_ratio: float = 0.3) -> bool:
+        """
+        Class-level sample validator that uses the parser's own `parse_line` logic.
+
+        Returns True if the sample passes (failures within threshold), False otherwise.
+        This method is intentionally lightweight and only samples the file; it
+        does not record ingestion_errors (that is the parser's job during full ingestion).
+        """
+        try:
+            parser = cls(db_path=db_path, batch_size=1)
+        except Exception:
+            return True
+
+        fails = 0
+        total = 0
+        try:
+            with open(file_path, "r", encoding="utf-8") as fh:
+                # skip header if present
+                fh.readline()
+                for ln in fh:
+                    if total >= sample_lines:
+                        break
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    total += 1
+                    try:
+                        parser.parse_line(ln)
+                    except Exception:
+                        fails += 1
+        except Exception:
+            return False
+
+        if total == 0:
+            return True
+        fail_ratio = fails / total
+        return fail_ratio <= max_fail_ratio
 
     def insert_ingestion_error(self, error_detail: str, raw_input: str, source: str = 'UNKNOWN') -> None:
         """Write a row to `ingestion_errors` table, best-effort.
@@ -123,10 +210,12 @@ class EventDataParser(BaseParser):
                 except Exception:
                     logger.exception("Failed to write ingestion error during flush failure")
         finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            if 'conn' in locals() and conn:
+                self._flush_ref_buffer(conn)
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             self._buffer.clear()
 
 
@@ -166,11 +255,10 @@ class MetricDataParser(BaseParser):
                 except Exception:
                     logger.exception("Failed to write ingestion error during metrics flush failure")
         finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            if 'conn' in locals() and conn:
+                self._flush_ref_buffer(conn)
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             self._buffer.clear()
-
-    # Inherit `insert_ingestion_error` from BaseParser to ensure consistent
-    # PRAGMA and connection behaviour (avoid raw sqlite3.connect here).

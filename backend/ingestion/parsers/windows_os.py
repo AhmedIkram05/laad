@@ -49,6 +49,11 @@ class WindowsOSParser(MetricDataParser):
 
         entity = data.get('atm_id')
 
+        # Dynamically upsert the ATM OS version if seen in the stream
+        os_version = data.get('os_version')
+        if entity and os_version:
+            self._upsert_atm_reference(entity, os_version=os_version)
+
         payload = {k: v for k, v in data.items() if k not in ('timestamp', 'cpu_usage_percent')}
 
         return {
