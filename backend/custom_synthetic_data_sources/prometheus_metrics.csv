@@ -2,6 +2,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T08:00:00+00:00,jvm_memory_used_bytes,gauge,299999279,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:00:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10904191872950725,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:00:00+00:00,process_cpu_usage,gauge,0.2041359880858764,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T08:00:00+00:00,jvm_memory_used_bytes,gauge,300000000,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T08:00:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.45,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T08:00:00+00:00,process_cpu_usage,gauge,0.2,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T08:01:00+00:00,jvm_memory_used_bytes,gauge,300000900,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:01:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09389110927309048,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:01:00+00:00,process_cpu_usage,gauge,0.20999776179400328,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -32,6 +35,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T08:10:00+00:00,jvm_memory_used_bytes,gauge,299999695,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:10:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10821375657466989,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:10:00+00:00,process_cpu_usage,gauge,0.1932897884424448,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T08:10:00+00:00,jvm_memory_used_bytes,gauge,382222222,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T08:10:00+00:00,jvm_gc_pause_seconds_sum,gauge,3.14,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T08:10:00+00:00,process_cpu_usage,gauge,0.28,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T08:11:00+00:00,jvm_memory_used_bytes,gauge,299999630,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:11:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.1085339547979579,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:11:00+00:00,process_cpu_usage,gauge,0.2036129178467036,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -62,6 +68,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T08:20:00+00:00,jvm_memory_used_bytes,gauge,299999703,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:20:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10514309375416919,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:20:00+00:00,process_cpu_usage,gauge,0.19971761586382974,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T08:20:00+00:00,jvm_memory_used_bytes,gauge,464444444,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T08:20:00+00:00,jvm_gc_pause_seconds_sum,gauge,5.84,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T08:20:00+00:00,process_cpu_usage,gauge,0.36,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T08:21:00+00:00,jvm_memory_used_bytes,gauge,299999727,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:21:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10340630699893111,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:21:00+00:00,process_cpu_usage,gauge,0.19633361614527708,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -92,6 +101,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T08:30:00+00:00,jvm_memory_used_bytes,gauge,299999104,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:30:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10765213720841915,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:30:00+00:00,process_cpu_usage,gauge,0.2073370851956047,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T08:30:00+00:00,jvm_memory_used_bytes,gauge,546666666,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T08:30:00+00:00,jvm_gc_pause_seconds_sum,gauge,8.53,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T08:30:00+00:00,process_cpu_usage,gauge,0.45,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T08:31:00+00:00,jvm_memory_used_bytes,gauge,299999295,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:31:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.1035441042699479,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:31:00+00:00,process_cpu_usage,gauge,0.20552640479592402,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -122,6 +134,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T08:40:00+00:00,jvm_memory_used_bytes,gauge,299999071,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:40:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09106448562323488,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:40:00+00:00,process_cpu_usage,gauge,0.19262229894797003,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T08:40:00+00:00,jvm_memory_used_bytes,gauge,628888888,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T08:40:00+00:00,jvm_gc_pause_seconds_sum,gauge,11.23,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T08:40:00+00:00,process_cpu_usage,gauge,0.53,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T08:41:00+00:00,jvm_memory_used_bytes,gauge,299999658,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:41:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10788944998459032,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:41:00+00:00,process_cpu_usage,gauge,0.19742785091809734,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -152,6 +167,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T08:50:00+00:00,jvm_memory_used_bytes,gauge,300000442,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:50:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10668163200387092,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:50:00+00:00,process_cpu_usage,gauge,0.19937198475303664,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T08:50:00+00:00,jvm_memory_used_bytes,gauge,711111111,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T08:50:00+00:00,jvm_gc_pause_seconds_sum,gauge,13.92,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T08:50:00+00:00,process_cpu_usage,gauge,0.61,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T08:51:00+00:00,jvm_memory_used_bytes,gauge,300000201,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:51:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.1099640568944048,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T08:51:00+00:00,process_cpu_usage,gauge,0.1941428453149501,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -182,6 +200,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T09:00:00+00:00,jvm_memory_used_bytes,gauge,300000581,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:00:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09926335469161446,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:00:00+00:00,process_cpu_usage,gauge,0.19775372551902545,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T09:00:00+00:00,jvm_memory_used_bytes,gauge,793333333,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T09:00:00+00:00,jvm_gc_pause_seconds_sum,gauge,16.62,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T09:00:00+00:00,process_cpu_usage,gauge,0.69,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T09:01:00+00:00,jvm_memory_used_bytes,gauge,299999042,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:01:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10577900846089411,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:01:00+00:00,process_cpu_usage,gauge,0.206543144260149,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -212,6 +233,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T09:10:00+00:00,jvm_memory_used_bytes,gauge,299999769,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:10:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10837545557014813,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:10:00+00:00,process_cpu_usage,gauge,0.1905786443847642,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T09:10:00+00:00,jvm_memory_used_bytes,gauge,875555555,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T09:10:00+00:00,jvm_gc_pause_seconds_sum,gauge,19.31,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T09:10:00+00:00,process_cpu_usage,gauge,0.78,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T09:11:00+00:00,jvm_memory_used_bytes,gauge,299999101,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:11:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09979020373174487,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:11:00+00:00,process_cpu_usage,gauge,0.2044937312357713,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -242,6 +266,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T09:20:00+00:00,jvm_memory_used_bytes,gauge,300000844,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:20:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10649683445101499,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:20:00+00:00,process_cpu_usage,gauge,0.2025092323207508,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T09:20:00+00:00,jvm_memory_used_bytes,gauge,957777777,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T09:20:00+00:00,jvm_gc_pause_seconds_sum,gauge,22.01,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T09:20:00+00:00,process_cpu_usage,gauge,0.86,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T09:21:00+00:00,jvm_memory_used_bytes,gauge,300000918,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:21:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09158547555086642,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:21:00+00:00,process_cpu_usage,gauge,0.20123914425417594,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -272,6 +299,9 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T09:30:00+00:00,jvm_memory_used_bytes,gauge,299999128,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:30:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09546330248356857,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:30:00+00:00,process_cpu_usage,gauge,0.20792656660422296,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
+2026-03-24T09:30:00+00:00,jvm_memory_used_bytes,gauge,1040000000,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_LEAK
+2026-03-24T09:30:00+00:00,jvm_gc_pause_seconds_sum,gauge,24.7,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_GC
+2026-03-24T09:30:00+00:00,process_cpu_usage,gauge,0.94,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,A3_CPU
 2026-03-24T09:31:00+00:00,jvm_memory_used_bytes,gauge,300000735,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:31:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.0900323294939341,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:31:00+00:00,process_cpu_usage,gauge,0.20950838784604295,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -281,7 +311,7 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T09:33:00+00:00,jvm_memory_used_bytes,gauge,299999377,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:33:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10120922572316918,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:33:00+00:00,process_cpu_usage,gauge,0.19943617714608977,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T09:33:00+00:00,jvm_memory_used_bytes,,NO_NUMERIC_DATA,,terminal-handler-pod-0,,,,,A7_MALFORMED_PROM
+2026-03-24T09:33:00+00:00,jvm_memory_used_bytes,,890iembre,,terminal-handler-pod-0,,,,,A7_MALFORMED_PROM
 2026-03-24T09:34:00+00:00,jvm_memory_used_bytes,gauge,300000974,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:34:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10760819031611862,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T09:34:00+00:00,process_cpu_usage,gauge,0.20213822777057847,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1443,8 +1473,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T16:00:00+00:00,jvm_memory_used_bytes,gauge,299999097,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:00:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10654334622235637,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:00:00+00:00,process_cpu_usage,gauge,0.1922017293009747,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T16:00:00+00:00,jvm_memory_used_bytes,,300000000,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T16:00:00+00:00,jvm_gc_pause_seconds_sum,,0.45,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T16:01:00+00:00,jvm_memory_used_bytes,gauge,299999532,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:01:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09017134904731201,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:01:00+00:00,process_cpu_usage,gauge,0.1935386566550627,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1475,8 +1503,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T16:10:00+00:00,jvm_memory_used_bytes,gauge,300000183,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:10:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10004944295789367,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:10:00+00:00,process_cpu_usage,gauge,0.20430016409527163,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T16:10:00+00:00,jvm_memory_used_bytes,,382222222,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T16:10:00+00:00,jvm_gc_pause_seconds_sum,,3.14,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T16:11:00+00:00,jvm_memory_used_bytes,gauge,299999314,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:11:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.0925902014609036,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:11:00+00:00,process_cpu_usage,gauge,0.20053917885234868,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1507,8 +1533,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T16:20:00+00:00,jvm_memory_used_bytes,gauge,299999631,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:20:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09600110536672912,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:20:00+00:00,process_cpu_usage,gauge,0.20517306943585706,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T16:20:00+00:00,jvm_memory_used_bytes,,464444444,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T16:20:00+00:00,jvm_gc_pause_seconds_sum,,5.84,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T16:21:00+00:00,jvm_memory_used_bytes,gauge,299999834,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:21:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.1093973990737132,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:21:00+00:00,process_cpu_usage,gauge,0.19153520298165944,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1539,8 +1563,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T16:30:00+00:00,jvm_memory_used_bytes,gauge,299999355,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:30:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.092848233356398,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:30:00+00:00,process_cpu_usage,gauge,0.2033682810899763,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T16:30:00+00:00,jvm_memory_used_bytes,,546666666,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T16:30:00+00:00,jvm_gc_pause_seconds_sum,,8.53,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T16:31:00+00:00,jvm_memory_used_bytes,gauge,300000488,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:31:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10842702012888893,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:31:00+00:00,process_cpu_usage,gauge,0.19225424777721759,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1571,8 +1593,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T16:40:00+00:00,jvm_memory_used_bytes,gauge,299999565,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:40:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09841825208632586,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:40:00+00:00,process_cpu_usage,gauge,0.19692187981328027,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T16:40:00+00:00,jvm_memory_used_bytes,,628888888,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T16:40:00+00:00,jvm_gc_pause_seconds_sum,,11.23,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T16:41:00+00:00,jvm_memory_used_bytes,gauge,299999468,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:41:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10232813123652873,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:41:00+00:00,process_cpu_usage,gauge,0.19383378458755673,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1603,8 +1623,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T16:50:00+00:00,jvm_memory_used_bytes,gauge,300000268,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:50:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.0969838878762341,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:50:00+00:00,process_cpu_usage,gauge,0.201500255766397,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T16:50:00+00:00,jvm_memory_used_bytes,,711111111,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T16:50:00+00:00,jvm_gc_pause_seconds_sum,,13.92,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T16:51:00+00:00,jvm_memory_used_bytes,gauge,299999668,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:51:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10683768896344696,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T16:51:00+00:00,process_cpu_usage,gauge,0.1922394639737638,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1635,8 +1653,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T17:00:00+00:00,jvm_memory_used_bytes,gauge,300000912,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:00:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10178515188163406,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:00:00+00:00,process_cpu_usage,gauge,0.1919881240370293,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T17:00:00+00:00,jvm_memory_used_bytes,,793333333,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T17:00:00+00:00,jvm_gc_pause_seconds_sum,,16.62,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T17:01:00+00:00,jvm_memory_used_bytes,gauge,299999214,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:01:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09379125899887904,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:01:00+00:00,process_cpu_usage,gauge,0.20755164820882754,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1667,8 +1683,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T17:10:00+00:00,jvm_memory_used_bytes,gauge,300000398,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:10:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.1066663487528392,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:10:00+00:00,process_cpu_usage,gauge,0.20181805175222647,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T17:10:00+00:00,jvm_memory_used_bytes,,875555555,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T17:10:00+00:00,jvm_gc_pause_seconds_sum,,19.31,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T17:11:00+00:00,jvm_memory_used_bytes,gauge,300000066,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:11:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.10040382694338879,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:11:00+00:00,process_cpu_usage,gauge,0.20293090568693606,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1699,8 +1713,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T17:20:00+00:00,jvm_memory_used_bytes,gauge,299999448,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:20:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09078563050521353,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:20:00+00:00,process_cpu_usage,gauge,0.20195708244539504,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T17:20:00+00:00,jvm_memory_used_bytes,,957777777,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T17:20:00+00:00,jvm_gc_pause_seconds_sum,,22.01,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T17:21:00+00:00,jvm_memory_used_bytes,gauge,300000704,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:21:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.1078296198662679,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:21:00+00:00,process_cpu_usage,gauge,0.19992451637641992,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
@@ -1731,8 +1743,6 @@ timestamp,metric_name,metric_type,metric_value,service_name,pod_name,container_i
 2026-03-24T17:30:00+00:00,jvm_memory_used_bytes,gauge,300000020,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:30:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09721669818384654,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:30:00+00:00,process_cpu_usage,gauge,0.19899646323557302,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
-2026-03-24T17:30:00+00:00,jvm_memory_used_bytes,,1040000000,terminal-handler-sim,terminal-handler-pod-0,,,,,A3_LEAK
-2026-03-24T17:30:00+00:00,jvm_gc_pause_seconds_sum,,24.7,,terminal-handler-pod-0,,,,,A3_GC
 2026-03-24T17:31:00+00:00,jvm_memory_used_bytes,gauge,299999861,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:31:00+00:00,jvm_gc_pause_seconds_sum,gauge,0.09152041766551296,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,
 2026-03-24T17:31:00+00:00,process_cpu_usage,gauge,0.19334728328520814,terminal-handler-sim,terminal-handler-pod-0,container-main,payments,staging,,

@@ -70,6 +70,11 @@ def make_txn() -> str:
     return f"txn-{str(uuid4())[:12]}"
 
 
+def at(hour: int, minute: int = 0) -> datetime:
+    """Return an absolute wall-clock time on the same date as BASE_DATE."""
+    return BASE_DATE.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
 def ensure_output(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
@@ -212,7 +217,7 @@ def build_windows_os_metrics(start: datetime, end: datetime) -> List[dict]:
                 "disk_free_gb": round(random.uniform(10.0, 200.0), 2),
                 "network_bytes_sent_per_sec": round(random.uniform(0, 10000), 2),
                 "network_bytes_recv_per_sec": round(random.uniform(0, 10000), 2),
-                "network_errors": 0,
+                "network_errors": random.choices([0, 1, 2], weights=[0.90, 0.07, 0.03])[0],
                 "process_count": random.randint(80, 120),
                 "system_uptime_seconds": int(random.uniform(3600, 86400)),
                 "event_log_errors_last_min": 0,
@@ -276,6 +281,7 @@ def inject_a1_network_timeout_cascade(atm_app, kafka, terminal, t0):
     atm = "ATM-GB-0003"
     
     # ATM App Log: DISCONNECT then TIMEOUT
+    txn = make_txn()
     atm_app.append({
         "timestamp": ts(t0),
         "log_level": "ERROR",
@@ -286,6 +292,7 @@ def inject_a1_network_timeout_cascade(atm_app, kafka, terminal, t0):
         "component": "NetworkClient",
         "error_code": "ERR-0040",
         "correlation_id": corr,
+        "transaction_id": txn,
         "_anomaly": "A1_DISCONNECT",
     })
     atm_app.append({
@@ -297,8 +304,9 @@ def inject_a1_network_timeout_cascade(atm_app, kafka, terminal, t0):
         "message": "Host response timeout",
         "component": "NetworkClient",
         "response_time_ms": 30000,
-        "error_code": "ERR-0012",
+        "error_code": None,
         "correlation_id": corr,
+        "transaction_id": txn,
         "_anomaly": "A1_TIMEOUT",
     })
     
@@ -310,9 +318,13 @@ def inject_a1_network_timeout_cascade(atm_app, kafka, terminal, t0):
         "atm_status": "Offline",
         "transaction_rate_tps": 0.0,
         "response_time_ms": 30000,
+        "transaction_volume": 0,
         "transaction_success_rate": 0.0,
         "transaction_failure_reason": "HOST_UNAVAILABLE",
+        "failure_count": 0,
         "correlation_id": corr,
+        "transaction_id": txn,
+        "kafka_offset": 9050,
         "_anomaly": "A1_KAFKA_OFFLINE",
     })
     
@@ -321,11 +333,15 @@ def inject_a1_network_timeout_cascade(atm_app, kafka, terminal, t0):
         "timestamp": ts(t0 + timedelta(minutes=2)),
         "log_level": "ERROR",
         "service_name": "terminal-handler-sim",
+        "service_version": "0.1.0",
         "event_type": "NETWORK_TIMEOUT",
         "message": f"Connection timed out for {atm}",
         "correlation_id": corr,
+        "transaction_id": txn,
         "atm_id": atm,
         "pod_name": POD_NAME,
+        "container_id": "container-main",
+        "exception_class": None,
         "_anomaly": "A1_HANDLER_TIMEOUT",
     })
 
@@ -339,26 +355,29 @@ def inject_a2_cassette_depletion(hardware, kafka, t0):
     atm = "ATM-GB-0003"
     
     # Hardware escalation
-    for m in [0, 15]:
+    # Hardware escalation — two distinct cassettes
+    for m, cassette in [(0, "CASSETTE-1"), (15, "CASSETTE-2")]:
         hardware.append({
             "timestamp": ts(t0 + timedelta(minutes=m)),
             "atm_id": atm,
             "component": "CASH_DISPENSER",
             "event_type": "CASSETTE_LOW",
             "severity": "WARNING",
-            "metric_name": "CASSETTE_LEVEL",
+            "metric_name": f"CASSETTE_LEVEL_{cassette}",
+            "cassette_id": cassette,
             "metric_value": 10,
             "correlation_id": corr,
             "_anomaly": "A2_LOW",
         })
-    for m in [45, 59]:
+    for m, cassette in [(45, "CASSETTE-1"), (59, "CASSETTE-2")]:
         hardware.append({
             "timestamp": ts(t0 + timedelta(minutes=m)),
             "atm_id": atm,
             "component": "CASH_DISPENSER",
             "event_type": "CASSETTE_EMPTY",
             "severity": "CRITICAL",
-            "metric_name": "CASSETTE_LEVEL",
+            "metric_name": f"CASSETTE_LEVEL_{cassette}",
+            "cassette_id": cassette,
             "metric_value": 0,
             "correlation_id": corr,
             "_anomaly": "A2_EMPTY",
@@ -367,12 +386,18 @@ def inject_a2_cassette_depletion(hardware, kafka, t0):
     # Kafka: Out of Service
     kafka.append({
         "timestamp": ts(t0 + timedelta(minutes=59)),
+        "event_id": "evt-a2-oos",
         "atm_id": atm,
         "atm_status": "Out of Service",
         "transaction_rate_tps": 0.0,
+        "response_time_ms": 0,
+        "transaction_volume": 0,
         "transaction_success_rate": 0.0,
         "transaction_failure_reason": "CASH_DISPENSE_ERROR",
+        "failure_count": 0,
         "correlation_id": corr,
+        "transaction_id": make_txn(),
+        "kafka_offset": 9100,
         "_anomaly": "A2_KAFKA_OOS",
     })
 
@@ -388,17 +413,42 @@ def inject_a3_jvm_memory_leak(prometheus, gcp, terminal, t0):
         prometheus.append({
             "timestamp": ts(t),
             "metric_name": "jvm_memory_used_bytes",
+            "metric_type": "gauge",
             "metric_value": 300_000_000 + (740_000_000 * i // 9),
-            "pod_name": POD_NAME,
             "service_name": "terminal-handler-sim",
+            "pod_name": POD_NAME,
+            "container_id": "container-main",
+            "label_area": "payments",
+            "label_env": "staging",
+            "help_text": "",
             "_anomaly": "A3_LEAK",
         })
         prometheus.append({
             "timestamp": ts(t),
             "metric_name": "jvm_gc_pause_seconds_sum",
+            "metric_type": "gauge",
             "metric_value": round(0.45 + (24.25 * i / 9), 2),
+            "service_name": "terminal-handler-sim",
             "pod_name": POD_NAME,
+            "container_id": "container-main",
+            "label_area": "payments",
+            "label_env": "staging",
+            "help_text": "",
             "_anomaly": "A3_GC",
+        })
+        # Add process CPU usage rise to Prometheus for A3
+        prometheus.append({
+            "timestamp": ts(t),
+            "metric_name": "process_cpu_usage",
+            "metric_type": "gauge",
+            "metric_value": round(0.20 + (0.74 * i / 9), 2),
+            "service_name": "terminal-handler-sim",
+            "pod_name": POD_NAME,
+            "container_id": "container-main",
+            "label_area": "payments",
+            "label_env": "staging",
+            "help_text": "",
+            "_anomaly": "A3_CPU",
         })
         # GCP CPU rise
         gcp.append({
@@ -416,13 +466,22 @@ def inject_a3_jvm_memory_leak(prometheus, gcp, terminal, t0):
         })
     
     # Terminal Handler: OOM FATAL
+    corr = make_corr()
+    txn = make_txn()
+
     terminal.append({
         "timestamp": ts(t0 + timedelta(minutes=90)),
         "log_level": "FATAL",
+        "service_name": "terminal-handler-sim",
+        "service_version": "0.1.0",
         "event_type": "OOM_ERROR",
+        "message": "Java heap space exhausted",
         "exception_class": "OutOfMemoryError",
-        "message": "Java heap space",
+        "correlation_id": corr,
+        "transaction_id": txn,
+        "atm_id": None,
         "pod_name": POD_NAME,
+        "container_id": "container-main",
         "_anomaly": "A3_FATAL",
     })
 
@@ -462,9 +521,17 @@ def inject_a4_container_restart_loop(gcp, terminal, t0):
     for m, cid in [(0, "c1"), (2, "c2"), (4, "c3")]:
         terminal.append({
             "timestamp": ts(t0 + timedelta(minutes=m)),
+            "log_level": "INFO",
+            "service_name": "terminal-handler-sim",
+            "service_version": "0.1.0",
             "event_type": "STARTUP",
-            "container_id": f"container-{cid}",
+            "message": f"Container {cid} starting",
+            "correlation_id": None,
+            "transaction_id": None,
+            "atm_id": None,
             "pod_name": POD_NAME,
+            "container_id": f"container-{cid}",
+            "exception_class": None,
             "_anomaly": "A4_STARTUP",
         })
     # OOMs causing restarts
@@ -472,8 +539,16 @@ def inject_a4_container_restart_loop(gcp, terminal, t0):
         terminal.append({
             "timestamp": ts(t0 + timedelta(minutes=m)),
             "log_level": "FATAL",
+            "service_name": "terminal-handler-sim",
+            "service_version": "0.1.0",
+            "event_type": "OOM_ERROR",
+            "message": "Container crashed due to OOM",
             "exception_class": "OutOfMemoryError",
+            "correlation_id": None,
+            "transaction_id": None,
+            "atm_id": None,
             "pod_name": POD_NAME,
+            "container_id": f"container-c{m//2 + 1}",
             "_anomaly": "A4_OOM",
         })
 
@@ -483,32 +558,61 @@ def inject_a5_response_time_spike(kafka, atm_app, t0):
     A5: High Response Time Spike + Success Rate Drop (ATM-GB-0001, 09:30)
     Sources: Kafka Stream, ATM App Log
     """
-    corr = SCENARIO_CORR["A5"]
+    corr1 = SCENARIO_CORR["A5"]
+    corr2 = SCENARIO_CORR["A5_2"]
     atm = "ATM-GB-0001"
-    
-    # Kafka spike
-    vals = [(3200, 72.0, 8), (30000, 50.0, 14)]
-    for i, (rt, sr, fc) in enumerate(vals):
+    txn = make_txn()
+
+    # Kafka spike — two related but distinct correlation IDs per guide
+    vals = [(3200, 72.0, 8, corr1), (30000, 50.0, 14, corr2)]
+    for i, (rt, sr, fc, corr) in enumerate(vals):
         kafka.append({
             "timestamp": ts(t0 + timedelta(minutes=i)),
+            "event_id": f"evt-a5-{i}",
             "atm_id": atm,
+            "atm_status": "Online",
+            "transaction_rate_tps": 0.1,
             "response_time_ms": rt,
+            "transaction_volume": random.randint(1, 10),
             "transaction_success_rate": sr,
-            "failure_count": fc,
             "transaction_failure_reason": "TIMEOUT",
+            "failure_count": fc,
             "correlation_id": corr,
+            "transaction_id": txn,
+            "kafka_offset": 9000 + i,
             "_anomaly": "A5_SPIKE",
         })
-    
-    # ATM App TIMEOUT
+
+    # ATM App TIMEOUTs confirming spikes
     atm_app.append({
         "timestamp": ts(t0),
+        "log_level": "ERROR",
         "atm_id": atm,
+        "location_code": ATM_LOCATIONS[atm],
         "event_type": "TIMEOUT",
-        "error_code": "ERR-0012",
+        "message": "Host response timeout",
+        "component": "NetworkClient",
         "response_time_ms": 3200,
-        "correlation_id": corr,
+        "error_code": "ERR-0012",
+        "error_detail": None,
+        "correlation_id": corr1,
+        "transaction_id": txn,
         "_anomaly": "A5_APP_TIMEOUT",
+    })
+    atm_app.append({
+        "timestamp": ts(t0 + timedelta(minutes=1)),
+        "log_level": "ERROR",
+        "atm_id": atm,
+        "location_code": ATM_LOCATIONS[atm],
+        "event_type": "TIMEOUT",
+        "message": "Host response timeout",
+        "component": "NetworkClient",
+        "response_time_ms": 30000,
+        "error_code": "ERR-0012",
+        "error_detail": None,
+        "correlation_id": corr2,
+        "transaction_id": txn,
+        "_anomaly": "A5_APP_TIMEOUT_2",
     })
 
 
@@ -525,7 +629,7 @@ def inject_a6_os_memory_pressure(windows, atm_app, t0):
             "timestamp": ts(t),
             "atm_id": atm,
             "memory_usage_percent": round(46.0 + (52.75 * i / 12), 2),
-            "network_errors": i * 2,
+            "network_errors": round(22 * i / 12),
             "cpu_usage_percent": round(30.0 + (61.5 * i / 12), 2),
             "_anomaly": "A6_RAMP",
         })
@@ -550,29 +654,64 @@ def inject_a7_malformed_kafka(kafka, prometheus):
     As to not crash the database intialisation process.
     """
     atm = "ATM-GB-0004"
-    # Out of order
+    # Anchor record (later timestamp, lower offset)
     kafka.append({
-        "timestamp": ts(BASE_DATE + timedelta(hours=1)),
+        "timestamp": ts(at(9, 34)),
+        "event_id": "evt-a7-anchor",
         "atm_id": atm,
+        "atm_status": "Online",
+        "transaction_rate_tps": 0.8,
+        "response_time_ms": 310,
+        "transaction_volume": 2,
+        "transaction_success_rate": 100.0,
+        "transaction_failure_reason": None,
+        "failure_count": 0,
+        "correlation_id": None,
+        "transaction_id": None,
+        "kafka_offset": 4049,
+        "_anomaly": None,
+    })
+    # Out-of-order: higher offset but earlier timestamp
+    kafka.append({
+        "timestamp": ts(at(9, 29)),
+        "event_id": "evt-a7-outoforder",
+        "atm_id": atm,
+        "atm_status": "Online",
+        "transaction_rate_tps": 0.7,
+        "response_time_ms": 290,
+        "transaction_volume": 1,
+        "transaction_success_rate": 100.0,
+        "transaction_failure_reason": None,
+        "failure_count": 0,
+        "correlation_id": None,
+        "transaction_id": None,
         "kafka_offset": 4050,
         "_anomaly": "A7_OUT_OF_ORDER",
     })
-    # Null fields
+
+    # Null fields record — full fieldset but intentional nulls
     kafka.append({
-        "timestamp": ts(BASE_DATE + timedelta(hours=2)),
+        "timestamp": ts(at(9, 35)),
+        "event_id": "evt-a7-nulls",
         "atm_id": atm,
         "atm_status": None,
         "transaction_rate_tps": None,
+        "response_time_ms": None,
+        "transaction_volume": None,
+        "transaction_success_rate": None,
+        "transaction_failure_reason": None,
+        "failure_count": None,
+        "correlation_id": None,
+        "transaction_id": None,
         "kafka_offset": 4051,
         "_anomaly": "A7_NULLS",
     })
 
     # Prometheus malformation per guide (09:33:00)
-    # Note: Using BASE_DATE + 1h33m to simulate 09:33 (if BASE_DATE is 08:00)
     prometheus.append({
-        "timestamp": ts(BASE_DATE + timedelta(hours=1, minutes=33)),
+        "timestamp": ts(at(9, 33)),
         "metric_name": "jvm_memory_used_bytes",
-        "metric_value": "NO_NUMERIC_DATA", # fails regex rescue
+        "metric_value": "890iembre",
         "pod_name": POD_NAME,
         "_anomaly": "A7_MALFORMED_PROM"
     })
@@ -595,16 +734,17 @@ def generate_dataset(output: str = OUTPUT_DIR, hours: int = HOURS, seed: int = S
     gcp = build_gcp_metrics(start, end)
 
     print("Injecting correlated anomaly scenarios A1-A7...")
-    inject_a1_network_timeout_cascade(atm_app, kafka, terminal, start + timedelta(hours=10))
-    inject_a2_cassette_depletion(hardware, kafka, start + timedelta(hours=9))
-    inject_a3_jvm_memory_leak(prometheus, gcp, terminal, start + timedelta(hours=8))
-    inject_a4_container_restart_loop(gcp, terminal, start + timedelta(hours=9, minutes=30))
-    inject_a5_response_time_spike(kafka, atm_app, start + timedelta(hours=9, minutes=30))
-    inject_a6_os_memory_pressure(windows, atm_app, start + timedelta(hours=7, minutes=45))
+    inject_a1_network_timeout_cascade(atm_app, kafka, terminal, at(10))
+    inject_a2_cassette_depletion(hardware, kafka, at(9))
+    inject_a3_jvm_memory_leak(prometheus, gcp, terminal, at(8))
+    inject_a4_container_restart_loop(gcp, terminal, at(9, 30))
+    inject_a5_response_time_spike(kafka, atm_app, at(9, 30))
+    inject_a6_os_memory_pressure(windows, atm_app, at(7, 45))
     inject_a7_malformed_kafka(kafka, prometheus)
 
     print("Sorting and writing datasets...")
-    for data in [atm_app, hardware, terminal, kafka, prometheus, windows, gcp]:
+    # Keep kafka unsorted to preserve intentional out-of-order anomalies (A7).
+    for data in [atm_app, hardware, terminal, prometheus, windows, gcp]:
         data.sort(key=lambda r: r["timestamp"])
 
     write_json(atm_app, "atm_application_log.json", output)
