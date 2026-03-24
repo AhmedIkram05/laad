@@ -1,52 +1,50 @@
-# Backend, Database & Their Tests
+# NCR Atleos Log Aggregation Backend
 
-This repository contains ingestion parsers, SQLite helpers, and a lightweight test
-suite used to validate concurrent writes and schema correctness.
+## Quick Start (Running the Pipeline)
 
-## Key locations
+The central orchestrator script is `backend/main.py`. It handles initialising the database, generating a full 24-hour synthetic dataset, and concurrently ingesting all 7 log sources.
 
-- Parsers and base classes: [ingestion/parsers](ingestion/parsers/__init__.py#L1)
-- Resilient writer helper (helps with concurrent writes in SQLite): [ingestion/write_helper.py](ingestion/write_helper.py#L1)
-- Centralised DB connection (PRAGMA tuned): [database/connection.py](database/connection.py#L1)
-- Schema and seeds: [database/schema.sql](database/schema.sql#L1) and [database/init_db.py](database/init_db.py#L1)
-- Tests: [tests/](tests) including concurrency smoke test and schema verification
-
-## Developer setup & running
-
-Follow these steps to create a development virtual environment, initialise the real database, and run the test suite.
-
-1. You may need to create and activate a virtual environment:
+For the most reliable path resolution, always run this from the repository root:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python -m backend.main
 ```
 
-1. Install test/runtime dependencies:
+### What `main.py` actually does:
+1. **Initialises Database:** Creates `database.db` and applies the 5-table "Lean Data Lake" schema in `schema.sql`. It also seeds reference data (like ATMs).
+2. **Generates Data:** Invokes the synthetic data generator to create 24 hours of simulated logs in `custom_synthetic_data_sources/`. It uses a **scripted scenario-injection model (A1–A7)** to ensure realistic cross-source correlation.
+3. **Ingests Data:** Runs multi-threaded ingestion using `ThreadPoolExecutor` to process all 7 sources concurrently into the SQLite database. High-concurrency is supported via **WAL mode**, ensuring no record is lost during the burst.
 
+## Generator Configuration
+
+The generator is now primarily driven by the **A1–A7 Anomaly Scenarios** defined in the project brief. To tweak the baseline duration, edit the constants in `backend/ingestion/custom_data_generator.py`:
+
+- `HOURS` (Default `24`): The total time span of the generated data.
+- **Deterministic Scenarios**: All anomalies (A1–A7) are injected with shared `correlation_id` keys across logs and metrics to enable immediate cross-source analysis.
+- **DLQ Testing (A7)**: The generator automatically injects 3 specific malformations (2 Kafka nulls/out-of-order, 1 Prometheus non-numeric) to verify the robustness of the Dead-Letter Queue.
+
+## Database Architecture ("Lean Schema")
+
+The database utilises a highly optimised 5-table strategy to minimise ingestion overhead while maintaining rapid query capabilities for the frontend.
+
+- **`events`**: Unified store for all discrete logs (ATM App, Hardware, Terminal Handler).
+- **`metrics`**: Unified store for all continuous metric streams (Windows OS, Prometheus, GCP Cloud, Kafka).
+- **`atms`**: Reference table mapping `atm_id` to its `os_version` and location.
+- **`anomalies`**: Destination table for the Detection Engine's findings (includes embedded recommendations).
+- **`ingestion_errors`**: The "Dead Letter Queue" (DLQ). Catches strictly malformed records to prevent pipeline crashes.
+
+### Frontend Views
+To simplify reading data from the `events` and `metrics` tables (which utilize JSON payload columns), three flattened views are provided:
+- `v_events_flat`
+- `v_metrics_flat`
+- `v_unified_analysis` (Provides a normalised timeline combining events and metrics for the dashboard).
+
+## Testing
+
+The codebase includes a full `unittest` and `pytest` compatible suite to verify schema compliance, concurrent ingestion resilience, and parser error handling.
+
+To run the tests, execute from the repository root:
 ```bash
-pip install -r backend/requirements.txt
+pytest backend/tests/ -v
+# or simply 'pytest', should work
 ```
-
-1. Initialise the real (development) database and seed templates (run from the repo root):
-
-```bash
-python -m backend.database.init_db
-# or (if you want to run the file directly):
-PYTHONPATH=. python3 backend/database/init_db.py
-```
-
-This creates the database at `backend/database/database.db` by default and applies the canonical schema in `backend/database/schema.sql`.
-
-1. Run the test suite from the repository root:
-
-```bash
-pytest -q
-```
-
-## Architecture (summary)
-
-- **DB connection:** centralised `get_db()` in `database/connection.py` that applies SQLite PRAGMAs (WAL, busy timeout, foreign keys, etc.) to improve concurrent-writing behavior.
-- **Resilient writer:** `ingestion/write_helper.py` exposes `write_batch()` which performs transactional batched inserts with retries and exponential backoff on transient locks.
-- **Parsers:** parser classes under `ingestion/parsers/` buffer rows, serialize variable fields into a `payload` JSON column, and call `write_batch()` to persist data.
-- **Tests:** unittest-based suite in `tests/` includes a concurrency smoke test and a DB schema verification test to validate correctness under contention.
