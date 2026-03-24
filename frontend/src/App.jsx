@@ -1,5 +1,5 @@
 /* import libraries */
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 /* import pages */
 import MainLayout from "./layouts/MainLayout";
@@ -15,11 +15,11 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* default opening to dashboard page */}
-        <Route path="/" element={<Navigate to="/dashboard" />} />
-
-        {/* set main layout to all pages */}
         <Route element={<MainLayout/>}>
+          {/* default opening to dashboard page */}
+          <Route path="/" element={<Navigate to="/dashboard"/>}/> 
+
+          {/* set main layout to all pages */}
           <Route path="/dashboard" element={<Dashboard/>}/>
           <Route path="/starred" element={<Starred/>}/>
           <Route path="/completed" element={<Completed/>}/>
