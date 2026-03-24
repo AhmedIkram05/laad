@@ -28,7 +28,7 @@ function SideNavbar() {
             <button className="button" onClick={() => navigate("/settings")}>
           <span className="icon"><GoTools/></span><span className="text">Settings</span></button>
             <button className="button" onClick={() => navigate("/login")}>
-          <span className="icon"><GoSignOut/></span><span className="text">Login</span></button>
+          <span className="icon"><GoSignOut/></span><span className="text">Log Out</span></button>
         </div>
       </div>
 
