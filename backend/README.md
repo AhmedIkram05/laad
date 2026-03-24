@@ -1,4 +1,4 @@
-# NCR Atleos Log Aggregation Backend
+# NCR Atleos Log Aggregation, Analysis & Diagnostics Platform - Backend
 
 ## Quick Start (Running the Pipeline)
 

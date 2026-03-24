@@ -159,8 +159,6 @@ def run_pipeline(
     final_counts(db_path)
 
 
-# --- PIPELINE CONFIGURATION ---
-# Change these values to control the data generation and ingestion behavior.
 _THIS_DIR = Path(__file__).resolve().parent
 DB_PATH = str(_THIS_DIR.joinpath("database", "database.db"))
 OUTPUT_DIR = "custom_synthetic_data_sources"

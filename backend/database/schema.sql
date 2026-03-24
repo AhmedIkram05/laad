@@ -94,7 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_metrics_entity_time  ON metrics(entity_id, timest
 -- (Note: Also covers plain metric_name searches via index left-prefixing)
 CREATE INDEX IF NOT EXISTS idx_metrics_name_time    ON metrics(metric_name, timestamp);
 
--- Anomalies: quick drilldown for a single ATM's rded anomalies
+-- Anomalies: quick drilldown for a single ATM's recorded anomalies
 CREATE INDEX IF NOT EXISTS idx_anomalies_atm        ON anomalies(atm_id);
 
 -- Anomalies: optimise the main dashboard view ("Show me ACTIVE issues, newest first")
