@@ -3,8 +3,10 @@ import tempfile
 import os
 import sqlite3
 import json
+import os
 
 from backend.ingestion.parsers.terminal_handler import TerminalHandlerParser
+from backend.tests.helpers import sample_path
 
 
 class TestTerminalHandlerParser(unittest.TestCase):
@@ -27,7 +29,7 @@ class TestTerminalHandlerParser(unittest.TestCase):
             pass
 
     def test_terminal_good_and_bad_rows(self):
-        with open('backend/Sample-Assets/Synthetic Data/terminal_handler_app_log.json', 'r') as f:
+        with open(sample_path('terminal_handler_app_log.json'), 'r') as f:
             arr = json.load(f)
 
         good = [json.dumps(arr[0]), json.dumps(arr[1])]

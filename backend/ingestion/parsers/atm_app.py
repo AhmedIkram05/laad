@@ -34,10 +34,17 @@ class AtmAppParser(EventDataParser):
             raise ValueError('invalid timestamp')
 
         # Core explicit columns for `events`
+        atm_id = payload_obj.get('atm_id')
+        location_code = payload_obj.get('location_code')
+        
+        # Unify reference fields dynamically
+        if atm_id and location_code:
+            self._upsert_atm_reference(atm_id, location_code=location_code)
+
         row = {
             'timestamp': ts,
             'source': 'ATM_APP',
-            'atm_id': payload_obj.get('atm_id'),
+            'atm_id': atm_id,
             'correlation_id': payload_obj.get('correlation_id'),
             'transaction_id': payload_obj.get('transaction_id'),
             'event_type': payload_obj.get('event_type'),

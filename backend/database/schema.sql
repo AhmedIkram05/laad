@@ -12,6 +12,7 @@
 -- to preserve the historical state of the ATM during a specific anomaly.
 CREATE TABLE IF NOT EXISTS atms (
     atm_id TEXT PRIMARY KEY,        -- Unique ATM identifier (e.g., 'ATM-GB-0042')
+    os_version TEXT,                -- Operating system version
     location_code TEXT              -- Physical location code (e.g., 'LOC-0117')
 );
 
@@ -45,8 +46,6 @@ CREATE TABLE IF NOT EXISTS metrics (
 
 -- 4. ANOMALIES
 -- Tracks system-flagged problems to populate the frontend dashboard.
--- recommended_action is NOT stored here — it is joined from the
--- recommendations table at query time so templates can be updated centrally.
 CREATE TABLE IF NOT EXISTS anomalies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     detected_at DATETIME NOT NULL,      -- UTC detection time
@@ -57,35 +56,13 @@ CREATE TABLE IF NOT EXISTS anomalies (
     severity TEXT NOT NULL,             -- Severity level ('HIGH', 'CRITICAL')
     title TEXT NOT NULL,                -- UI display string
     explanation TEXT NOT NULL,          -- Detailed reason with specific field values
+    recommended_action TEXT,            -- Recommended next action logic
     sources_involved TEXT,              -- JSON array of sources e.g. '["ATM_APP","KAFKA"]'
-    evidence_event_ids TEXT,            -- JSON array of event IDs that triggered this
-    evidence_metric_ids TEXT,           -- JSON array of metric IDs that triggered this
+    feedback_rating TEXT,               -- 'LIKE' or 'DISLIKE' or NULL
     is_active INTEGER DEFAULT 1         -- 1 = Current/Unresolved, 0 = Resolved
 );
 
--- 5. RECOMMENDATION TEMPLATES
--- One row per anomaly type (A1-A7), seeded at startup.
--- Joined to anomalies at query time — updating one row here updates
--- all future recommendations of that type (satisfies Extensibility NFR).
-CREATE TABLE IF NOT EXISTS recommendations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    anomaly_type TEXT NOT NULL UNIQUE,  -- 'A1' through 'A7'
-    root_cause TEXT NOT NULL,           -- Plain-English probable cause
-    actions TEXT NOT NULL               -- JSON array of recommended next actions
-);
-
--- 6. FEEDBACK
--- Separate table (not a column on anomalies) because one anomaly can
--- receive multiple feedback entries over time. The Like/Dislike ratio
--- is computed at query time from this table.
-CREATE TABLE IF NOT EXISTS feedback (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    anomaly_id INTEGER NOT NULL REFERENCES anomalies(id),
-    rating TEXT NOT NULL,               -- 'LIKE' or 'DISLIKE'
-    submitted_at DATETIME NOT NULL      -- UTC submission time
-);
-
--- 7. INGESTION ERRORS
+-- 5. INGESTION ERRORS
 -- Ensures un-parseable JSON or corrupted data is saved for review.
 -- Powers the Data Health dashboard panel (NFR1, NFR2).
 CREATE TABLE IF NOT EXISTS ingestion_errors (
@@ -123,5 +100,116 @@ CREATE INDEX IF NOT EXISTS idx_anomalies_atm        ON anomalies(atm_id);
 -- Anomalies: optimise the main dashboard view ("Show me ACTIVE issues, newest first")
 CREATE INDEX IF NOT EXISTS idx_anomalies_active_time ON anomalies(is_active, detected_at);
 
--- Feedback: accelerate lookups of user feedback for a given anomaly (1-to-Many JOIN)
-CREATE INDEX IF NOT EXISTS idx_feedback_anomaly     ON feedback(anomaly_id);
+-- ========================================================================
+-- FLATTENED VIEWS FOR ANALYSIS / FRONTEND
+-- These views provide a denormalised, query-friendly shape for analysts
+-- and the frontend without changing the ingestion writers.
+-- ========================================================================
+
+DROP VIEW IF EXISTS v_atm_app_events;
+
+-- 6. FLATTENED EVENT VIEW (v_events_flat)
+-- Extracts and normalises common fields from the payload JSON for all discrete events.
+-- This ensures analysts can query ATM status, error codes, and response times 
+-- as first-class columns rather than digging into the raw JSON payload.
+DROP VIEW IF EXISTS v_events_flat;
+CREATE VIEW v_events_flat AS
+SELECT
+    e.id AS event_id_internal,
+    e.timestamp,
+    e.source,
+    e.atm_id,
+    COALESCE(e.correlation_id, json_extract(e.payload, '$.correlation_id'), json_extract(e.payload, '$.trace_id')) AS correlation_id,
+    e.transaction_id,
+    e.event_type,
+    e.severity,
+    e.message,
+    json_extract(e.payload, '$.location_code') AS location_code,
+    json_extract(e.payload, '$.response_time_ms') AS response_time_ms,
+    COALESCE(json_extract(e.payload, '$.error_code'), json_extract(e.payload, '$.transaction_failure_reason')) AS error_code,
+    json_extract(e.payload, '$.exception_class') AS exception_class,
+    COALESCE(json_extract(e.payload, '$.error_detail'), json_extract(e.payload, '$.exception_message')) AS error_detail,
+    COALESCE(json_extract(e.payload, '$.component'), json_extract(e.payload, '$.service_name'), json_extract(e.payload, '$.sensor_type')) AS component,
+    COALESCE(json_extract(e.payload, '$.http_status_code'), json_extract(e.payload, '$.atm_status')) AS atm_status,
+    e.payload AS raw_payload
+FROM events e;
+
+-- 7. FLATTENED METRICS VIEW (v_metrics_flat)
+-- Expands continuous time-series metrics into the same columnar shape as events.
+-- Provides nulls for event-specific fields (like transaction_id) to allow 
+-- for clean unions and standardised frontend data tables.
+DROP VIEW IF EXISTS v_metrics_flat;
+CREATE VIEW v_metrics_flat AS
+SELECT
+    m.id AS event_id_internal,
+    m.timestamp,
+    m.source,
+    m.entity_id AS atm_id,
+    NULL AS correlation_id,
+    NULL AS transaction_id,
+    NULL AS event_type,
+    NULL AS severity,
+    NULL AS message,
+    COALESCE(json_extract(m.payload, '$.http_status_code'), json_extract(m.payload, '$.atm_status')) AS atm_status,
+    m.metric_name,
+    m.metric_value,
+    NULL AS response_time_ms,
+    NULL AS error_code,
+    NULL AS exception_class,
+    NULL AS error_detail,
+    COALESCE(json_extract(m.payload, '$.component'), json_extract(m.payload, '$.service_name'), json_extract(m.payload, '$.resource_type')) AS component,
+    m.payload AS raw_payload
+FROM metrics m;
+
+-- 8. UNIFIED ANALYSIS VIEW (v_unified_analysis)
+-- The master view for the frontend timeline and diagnostic engine.
+-- Unions the flattened events and metrics together into a single, time-ordered stream.
+-- This fulfills the NFR for 'Extensibility' by allowing the frontend to query exactly
+-- one source for the entire ATM timeline (both logs and telemetry).
+DROP VIEW IF EXISTS v_unified_analysis;
+CREATE VIEW v_unified_analysis AS
+-- Events side
+SELECT
+    event_id_internal,
+    timestamp,
+    COALESCE(source, json_extract(raw_payload, '$.source'), 'EVENT') AS source,
+    COALESCE(atm_id, json_extract(raw_payload, '$.atm_id'), json_extract(raw_payload, '$.entity_id')) AS atm_id,
+    correlation_id,
+    transaction_id,
+    event_type,
+    COALESCE(severity, json_extract(raw_payload, '$.log_level'), 'UNKNOWN') AS severity,
+    message,
+    atm_status,
+    component,
+    NULL AS metric_name,
+    NULL AS metric_value,
+    COALESCE(response_time_ms, json_extract(raw_payload, '$.response_time_ms')) AS response_time_ms,
+    error_code,
+    exception_class,
+    error_detail,
+    raw_payload
+FROM v_events_flat
+
+UNION ALL
+
+-- Metrics side
+SELECT
+    event_id_internal,
+    timestamp,
+    COALESCE(source, json_extract(raw_payload, '$.source'), 'METRIC') AS source,
+    COALESCE(atm_id, json_extract(raw_payload, '$.atm_id'), json_extract(raw_payload, '$.entity_id')) AS atm_id,
+    correlation_id,
+    transaction_id,
+    event_type,
+    COALESCE(severity, json_extract(raw_payload, '$.log_level'), 'UNKNOWN') AS severity,
+    message,
+    atm_status,
+    component,
+    metric_name,
+    metric_value,
+    COALESCE(response_time_ms, json_extract(raw_payload, '$.response_time_ms')) AS response_time_ms,
+    error_code,
+    exception_class,
+    error_detail,
+    raw_payload
+FROM v_metrics_flat;
