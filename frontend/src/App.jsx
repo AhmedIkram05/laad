@@ -1,9 +1,10 @@
-/* import libraries */
+/* Import Libraries */
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-/* import pages */
+/* Import Pages */
 import MainLayout from "./layouts/MainLayout";
 import Dashboard from "./pages/Dashboard";
+
 
 function App() {
   return (
@@ -11,10 +12,10 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* default redirect from root to dashboard page */}
+        {/* Redirect Root to Dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        {/* set main layout (side navbar) to pages */}
+        {/* Set Main Layout to Pages */}
         <Route element={<MainLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
         </Route>

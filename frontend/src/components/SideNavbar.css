@@ -1,0 +1,10 @@
+.navbarContainer {
+    min-height: 100vh;
+    width: 250px;                               /* add clamp() for width range? */
+    background-color: var(--bg-secondary);
+}
+
+.button {
+    padding: 10px;
+    color: var(--text-primary);
+}

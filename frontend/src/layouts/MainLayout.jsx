@@ -1,16 +1,28 @@
-import SideNavbar from "../components/SideNavbar";
+/* Import Libraries */
 import { Outlet } from "react-router-dom";
+
+/* Import Components */
+import SideNavbar from "../components/SideNavbar";
+
+/* Import Styles */
+import './MainLayout.css'
+
 
 function MainLayout() {
   return (
-    <div style={{ display: "flex" }}>
+
+    <div className="container">
+      {/* Side Navbar */}
       <SideNavbar />
 
-      <div style={{ flex: 1, padding: "20px" }}>
+      {/* Page content */}
+      <div className="page">
         <Outlet />
       </div>
     </div>
+
   );
 }
+
 
 export default MainLayout;
