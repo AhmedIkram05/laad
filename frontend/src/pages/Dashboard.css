@@ -1,0 +1,17 @@
+.searchContainer {
+    width: 100%;
+    padding: 10px;
+    padding-left: 30px;
+    box-sizing: border-box;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+}
+
+.mainContainer {
+    padding: 30px;
+}
+
+h1 {
+  font-size: 32px;
+  margin: 0;
+}
