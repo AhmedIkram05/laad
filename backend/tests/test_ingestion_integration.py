@@ -64,7 +64,9 @@ class TestIngestionIntegration(unittest.TestCase):
         return accepted
 
     def test_end_to_end_ingestion_sample(self):
-        base = os.path.join('backend', 'Sample-Assets', 'Synthetic Data')
+        base = os.environ.get('TEST_DATA_DIR')
+        if not base:
+            raise RuntimeError('TEST_DATA_DIR is not set; tests expect generated dataset to be available via the seeded fixture')
         sources = [
             ('atm_app', AtmAppParser, os.path.join(base, 'atm_application_log.json'), 'ATM_APP', 'json'),
             ('hardware', HardwareSensorParser, os.path.join(base, 'atm_hardware_sensor_log.json'), 'HARDWARE', 'json'),

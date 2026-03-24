@@ -5,6 +5,7 @@ import tempfile
 import os
 
 from backend.ingestion.parsers.atm_app import AtmAppParser
+from backend.tests.helpers import sample_path
 
 
 class TestAtmAppParser(unittest.TestCase):
@@ -30,7 +31,7 @@ class TestAtmAppParser(unittest.TestCase):
 
     def test_parse_and_flush_sample(self):
         # Load a few sample events from the synthetic data file
-        with open('backend/Sample-Assets/Synthetic Data/atm_application_log.json', 'r') as f:
+        with open(sample_path('atm_application_log.json'), 'r') as f:
             arr = json.load(f)
 
         # feed first three events

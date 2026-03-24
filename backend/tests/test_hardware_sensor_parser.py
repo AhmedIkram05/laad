@@ -3,8 +3,10 @@ import tempfile
 import os
 import sqlite3
 import json
+import os
 
 from backend.ingestion.parsers.hardware_sensor import HardwareSensorParser
+from backend.tests.helpers import sample_path
 
 
 class TestHardwareSensorParser(unittest.TestCase):
@@ -27,7 +29,7 @@ class TestHardwareSensorParser(unittest.TestCase):
             pass
 
     def test_hardware_good_and_bad_rows(self):
-        with open('backend/Sample-Assets/Synthetic Data/atm_hardware_sensor_log.json', 'r') as f:
+        with open(sample_path('atm_hardware_sensor_log.json'), 'r') as f:
             arr = json.load(f)
 
         good = [json.dumps(arr[0]), json.dumps(arr[1])]

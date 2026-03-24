@@ -3,8 +3,10 @@ import tempfile
 import os
 import sqlite3
 import json
+import os
 
 from backend.ingestion.parsers.kafka_metrics import KafkaMetricsParser
+from backend.tests.helpers import sample_path
 
 
 class TestKafkaMetricsParser(unittest.TestCase):
@@ -27,7 +29,7 @@ class TestKafkaMetricsParser(unittest.TestCase):
             pass
 
     def test_kafka_good_and_bad_rows(self):
-        with open('backend/Sample-Assets/Synthetic Data/kafka_atm_metrics_stream.json', 'r') as f:
+        with open(sample_path('kafka_atm_metrics_stream.json'), 'r') as f:
             arr = json.load(f)
 
         good = [json.dumps(arr[0]), json.dumps(arr[1])]

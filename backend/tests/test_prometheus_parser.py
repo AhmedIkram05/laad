@@ -2,8 +2,10 @@ import unittest
 import tempfile
 import os
 import sqlite3
+import os
 
 from backend.ingestion.parsers.prometheus import PrometheusParser
+from backend.tests.helpers import sample_path
 
 
 class TestPrometheusParser(unittest.TestCase):
@@ -27,7 +29,7 @@ class TestPrometheusParser(unittest.TestCase):
 
     def test_prometheus_good_and_bad_rows(self):
         # Load a few lines from the sample CSV
-        with open('backend/Sample-Assets/Synthetic Data/prometheus_metrics.csv', 'r') as f:
+        with open(sample_path('prometheus_metrics.csv'), 'r') as f:
             lines = f.readlines()
 
         # Feed two good lines

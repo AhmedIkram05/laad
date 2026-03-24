@@ -2,8 +2,10 @@ import unittest
 import tempfile
 import os
 import sqlite3
+import os
 
 from backend.ingestion.parsers.windows_os import WindowsOSParser
+from backend.tests.helpers import sample_path
 
 
 class TestWindowsOSParser(unittest.TestCase):
@@ -26,7 +28,7 @@ class TestWindowsOSParser(unittest.TestCase):
             pass
 
     def test_windows_good_and_bad_rows(self):
-        with open('backend/Sample-Assets/Synthetic Data/windows_os_metrics.csv', 'r') as f:
+        with open(sample_path('windows_os_metrics.csv'), 'r') as f:
             lines = f.readlines()
 
         # use two good lines

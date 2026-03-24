@@ -2,8 +2,10 @@ import unittest
 import tempfile
 import os
 import sqlite3
+import os
 
 from backend.ingestion.parsers.gcp_cloud_metrics import GcpCloudMetricsParser
+from backend.tests.helpers import sample_path
 
 
 class TestGcpCloudMetricsParser(unittest.TestCase):
@@ -26,7 +28,7 @@ class TestGcpCloudMetricsParser(unittest.TestCase):
             pass
 
     def test_gcp_good_and_bad_rows(self):
-        with open('backend/Sample-Assets/Synthetic Data/gcp_cloud_metrics.csv', 'r') as f:
+        with open(sample_path('gcp_cloud_metrics.csv'), 'r') as f:
             lines = f.readlines()
 
         good = [lines[1].strip(), lines[3].strip()]
