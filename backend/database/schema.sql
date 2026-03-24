@@ -106,8 +106,6 @@ CREATE INDEX IF NOT EXISTS idx_anomalies_active_time ON anomalies(is_active, det
 -- and the frontend without changing the ingestion writers.
 -- ========================================================================
 
-DROP VIEW IF EXISTS v_atm_app_events;
-
 -- 6. FLATTENED EVENT VIEW (v_events_flat)
 -- Extracts and normalises common fields from the payload JSON for all discrete events.
 -- This ensures analysts can query ATM status, error codes, and response times 
@@ -145,8 +143,8 @@ SELECT
     m.timestamp,
     m.source,
     m.entity_id AS atm_id,
-    NULL AS correlation_id,
-    NULL AS transaction_id,
+    COALESCE(json_extract(m.payload, '$.correlation_id'), NULL) AS correlation_id,
+    COALESCE(json_extract(m.payload, '$.transaction_id'), NULL) AS transaction_id,
     NULL AS event_type,
     NULL AS severity,
     NULL AS message,
