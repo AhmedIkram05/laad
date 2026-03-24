@@ -410,16 +410,27 @@ def inject_a3_jvm_memory_leak(prometheus, gcp, terminal, t0):
         prometheus.append({
             "timestamp": ts(t),
             "metric_name": "jvm_memory_used_bytes",
+            "metric_type": "gauge",
             "metric_value": 300_000_000 + (740_000_000 * i // 9),
-            "pod_name": POD_NAME,
             "service_name": "terminal-handler-sim",
+            "pod_name": POD_NAME,
+            "container_id": "container-main",
+            "label_area": "payments",
+            "label_env": "staging",
+            "help_text": "",
             "_anomaly": "A3_LEAK",
         })
         prometheus.append({
             "timestamp": ts(t),
             "metric_name": "jvm_gc_pause_seconds_sum",
+            "metric_type": "gauge",
             "metric_value": round(0.45 + (24.25 * i / 9), 2),
+            "service_name": "terminal-handler-sim",
             "pod_name": POD_NAME,
+            "container_id": "container-main",
+            "label_area": "payments",
+            "label_env": "staging",
+            "help_text": "",
             "_anomaly": "A3_GC",
         })
         # Add process CPU usage rise to Prometheus for A3
