@@ -31,10 +31,13 @@ def init_db(db_path='database.db', schema_path='schema.sql'):
 
         # Execute the schema
         cursor.executescript(schema_sql)
+        cursor.executescript(schema_sql)
         conn.commit()
         logging.info("Schema applied successfully.")
 
         seed_atms(cursor)
+        # Seed a default admin account if no users exist yet
+        seed_default_admin(cursor)
         conn.commit()
 
     except sqlite3.Error as e:
@@ -78,6 +81,31 @@ def seed_atms(cursor):
         VALUES (?, ?, ?)
     ''', atms_data)
     logging.info(f"Seeded {len(atms_data)} ATMs.")
+
+
+def seed_default_admin(cursor):
+    """Seeds a default admin account on first run only.
+    Username: admin | Password: admin
+    The admin should change this password after first login.
+    """
+    try:
+        import bcrypt
+    except Exception:
+        logging.error("bcrypt is required to seed the default admin account")
+        return
+
+    cursor.execute("SELECT COUNT(*) FROM users")
+    row = cursor.fetchone()
+    if row and row[0] > 0:
+        return  # users already exist, never overwrite
+
+    passwordHash = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
+    cursor.execute(
+        """INSERT INTO users (username, password_hash, role, created_at)
+           VALUES (?, ?, 'admin', datetime('now'))""",
+        ("admin", passwordHash)
+    )
+    logging.info("Seeded default admin (username: admin, password: admin)")
 
 
 if __name__ == "__main__":
