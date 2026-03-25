@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Starred from "./pages/Starred";
 import Completed from "./pages/Completed";
 import AnomalyData from "./pages/AnomalyData";
+import Settings from "./pages/Settings";
 
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
           <Route path="/starred" element={<Starred />} />
           <Route path="/completed" element={<Completed />} />
           <Route path="/data" element={<AnomalyData />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
 
       </Routes>
