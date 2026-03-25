@@ -19,6 +19,7 @@ h1, h2, h3, p {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-right: 10px;
 }
 
 .anomalyContainer {
