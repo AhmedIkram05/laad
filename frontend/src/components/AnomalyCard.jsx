@@ -38,4 +38,4 @@ function AnomalyCard({ title, atmID, count, updatedTime }) {
 }
 
 
-export default Anomaly Card;
+export default AnomalyCard;
