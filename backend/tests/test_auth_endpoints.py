@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from backend.api.server import app
 from backend.database.connection import get_db
 import backend.database.init_db as init_db_module
-from backend.src.auth import router as auth_router
+from backend.src.auth import auth_router as auth_router
 
 
 @pytest.fixture
