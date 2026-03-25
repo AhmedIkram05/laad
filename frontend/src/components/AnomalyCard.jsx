@@ -4,6 +4,9 @@ import StarIcon from "../components/StarIcon";
 /* Import Icons */
 import { GoAlert } from "react-icons/go";
 
+/* Import Styles */
+import './AnomalyCard.css'
+
 
 function AnomalyCard({ title, atmID, count, updatedTime }) {
   return (
