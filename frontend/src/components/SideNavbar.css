@@ -27,9 +27,9 @@
     cursor: pointer;
 }
 
-.button:hover {
+.button.active, .button:hover {
   background-color: var(--bg-tertiary);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.115);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .icon {
