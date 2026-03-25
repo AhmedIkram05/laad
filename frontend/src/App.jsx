@@ -1,10 +1,7 @@
+import AnomalyDetailsPage from "./AnomalyDetailsPage";
+
 function App() {
-  return (
-    <div>
-      <h1>Dashboard</h1>
-      <p>Placeholder.</p>
-    </div>
-  );
+  return <AnomalyDetailsPage />;
 }
 
 export default App;
