@@ -31,7 +31,7 @@ def init_db(db_path='database.db', schema_path='schema.sql'):
 
         # Execute the schema
         cursor.executescript(schema_sql)
-        cursor.executescript(schema_sql)
+
         conn.commit()
         logging.info("Schema applied successfully.")
 
