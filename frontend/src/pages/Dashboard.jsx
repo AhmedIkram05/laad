@@ -1,8 +1,5 @@
 /* Import Components */
-import StarIcon from "../components/StarIcon";
-
-/* Import Icons */
-import { GoAlert } from "react-icons/go";
+import AnomalyCard from "../components/AnomalyCard";
 
 /* Import Styles */
 import './Dashboard.css'
@@ -26,33 +23,42 @@ function Dashboard() {
           <h2>[count]</h2>
         </div>
 
-        {/* Anomaly Cards */}
+        {/* Example Anomaly Cards */}
         <div className="anomalyContainer">
+          <AnomalyCard
+            title="Cassette Empty"
+            atmID="ATM-GB-0003"
+            count="4 anomalies"
+            updatedTime="Updated: 2 mins ago"
+          />
 
-          <div className="anomalyCard">
+          <AnomalyCard
+            title="Cash Jam Detected"
+            atmID="ATM-GB-0007"
+            count="2 anomalies"
+            updatedTime="Updated: 5 mins ago"
+          />
 
-            <div className="cardDetails">
+          <AnomalyCard
+            title="Memory Spike"
+            atmID="ATM-GB-0005"
+            count="6 anomalies"
+            updatedTime="Updated: 11 mins ago"
+          />
 
-              <div className="alert">
-                <div className="alertIcon"><GoAlert /></div>
-                <h3>Cassette Empty</h3>
-              </div>
+          <AnomalyCard
+            title="Cassette Empty"
+            atmID="ATM-GB-0002"
+            count="5 anomalies"
+            updatedTime="Updated: 24 mins ago"
+          />
 
-              <div className="minorDetails">
-                <p>ATM-GB-0003</p>
-                <div className="detailsContainer">
-                  <p>4 anomalies</p>
-                  <p>Updated: 2 mins ago</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="cardButtons">
-              <button className="viewButton">View</button>
-              <StarIcon />
-            </div>
-          </div>
-
+          <AnomalyCard
+            title="Cash Jam Detected"
+            atmID="ATM-GB-0013"
+            count="1 anomaly"
+            updatedTime="Updated: 37 mins ago"
+          />
         </div>
 
       </div>

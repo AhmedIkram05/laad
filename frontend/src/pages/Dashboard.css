@@ -22,55 +22,8 @@ h1, h2, h3, p {
 }
 
 .anomalyContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     margin-top: 20px;
-}
-
-.anomalyCard {
-    padding: 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;   
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--bg-tertiary);
-}
-
-.cardDetails {
-    display: flex;
-    flex-direction: column;
-    margin-left: 10px;
-    gap: 3px;
-}
-
-.alert {
-    display: flex;
-    gap: 10px;
-}
-
-.alertIcon {
-    font-size: 23px;
-}
-
-.minorDetails {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.detailsContainer {
-    display: flex;
-    gap: 30px;
-}
-
-.cardButtons {
-    display: flex;
-    gap: 20px;
-    margin-right: 40px;
-}
-
-.viewButton {
-    height: 45px;
-    width: 90px;
-    background-color: var(--bg-primary);
-    transition: background-color 0.3s;
-    cursor: pointer;
 }
