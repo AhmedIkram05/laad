@@ -73,10 +73,40 @@ CREATE TABLE IF NOT EXISTS ingestion_errors (
     raw_input TEXT                      -- The corrupted payload string
 );
 
+-- ======================================================================
+-- AUTH / RETENTION: permanent users, one-time tokens, and retention config
+-- These tables power the FastAPI auth router and a single-row retention
+-- configuration that can be adjusted by admins in future work.
+-- ======================================================================
+
+-- AUTH: Permanent user accounts
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+    created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+
+-- AUTH: One-time access tokens (admin generates OTP in settings --> sends to guest)
+CREATE TABLE IF NOT EXISTS otp_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
+    created_by INTEGER REFERENCES users(id),
+    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME                -- NULL = not yet redeemed
+);
+
 -- ==============================================================================
 -- INDEXES FOR FASTER SEARCHING
 -- Kept to the most common use cases
 -- ==============================================================================
+
+-- Indexes for auth tables
+CREATE INDEX IF NOT EXISTS idx_otp_token ON otp_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 
 -- Events: allow fast lookups by correlation id when tracing a transaction across sources
 CREATE INDEX IF NOT EXISTS idx_events_correlation   ON events(correlation_id);
