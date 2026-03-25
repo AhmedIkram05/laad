@@ -1,4 +1,8 @@
+/* Import Libraries */
+import { useState } from "react";
+
 /* Import Components */
+//import SearchBar from "../components/SearchBar";
 import AnomalyCard from "../components/AnomalyCard";
 
 /* Import Styles */
@@ -6,12 +10,57 @@ import './Dashboard.css'
 
 
 function Dashboard() {
+  const [search, setSearch] = useState("");
+
+  const anomalyList = [
+  {
+    title: "Cassette Empty",
+    atmID: "ATM-GB-0003",
+    count: 4,
+    updatedTime: "2 mins ago"
+  },
+  {
+    title: "Cash Jam Detected",
+    atmID: "ATM-GB-0007",
+    count: 2,
+    updatedTime: "5 mins ago"
+  },
+  {
+    title: "Memory Spike",
+    atmID: "ATM-GB-0005",
+    count: 6,
+    updatedTime: "11 mins ago"
+  },
+  {
+    title: "Cassette Empty",
+    atmID: "ATM-GB-0002",
+    count: 5,
+    updatedTime: "24 mins ago"
+  },
+  {
+    title: "Cash Jam Detected",
+    atmID: "ATM-GB-0013",
+    count: 1,
+    updatedTime: "37 mins ago"
+  }
+];
+
+  const searchedAnomalies = anomalyList.filter((a) =>
+    a.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+
   return (
     <>
-
-      {/* Search and Filter Bar */}
+      {/* Search Bar */}
       <div className="searchContainer">
-        <p>Search Bar</p>
+        <input
+          type="text"
+          placeholder="Search by issue..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="searchInput"
+        />
       </div>
 
       {/* Main Page Content */}
@@ -23,42 +72,17 @@ function Dashboard() {
           <h2>[count]</h2>
         </div>
 
-        {/* Example Anomaly Cards */}
+        {/* Example Anomaly Cards - Searchable */}
         <div className="anomalyContainer">
-          <AnomalyCard
-            title="Cassette Empty"
-            atmID="ATM-GB-0003"
-            count="4 anomalies"
-            updatedTime="Updated: 2 mins ago"
-          />
-
-          <AnomalyCard
-            title="Cash Jam Detected"
-            atmID="ATM-GB-0007"
-            count="2 anomalies"
-            updatedTime="Updated: 5 mins ago"
-          />
-
-          <AnomalyCard
-            title="Memory Spike"
-            atmID="ATM-GB-0005"
-            count="6 anomalies"
-            updatedTime="Updated: 11 mins ago"
-          />
-
-          <AnomalyCard
-            title="Cassette Empty"
-            atmID="ATM-GB-0002"
-            count="5 anomalies"
-            updatedTime="Updated: 24 mins ago"
-          />
-
-          <AnomalyCard
-            title="Cash Jam Detected"
-            atmID="ATM-GB-0013"
-            count="1 anomaly"
-            updatedTime="Updated: 37 mins ago"
-          />
+          {searchedAnomalies.map((a, index) => (
+            <AnomalyCard
+              key={index}
+              title={a.title}
+              atmID={a.atmID}
+              count={`${a.count} anomaly${a.count > 1 ? "ies" : ""}`}
+              updatedTime={`Updated: ${a.updatedTime}`}
+            />
+          ))}
         </div>
 
       </div>
