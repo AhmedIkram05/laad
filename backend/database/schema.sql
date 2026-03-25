@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS anomalies (
 
 -- 5. INGESTION ERRORS
 -- Ensures un-parseable JSON or corrupted data is saved for review.
--- Powers the Data Health dashboard panel (NFR1, NFR2).
+-- Powers the Data Health dashboard panel.
 CREATE TABLE IF NOT EXISTS ingestion_errors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME NOT NULL,        -- UTC failure time
@@ -73,13 +73,7 @@ CREATE TABLE IF NOT EXISTS ingestion_errors (
     raw_input TEXT                      -- The corrupted payload string
 );
 
--- ======================================================================
--- AUTH / RETENTION: permanent users, one-time tokens, and retention config
--- These tables power the FastAPI auth router and a single-row retention
--- configuration that can be adjusted by admins in future work.
--- ======================================================================
-
--- AUTH: Permanent user accounts
+-- 6. USERS: Permanent user accounts
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
@@ -88,7 +82,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
 
--- AUTH: One-time access tokens (admin generates OTP in settings --> sends to guest)
+-- 7. OTP TOKENS: One-time access tokens (admin generates OTP in settings --> sends to guest)
 CREATE TABLE IF NOT EXISTS otp_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token TEXT NOT NULL UNIQUE,
@@ -99,14 +93,25 @@ CREATE TABLE IF NOT EXISTS otp_tokens (
     used_at DATETIME                -- NULL = not yet redeemed
 );
 
+-- 8. RETENTION CONFIG: Configuration for data retention rules
+CREATE TABLE IF NOT EXISTS retention_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    retention_days INTEGER NOT NULL DEFAULT 30,
+    updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+);
+
+
+
 -- ==============================================================================
 -- INDEXES FOR FASTER SEARCHING
 -- Kept to the most common use cases
 -- ==============================================================================
 
--- Indexes for auth tables
-CREATE INDEX IF NOT EXISTS idx_otp_token ON otp_tokens(token);
+-- Users: allow fast lookup by username for authentication and lookups
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- OTP Tokens: allow fast lookup by token for redemption / validation
+CREATE INDEX IF NOT EXISTS idx_otp_token ON otp_tokens(token);
 
 -- Events: allow fast lookups by correlation id when tracing a transaction across sources
 CREATE INDEX IF NOT EXISTS idx_events_correlation   ON events(correlation_id);
@@ -136,7 +141,7 @@ CREATE INDEX IF NOT EXISTS idx_anomalies_active_time ON anomalies(is_active, det
 -- and the frontend without changing the ingestion writers.
 -- ========================================================================
 
--- 6. FLATTENED EVENT VIEW (v_events_flat)
+-- 9. FLATTENED EVENT VIEW (v_events_flat)
 -- Extracts and normalises common fields from the payload JSON for all discrete events.
 -- This ensures analysts can query ATM status, error codes, and response times 
 -- as first-class columns rather than digging into the raw JSON payload.
@@ -162,7 +167,7 @@ SELECT
     e.payload AS raw_payload
 FROM events e;
 
--- 7. FLATTENED METRICS VIEW (v_metrics_flat)
+-- 10. FLATTENED METRICS VIEW (v_metrics_flat)
 -- Expands continuous time-series metrics into the same columnar shape as events.
 -- Provides nulls for event-specific fields (like transaction_id) to allow 
 -- for clean unions and standardised frontend data tables.
@@ -189,7 +194,7 @@ SELECT
     m.payload AS raw_payload
 FROM metrics m;
 
--- 8. UNIFIED ANALYSIS VIEW (v_unified_analysis)
+-- 11. UNIFIED ANALYSIS VIEW (v_unified_analysis)
 -- The master view for the frontend timeline and diagnostic engine.
 -- Unions the flattened events and metrics together into a single, time-ordered stream.
 -- This fulfills the NFR for 'Extensibility' by allowing the frontend to query exactly

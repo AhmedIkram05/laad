@@ -3,14 +3,36 @@
 Run with:
     uvicorn backend.api.server:app --reload --port 8000
 """
-from fastapi import FastAPI, Depends
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.src.auth.router import router as authRouter, getCurrentUser, requireAdmin
+from backend.src.auth.auth_router import router as authRouter
+from backend.src.admin.admin_router import router as adminRouter
+from backend.src.admin.cleanup import run_cleanup
 
-app = FastAPI(title="ATM Log Aggregation Platform")
+logger = logging.getLogger(__name__)
 
-# CORS — allows the frontend dev server (localhost:5173) to talk to the API
+scheduler = BackgroundScheduler()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.add_job(run_cleanup, "interval", hours=6, id="cleanup")
+    scheduler.start()
+    logger.info("Cleanup scheduler started (interval: 6h)")
+    yield
+    scheduler.shutdown()
+    logger.info("Cleanup scheduler stopped")
+
+
+app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -19,9 +41,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers
+# -- Routers --
 app.include_router(authRouter)
-
-# All other routers get added here as we build them, e.g.:
-# app.include_router(anomaliesRouter)
-# app.include_router(eventsRouter)
+app.include_router(adminRouter)

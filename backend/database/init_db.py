@@ -2,6 +2,7 @@ import sqlite3
 import os
 import json
 import logging
+from datetime import datetime, timezone
 
 def init_db(db_path='database.db', schema_path='schema.sql'):
     """Initialise the database with the defined schema."""
@@ -34,10 +35,11 @@ def init_db(db_path='database.db', schema_path='schema.sql'):
 
         conn.commit()
         logging.info("Schema applied successfully.")
-
         seed_atms(cursor)
         # Seed a default admin account if no users exist yet
         seed_default_admin(cursor)
+        # Seed retention config single row (id=1) with ISO8601 UTC timestamp
+        seed_retention_config(cursor)
         conn.commit()
 
     except sqlite3.Error as e:
@@ -106,6 +108,24 @@ def seed_default_admin(cursor):
         ("admin", passwordHash)
     )
     logging.info("Seeded default admin (username: admin, password: admin)")
+
+
+def seed_retention_config(cursor):
+    """Ensure a single-row retention_config exists.
+
+    Uses an ISO8601 UTC timestamp for `updated_at` to match application usage.
+    """
+    cursor.execute("SELECT retention_days FROM retention_config WHERE id = 1")
+    row = cursor.fetchone()
+    if row:
+        return
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cursor.execute(
+        "INSERT INTO retention_config (id, retention_days, updated_at) VALUES (1, ?, ?)",
+        (30, now_iso)
+    )
+    logging.info("Seeded retention_config (id=1, retention_days=30)")
 
 
 if __name__ == "__main__":
