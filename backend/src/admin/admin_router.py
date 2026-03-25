@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.src.auth.auth_router import getDbConnection, requireAdmin
-from backend.src.admin.cleanup import runCleanup
+from backend.src.auth.auth_router import get_db_connection, require_admin
+from backend.src.admin.cleanup import run_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,8 @@ class RetentionUpdateRequest(BaseModel):
     days: int
 
 
-@router.get("/retention", dependencies=[Depends(requireAdmin)])
-def getRetention(conn=Depends(getDbConnection)):
+@router.get("/retention", dependencies=[Depends(require_admin)])
+def get_retention(conn=Depends(get_db_connection)):
     """Returns the current retention period."""
     row = conn.execute(
         "SELECT retention_days, updated_at FROM retention_config WHERE id = 1"
@@ -32,8 +32,8 @@ def getRetention(conn=Depends(getDbConnection)):
     return {"retention_days": row["retention_days"], "updated_at": row["updated_at"]}
 
 
-@router.put("/retention", dependencies=[Depends(requireAdmin)])
-def updateRetention(request: RetentionUpdateRequest, conn=Depends(getDbConnection)):
+@router.put("/retention", dependencies=[Depends(require_admin)])
+def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connection)):
     """Admin only. Updates the data retention period.
     Allowed values: 7, 30, 60, 90, 365 days.
     """
@@ -51,7 +51,7 @@ def updateRetention(request: RetentionUpdateRequest, conn=Depends(getDbConnectio
     return {"retention_days": request.days, "message": "Retention period updated"}
 
 
-@router.post("/cleanup/run", dependencies=[Depends(requireAdmin)])
-def triggerCleanup():
+@router.post("/cleanup/run", dependencies=[Depends(require_admin)])
+def trigger_cleanup():
     """Admin only. Manually triggers the cleanup job immediately."""
-    return runCleanup()
+    return run_cleanup()

@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.src.auth.auth_router import router as authRouter
 from backend.src.admin.admin_router import router as adminRouter
-from backend.src.admin.cleanup import runCleanup
+from backend.src.admin.cleanup import run_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ scheduler = BackgroundScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    scheduler.add_job(runCleanup, "interval", hours=6, id="cleanup")
+    scheduler.add_job(run_cleanup, "interval", hours=6, id="cleanup")
     scheduler.start()
     logger.info("Cleanup scheduler started (interval: 6h)")
     yield

@@ -23,11 +23,11 @@ TABLE_CONFIG = [
 ]
 
 
-def _batchedDelete(conn, table: str, col: str, cutoff: str) -> int:
+def batched_delete(conn, table: str, col: str, cutoff: str) -> int:
     """Deletes rows older than cutoff in batches of BATCH_SIZE.
     Commits between batches to yield the WAL write-lock to ingestion workers.
     """
-    totalDeleted = 0
+    total_deleted = 0
     while True:
         cursor = conn.execute(
             f"""DELETE FROM {table}
@@ -42,11 +42,11 @@ def _batchedDelete(conn, table: str, col: str, cutoff: str) -> int:
         conn.commit()
         if cursor.rowcount == 0:
             break
-        totalDeleted += cursor.rowcount
-    return totalDeleted
+        total_deleted += cursor.rowcount
+    return total_deleted
 
 
-def runCleanup() -> dict:
+def run_cleanup() -> dict:
     """Main cleanup entry point. Opens the connection exactly once."""
     conn = get_db()
     deleted = {}
@@ -56,16 +56,16 @@ def runCleanup() -> dict:
         row = conn.execute(
             "SELECT retention_days FROM retention_config WHERE id = 1"
         ).fetchone()
-        retentionDays = row["retention_days"] if row else 30
+        retention_days = row["retention_days"] if row else 30
 
         cutoff = (
-            datetime.now(timezone.utc) - timedelta(days=retentionDays)
+            datetime.now(timezone.utc) - timedelta(days=retention_days)
         ).isoformat()
-        logger.info(f"Cleanup started: cutoff={cutoff} ({retentionDays}d retention)")
+        logger.info(f"Cleanup started: cutoff={cutoff} ({retention_days}d retention)")
 
         # Step 2: batched deletes
         for table, col in TABLE_CONFIG:
-            count = _batchedDelete(conn, table, col, cutoff)
+            count = batched_delete(conn, table, col, cutoff)
             deleted[table] = count
             logger.info(f"  {table}: {count} rows deleted")
 
@@ -82,6 +82,6 @@ def runCleanup() -> dict:
     logger.info(f"Cleanup complete: {deleted}")
     return {
         "cutoff": cutoff,
-        "retention_days": retentionDays,
+        "retention_days": retention_days,
         "deleted": deleted
     }

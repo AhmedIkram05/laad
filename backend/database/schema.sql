@@ -107,11 +107,11 @@ CREATE TABLE IF NOT EXISTS retention_config (
 -- Kept to the most common use cases
 -- ==============================================================================
 
--- Users: allow fast lookup by username for authentication and lookups 
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username); 
+-- Users: allow fast lookup by username for authentication and lookups
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 
--- OTP Tokens: allow fast lookup by token for redemption / validation 
-CREATE INDEX IF NOT EXISTS idx_otp_token ON otp_tokens(token); 
+-- OTP Tokens: allow fast lookup by token for redemption / validation
+CREATE INDEX IF NOT EXISTS idx_otp_token ON otp_tokens(token);
 
 -- Events: allow fast lookups by correlation id when tracing a transaction across sources
 CREATE INDEX IF NOT EXISTS idx_events_correlation   ON events(correlation_id);

@@ -117,7 +117,7 @@ def test_run_cleanup_deletes_old_rows(tmp_path, monkeypatch, retention_days):
 
     monkeypatch.setattr(cleanup_mod, "get_db", _test_get_db)
 
-    result = cleanup_mod.runCleanup()
+    result = cleanup_mod.run_cleanup()
 
     assert result["retention_days"] == retention_days
     # verify per-table deleted counts are >= 1 for our old inserts
@@ -160,7 +160,7 @@ def test_run_cleanup_defaults_to_30_when_no_config(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cleanup_mod, "get_db", _test_get_db3)
 
-    result = cleanup_mod.runCleanup()
+    result = cleanup_mod.run_cleanup()
     assert result["retention_days"] == 30
 
 
@@ -190,5 +190,5 @@ def test_batched_delete_commits_between_batches(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cleanup_mod, "get_db", _test_get_db2)
 
-    result = cleanup_mod.runCleanup()
+    result = cleanup_mod.run_cleanup()
     assert result["deleted"]["events"] == total_rows

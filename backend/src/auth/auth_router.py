@@ -24,9 +24,7 @@ from backend.database.connection import get_db
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Config
-# ---------------------------------------------------------------------------
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-in-production!")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 8
@@ -35,10 +33,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2Scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-# ---------------------------------------------------------------------------
 # DB connection dependency
 # Guarantees conn.close() is always called, even if the endpoint throws.
-# ---------------------------------------------------------------------------
 def getDbConnection() -> Generator:
     conn = get_db()
     try:
@@ -47,9 +43,7 @@ def getDbConnection() -> Generator:
         conn.close()
 
 
-# ---------------------------------------------------------------------------
 # Token utilities
-# ---------------------------------------------------------------------------
 def createAccessToken(username: str, role: str) -> str:
     """Creates a signed JWT valid for ACCESS_TOKEN_EXPIRE_HOURS."""
     expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
@@ -57,9 +51,7 @@ def createAccessToken(username: str, role: str) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-# ---------------------------------------------------------------------------
 # Route dependency injectors
-# ---------------------------------------------------------------------------
 def getCurrentUser(token: str = Depends(oauth2Scheme)) -> dict:
     """Validates JWT. Returns {'sub': username, 'role': role}.
     Inject with Depends(getCurrentUser) on any route requiring login.
@@ -90,16 +82,12 @@ def requireAdmin(currentUser: dict = Depends(getCurrentUser)) -> dict:
     return currentUser
 
 
-# ---------------------------------------------------------------------------
 # Request models
-# ---------------------------------------------------------------------------
 class OtpGenerateRequest(BaseModel):
     role: str = "user"
 
 
-# ---------------------------------------------------------------------------
 # Endpoints
-# ---------------------------------------------------------------------------
 @router.post("/login")
 def login(
     form: OAuth2PasswordRequestForm = Depends(),
