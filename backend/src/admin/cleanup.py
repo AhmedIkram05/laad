@@ -27,6 +27,9 @@ def batched_delete(conn, table: str, col: str, cutoff: str) -> int:
     """Deletes rows older than cutoff in batches of BATCH_SIZE.
     Commits between batches to yield the WAL write-lock to ingestion workers.
     """
+    if (table, col) not in TABLE_CONFIG:
+        raise ValueError(f"Invalid table/column for cleanup: {table}.{col}")
+
     total_deleted = 0
     while True:
         cursor = conn.execute(

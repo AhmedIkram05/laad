@@ -30,12 +30,12 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 8
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-oauth2Scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 # DB connection dependency
 # Guarantees conn.close() is always called, even if the endpoint throws.
-def getDbConnection() -> Generator:
+def get_db_connection() -> Generator:
     conn = get_db()
     try:
         yield conn
@@ -44,7 +44,7 @@ def getDbConnection() -> Generator:
 
 
 # Token utilities
-def createAccessToken(username: str, role: str) -> str:
+def create_access_token(username: str, role: str) -> str:
     """Creates a signed JWT valid for ACCESS_TOKEN_EXPIRE_HOURS."""
     expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     payload = {"sub": username, "role": role, "exp": expire}
@@ -52,34 +52,34 @@ def createAccessToken(username: str, role: str) -> str:
 
 
 # Route dependency injectors
-def getCurrentUser(token: str = Depends(oauth2Scheme)) -> dict:
+def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     """Validates JWT. Returns {'sub': username, 'role': role}.
-    Inject with Depends(getCurrentUser) on any route requiring login.
+    Inject with Depends(get_current_user) on any route requiring login.
     """
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expired, please log in again"
+            detail="Session expired, please log in again",
         )
     except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            detail="Invalid token",
         )
 
 
-def requireAdmin(currentUser: dict = Depends(getCurrentUser)) -> dict:
+def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """Raises 403 if the current user is not an admin.
-    Inject with Depends(requireAdmin) on any admin-only route.
+    Inject with Depends(require_admin) on any admin-only route.
     """
-    if currentUser.get("role") != "admin":
+    if current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            detail="Admin access required",
         )
-    return currentUser
+    return current_user
 
 
 # Request models
@@ -91,38 +91,38 @@ class OtpGenerateRequest(BaseModel):
 @router.post("/login")
 def login(
     form: OAuth2PasswordRequestForm = Depends(),
-    conn=Depends(getDbConnection)
+    conn=Depends(get_db_connection),
 ):
     """Standard username/password login. Returns a JWT."""
     row = conn.execute(
         "SELECT password_hash, role FROM users WHERE username = ?",
-        (form.username,)
+        (form.username,),
     ).fetchone()
 
     if not row or not bcrypt.checkpw(form.password.encode(), row["password_hash"].encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
+            detail="Invalid username or password",
         )
 
-    token = createAccessToken(username=form.username, role=row["role"])
+    token = create_access_token(username=form.username, role=row["role"])
     logger.info(f"Login: '{form.username}' (role={row['role']})")
     return {"access_token": token, "token_type": "bearer", "role": row["role"]}
 
 
 @router.get("/me")
-def getMe(currentUser: dict = Depends(getCurrentUser)):
+def get_me(current_user: dict = Depends(get_current_user)):
     """Returns the current user's username and role.
     Sarah calls this on page load to determine which UI elements to show.
     """
-    return {"username": currentUser["sub"], "role": currentUser["role"]}
+    return {"username": current_user["sub"], "role": current_user["role"]}
 
 
 @router.post("/otp/generate")
-def generateOtpToken(
+def generate_otp_token(
     request: OtpGenerateRequest,
-    currentUser: dict = Depends(requireAdmin),
-    conn=Depends(getDbConnection)
+    current_user: dict = Depends(require_admin),
+    conn=Depends(get_db_connection),
 ):
     """Admin only. Generates a one-time access token valid for 24 hours.
     Returns a shareable link the admin pastes directly to the guest.
@@ -131,13 +131,13 @@ def generateOtpToken(
         raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'")
 
     token = uuid.uuid4().hex
-    expiresAt = datetime.now(timezone.utc) + timedelta(hours=24)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
-    adminRow = conn.execute(
+    admin_row = conn.execute(
         "SELECT id FROM users WHERE username = ?",
-        (currentUser["sub"],)
+        (current_user["sub"],),
     ).fetchone()
-    adminId = adminRow["id"] if adminRow else None
+    admin_id = admin_row["id"] if admin_row else None
 
     conn.execute(
         """INSERT INTO otp_tokens (token, role, created_by, created_at, expires_at)
@@ -145,32 +145,32 @@ def generateOtpToken(
         (
             token,
             request.role,
-            adminId,
+            admin_id,
             datetime.now(timezone.utc).isoformat(),
-            expiresAt.isoformat()
-        )
+            expires_at.isoformat(),
+        ),
     )
     conn.commit()
 
     link = f"http://localhost:5173/login?token={token}"
-    logger.info(f"OTP generated by '{currentUser['sub']}' for role={request.role}")
+    logger.info(f"OTP generated by '{current_user['sub']}' for role={request.role}")
     return {
         "token": token,
         "link": link,
         "role": request.role,
-        "expires_at": expiresAt.isoformat()
+        "expires_at": expires_at.isoformat(),
     }
 
 
 @router.post("/otp/redeem")
-def redeemOtpToken(token: str, conn=Depends(getDbConnection)):
+def redeem_otp_token(token: str, conn=Depends(get_db_connection)):
     """Exchanges a one-time token for a JWT. Invalidates the token immediately.
     Called by the frontend when it detects ?token= in the URL on the login page.
     """
     now = datetime.now(timezone.utc)
     row = conn.execute(
         "SELECT id, role, expires_at, used_at FROM otp_tokens WHERE token = ?",
-        (token,)
+        (token,),
     ).fetchone()
 
     if not row:
@@ -183,11 +183,11 @@ def redeemOtpToken(token: str, conn=Depends(getDbConnection)):
     # Invalidate immediately — one use only
     conn.execute(
         "UPDATE otp_tokens SET used_at = ? WHERE id = ?",
-        (now.isoformat(), row["id"])
+        (now.isoformat(), row["id"]),
     )
     conn.commit()
 
-    guestUsername = f"guest_{token[:8]}"
-    jwtToken = createAccessToken(username=guestUsername, role=row["role"])
+    guest_username = f"guest_{token[:8]}"
+    jwt_token = create_access_token(username=guest_username, role=row["role"])
     logger.info(f"OTP redeemed, guest session created (role={row['role']})")
-    return {"access_token": jwtToken, "token_type": "bearer", "role": row["role"]}
+    return {"access_token": jwt_token, "token_type": "bearer", "role": row["role"]}

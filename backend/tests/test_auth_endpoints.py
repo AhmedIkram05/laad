@@ -35,7 +35,7 @@ def client(tmp_path):
         finally:
             pass
 
-    app.dependency_overrides[auth_router.getDbConnection] = override_get_db
+    app.dependency_overrides[auth_router.get_db_connection] = override_get_db
 
     with TestClient(app) as c:
         yield c
@@ -109,7 +109,7 @@ def client_and_conn(tmp_path):
         finally:
             pass
 
-    app.dependency_overrides[auth_router.getDbConnection] = override_get_db
+    app.dependency_overrides[auth_router.get_db_connection] = override_get_db
 
     with TestClient(app) as c:
         yield c, conn
