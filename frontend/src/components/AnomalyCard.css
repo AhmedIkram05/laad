@@ -44,6 +44,11 @@
     height: 45px;
     width: 90px;
     background-color: var(--bg-primary);
-    transition: background-color 0.3s;
+    transition: background-color 0.2s;
     cursor: pointer;
+}
+
+.view:hover {
+  background-color: var(--bg-tertiary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
