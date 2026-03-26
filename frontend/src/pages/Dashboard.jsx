@@ -2,6 +2,7 @@
 import { useState } from "react";
 
 /* Import Components */
+import SearchBar from "../components/SearchBar";
 import AnomalyCard from "../components/AnomalyCard";
 
 /* Import Styles */
@@ -27,15 +28,7 @@ function Dashboard() {
   return (
     <>
       {/* Search Bar - work in progress */}
-      <div className="searchContainer">
-        <input
-          type="text"
-          placeholder="Search anomalies..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="searchInput"
-        />
-      </div>
+      <SearchBar search={search} setSearch={setSearch} />
 
       {/* Main Page Content */}
       <div className="mainContainer">
