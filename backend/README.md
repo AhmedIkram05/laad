@@ -13,7 +13,8 @@ pip install -r backend/requirements.txt
 Initialises the database, generates 24h of synthetic data, and ingests all 7 log sources:
 
 ```bash
-python -m backend.main
+# Run from backend directory
+python main.py
 ```
 
 ## Running the API Server
@@ -21,6 +22,7 @@ python -m backend.main
 Run the pipeline first to populate the database, then:
 
 ```bash
+#Run from root directory
 uvicorn backend.src.api.server:app --reload --port 8000
 ```
 
