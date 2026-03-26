@@ -1,0 +1,30 @@
+h1, h2, h3, p {
+  margin: 0;
+}
+
+.searchContainer {
+    width: 100%;
+    padding: 10px;
+    padding-left: 30px;
+    box-sizing: border-box;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+}
+
+.mainContainer {
+    padding: 30px;
+}
+
+.titleContainer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-right: 10px;
+}
+
+.anomalyContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 20px;
+}

@@ -1,7 +1,13 @@
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
 :root {
   /* Background Colours */
   --bg-primary: #ffffff;
   --bg-secondary: #f3f3f3;
+  --bg-tertiary: #E2E2E2;
 
   /* Text Colours */
   --text-primary: #000000;
