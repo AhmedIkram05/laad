@@ -1,4 +1,4 @@
-.page {
+.loginPage {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -18,7 +18,7 @@
     flex-direction: column;
 }
 
-h1 {
+.loginTitle {
     text-align: center;
     margin: 30px;
 }
@@ -34,7 +34,7 @@ h1 {
   box-sizing: border-box;
 }
 
-.buttonContainer {
+.loginButtonContainer {
   display: flex;
     justify-content: center;
     width: fit-content;

@@ -1,14 +1,21 @@
+/* Import Libraries */
+import { useNavigate } from "react-router-dom";
+
 /* Import Styles */
 import './Login.css'
 
 
 function Login() {
+    const navigate = useNavigate();
+    
   return (
 
-    <div className="page">
+    <div className="loginPage">
 
       <div className="loginBox">
-        <h1>Log In</h1>
+        <div className="loginTitle">
+          <h1>Log In</h1>
+        </div>
         
         {/* Username */}
         <label htmlFor="username">Username:</label>
@@ -29,7 +36,7 @@ function Login() {
         />
 
         {/* Login Button */}
-        <div className="buttonContainer">
+        <div className="loginButtonContainer">
             <button className="loginButton" onClick={() => navigate("/dashboard")}>Login</button>
         </div>
 
