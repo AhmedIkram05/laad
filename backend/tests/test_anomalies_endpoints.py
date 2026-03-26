@@ -93,3 +93,64 @@ def test_list_and_filters_and_get_and_feedback_and_resolve(tmp_path):
     finally:
         conn.close()
         app.dependency_overrides.clear()
+
+
+def test_star_toggle(tmp_path):
+    tmp_db = tmp_path / "test_anomalies_star.db"
+    schema_path = os.path.join(os.path.dirname(init_db_module.__file__), "schema.sql")
+
+    init_db_module.init_db(db_path=str(tmp_db), schema_path=str(schema_path))
+
+    conn = _make_conn(tmp_db)
+
+    def override_get_db():
+        try:
+            yield conn
+        finally:
+            pass
+
+    app.dependency_overrides[auth_router.get_db_connection] = override_get_db
+
+    try:
+        with TestClient(app) as client:
+            # seed an ATM referenced by the anomaly
+            conn.execute("INSERT INTO atms (atm_id, os_version, location_code) VALUES (?, ?, ?)",
+                         ("ATM-STAR", "v1", "LOC-STAR"))
+
+            now = datetime.now(timezone.utc).isoformat()
+
+            # Insert single anomaly (is_starred defaults to 0)
+            conn.execute(
+                "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (now, "A1", "ATM-STAR", "HIGH", "StarTest", "explain", "act", '["ATM_APP"]', 1)
+            )
+            conn.commit()
+
+            # Login to obtain token
+            resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+            assert resp.status_code == 200, resp.text
+            token = resp.json()["access_token"]
+            headers = {"Authorization": f"Bearer {token}"}
+
+            row = conn.execute("SELECT id FROM anomalies LIMIT 1").fetchone()
+            aid = row[0]
+
+            # Verify initial starred state (should be 0 / falsy)
+            g = client.get(f"/anomalies/{aid}", headers=headers)
+            assert g.status_code == 200
+            body = g.json()
+            assert "is_starred" in body
+            assert body["is_starred"] in (0, None, False)
+
+            # Toggle star -> expect starred == 1
+            t1 = client.patch(f"/anomalies/{aid}/star", headers=headers)
+            assert t1.status_code == 200
+            assert t1.json().get("is_starred") == 1
+
+            # Toggle again -> expect starred == 0
+            t2 = client.patch(f"/anomalies/{aid}/star", headers=headers)
+            assert t2.status_code == 200
+            assert t2.json().get("is_starred") == 0
+    finally:
+        conn.close()
+        app.dependency_overrides.clear()

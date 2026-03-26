@@ -24,7 +24,7 @@ router = APIRouter(prefix="/anomalies", tags=["anomalies"])
 class FeedbackRequest(BaseModel):
     rating: str     # 'LIKE' or 'DISLIKE'
 
-
+# List anomalies
 @router.get("")
 def listAnomalies(
     atm_id: Optional[str] = Query(None),
@@ -80,6 +80,7 @@ def listAnomalies(
     }
 
 
+# Get single anomaly
 @router.get("/{anomalyId}")
 def getAnomaly(
     anomalyId: int,
@@ -95,6 +96,7 @@ def getAnomaly(
     return dict(row)
 
 
+# Resolve anomaly
 @router.patch("/{anomalyId}/resolve")
 def resolveAnomaly(
     anomalyId: int,
@@ -118,6 +120,7 @@ def resolveAnomaly(
     return {"id": anomalyId, "is_active": 0, "message": "Anomaly resolved"}
 
 
+# Submit feedback
 @router.post("/{anomalyId}/feedback")
 def submitFeedback(
     anomalyId: int,
@@ -145,3 +148,30 @@ def submitFeedback(
     )
     conn.commit()
     return {"id": anomalyId, "feedback_rating": request.rating}
+
+
+# Toggle starred status
+@router.patch("/{anomalyId}/star")
+def toggleStar(
+    anomalyId: int,
+    currentUser: dict = Depends(get_current_user),
+    conn=Depends(get_db_connection)
+):
+    """Toggles the starred state of an anomaly.
+    Any logged-in user can star anomalies — no admin required.
+    Returns the new starred state.
+    """
+    row = conn.execute(
+        "SELECT id, is_starred FROM anomalies WHERE id = ?", (anomalyId,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Anomaly not found")
+
+    newStarred = 0 if row["is_starred"] else 1
+    conn.execute(
+        "UPDATE anomalies SET is_starred = ? WHERE id = ?",
+        (newStarred, anomalyId)
+    )
+    conn.commit()
+    logger.info(f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")
+    return {"id": anomalyId, "is_starred": newStarred}
