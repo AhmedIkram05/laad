@@ -36,7 +36,7 @@ function Dashboard() {
         {/* Title and Count */}
         <div className="titleContainer">
           <h1>Anomalies Detected</h1>
-          <h2>{searchedAnomalies.length}</h2>
+          <h2>({searchedAnomalies.length})</h2>
         </div>
 
         {/* Anomaly Cards */}
