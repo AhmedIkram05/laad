@@ -13,9 +13,7 @@ function Login() {
     <div className="loginPage">
 
       <div className="loginBox">
-        <div className="loginTitle">
-          <h1>Log In</h1>
-        </div>
+        <h1 className="loginTitle">Log In</h1>
         
         {/* Username */}
         <label htmlFor="username">Username:</label>

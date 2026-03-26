@@ -18,6 +18,8 @@ function Dashboard() {
     {title: "Cash Jam Detected", ID: "ATM-GB-0007", count: 2, updatedTime: "5 mins ago"},
     {title: "Memory Spike", ID: "ATM-GB-0005", count: 6, updatedTime: "11 mins ago"},
     {title: "Cassette Empty", ID: "ATM-GB-0002", count: 5, updatedTime: "24 mins ago"},
+    {title: "Cash Jam Detected", ID: "ATM-GB-0013", count: 1, updatedTime: "37 mins ago"},
+    {title: "Cash Jam Detected", ID: "ATM-GB-0013", count: 1, updatedTime: "37 mins ago"},
     {title: "Cash Jam Detected", ID: "ATM-GB-0013", count: 1, updatedTime: "37 mins ago"}
   ];
 

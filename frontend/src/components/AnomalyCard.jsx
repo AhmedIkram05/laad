@@ -22,7 +22,7 @@ function AnomalyCard({ title, ID, count, updatedTime }) {
 
         <div className="title">
           <div className="alertIcon"><GoAlert /></div>
-            <h3>{title}</h3>
+          <h3 className="anomalyCardTitle">{title}</h3>
         </div>
 
         <div className="details">
