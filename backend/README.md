@@ -30,7 +30,7 @@ API docs available at `http://localhost:8000/docs`.
 
 ## Default Admin Account
 
-Seeded automatically on first `python -m backend.main`:
+Seeded automatically on first `python -m backend.main` for dev purposes:
 
 - **Username:** `admin`
 - **Password:** `admin`
@@ -43,4 +43,4 @@ Change this after first login.
 pytest
 ```
 
-Current status: **31/31 passing.**
+Current status: **32/32 passing.**
