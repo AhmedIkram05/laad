@@ -26,11 +26,11 @@ function Dashboard() {
 
   return (
     <>
-      {/* Search Bar */}
+      {/* Search Bar - work in progress */}
       <div className="searchContainer">
         <input
           type="text"
-          placeholder="Search by issue..."
+          placeholder="Search anomalies..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="searchInput"
