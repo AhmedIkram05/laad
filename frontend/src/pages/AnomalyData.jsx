@@ -53,7 +53,7 @@ export default function AnomalyData() {
   return (
     <div style={styles.page}>
       <div style={styles.header}>
-        <h1 style={styles.title}>Anomaly Details</h1>
+        <h1 style={styles.title}>Cassette Empty</h1>
 
         <div style={styles.buttonGroup}>
           <ActionButton label="Mark as Important" />
