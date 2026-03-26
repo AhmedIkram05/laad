@@ -1,0 +1,13 @@
+* {
+  box-sizing: border-box;
+}
+
+.container {
+    display: flex;
+}
+
+.page {
+    flex: 1;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
