@@ -1,3 +1,6 @@
+/* Import Libraries */
+import { useNavigate } from "react-router-dom";
+
 /* Import Components */
 import StarIcon from "../components/StarIcon";
 
@@ -9,6 +12,8 @@ import './AnomalyCard.css'
 
 
 function AnomalyCard({ title, atmID, count, updatedTime }) {
+  const navigate = useNavigate();
+
   return (
 
     <div className="card">
@@ -31,7 +36,7 @@ function AnomalyCard({ title, atmID, count, updatedTime }) {
       </div>
 
       <div className="buttons">
-        <button className="view">View</button>
+        <button className="view" onClick={() => navigate("/data")}>View</button>
         <StarIcon />
       </div>
           
