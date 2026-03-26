@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS anomalies (
     sources_involved TEXT,              -- JSON array of sources e.g. '["ATM_APP","KAFKA"]'
     feedback_rating TEXT,               -- 'LIKE' or 'DISLIKE' or NULL
     is_active INTEGER DEFAULT 1         -- 1 = Current/Unresolved, 0 = Resolved
+    is_starred INTEGER DEFAULT 0    -- 1 = starred, 0 = not starred
 );
 
 -- 5. INGESTION ERRORS
