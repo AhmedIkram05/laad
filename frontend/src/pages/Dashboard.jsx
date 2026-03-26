@@ -11,6 +11,7 @@ import './Dashboard.css'
 
 function Dashboard() {
   const [search, setSearch] = useState("");
+  const [filterBy, setFilterBy] = useState("title");
 
   const anomalyList = [
     {title: "Cassette Empty", ID: "ATM-GB-0003", count: 4, updatedTime: "2 mins ago"},
@@ -20,15 +21,16 @@ function Dashboard() {
     {title: "Cash Jam Detected", ID: "ATM-GB-0013", count: 1, updatedTime: "37 mins ago"}
   ];
 
-  const searchedAnomalies = anomalyList.filter((a) =>
-    a.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const searchedAnomalies = anomalyList.filter((a) => {
+    const value = a[filterBy];
+    return value.toLowerCase().includes(search.toLowerCase());
+  });
 
 
   return (
     <>
-      {/* Search Bar - work in progress */}
-      <SearchBar search={search} setSearch={setSearch} />
+      {/* Search and Filter Bar */}
+      <SearchBar search={search} setSearch={setSearch} filterBy={filterBy} setFilterBy={setFilterBy} />
 
       {/* Main Page Content */}
       <div className="mainContainer">
