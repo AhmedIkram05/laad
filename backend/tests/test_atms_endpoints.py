@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from backend.api.server import app
-import backend.database.init_db as init_db_module
+from backend.src.api.server import app
+import backend.src.database.init_db as init_db_module
 from backend.src.auth import auth_router
 
 

@@ -15,9 +15,9 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from typing import List
 
-from backend.ingestion.parsers.prometheus import PROMETHEUS_HEADERS
-from backend.ingestion.parsers.windows_os import WINDOWS_HEADERS
-from backend.ingestion.parsers.gcp_cloud_metrics import GCP_HEADERS
+from backend.src.ingestion.parsers.prometheus import PROMETHEUS_HEADERS
+from backend.src.ingestion.parsers.windows_os import WINDOWS_HEADERS
+from backend.src.ingestion.parsers.gcp_cloud_metrics import GCP_HEADERS
 
 OUTPUT_DIR = "custom_synthetic_data_sources"
 SEED = 12345

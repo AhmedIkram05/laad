@@ -4,13 +4,25 @@ import json
 import logging
 from datetime import datetime, timezone
 
-def init_db(db_path='database.db', schema_path='schema.sql'):
-    """Initialise the database with the defined schema."""
-    
-    # Resolve absolute paths
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    full_db_path = os.path.join(base_dir, db_path)
-    full_schema_path = os.path.join(base_dir, schema_path)
+def init_db(db_path=None, schema_path='schema.sql'):
+    """Initialise the database with the defined schema.
+
+    If `db_path` is None, use the central `DB_PATH` from
+    `backend.database.connection` so the generator and ingestion
+    components stay in sync.
+    """
+    # Resolve database path: prefer explicit, then env/central default
+    if db_path is None:
+        try:
+            from backend.src.database.connection import DB_PATH as DEFAULT_DB_PATH
+            full_db_path = DEFAULT_DB_PATH
+        except Exception:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            full_db_path = os.path.join(base_dir, 'database.db')
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        full_db_path = os.path.join(base_dir, db_path)
+    full_schema_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), schema_path)
     
     logging.info(f"Initialising database at {full_db_path}")
     
@@ -25,7 +37,7 @@ def init_db(db_path='database.db', schema_path='schema.sql'):
     # Connect to the database and execute schema
     try:
         # Use the centralised connection bootstrap so PRAGMAs are applied
-        from backend.database.connection import get_db
+        from backend.src.database.connection import get_db
 
         conn = get_db(full_db_path)
         cursor = conn.cursor()
@@ -62,7 +74,7 @@ def seed_atms(cursor):
     ATM IDs should exist here.
     """
     try:
-        from backend.ingestion.custom_data_generator import ATMS, OS_VERSION, ATM_LOCATIONS
+        from backend.src.ingestion.custom_data_generator import ATMS, OS_VERSION, ATM_LOCATIONS
     except ImportError:
         # Fallback if generator is temporarily unavailable — must match generator fleet
         ATMS = ['ATM-GB-0001', 'ATM-GB-0002', 'ATM-GB-0003', 'ATM-GB-0004']

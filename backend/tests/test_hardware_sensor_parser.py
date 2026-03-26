@@ -5,7 +5,7 @@ import sqlite3
 import json
 import os
 
-from backend.ingestion.parsers.hardware_sensor import HardwareSensorParser
+from backend.src.ingestion.parsers.hardware_sensor import HardwareSensorParser
 from backend.tests.helpers import sample_path
 
 
@@ -14,7 +14,7 @@ class TestHardwareSensorParser(unittest.TestCase):
         fd, path = tempfile.mkstemp(prefix='test_db_', suffix='.sqlite')
         os.close(fd)
         self.db_path = path
-        with open('backend/database/schema.sql', 'r') as f:
+        with open('backend/src/database/schema.sql', 'r') as f:
             schema = f.read()
         conn = sqlite3.connect(self.db_path)
         conn.executescript(schema)

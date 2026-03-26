@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from backend.database.connection import get_db
+from backend.src.database.connection import get_db
 
 logger = logging.getLogger(__name__)
 

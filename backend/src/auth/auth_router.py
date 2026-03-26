@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
-from backend.database.connection import get_db
+from backend.src.database.connection import get_db
 
 logger = logging.getLogger(__name__)
 
