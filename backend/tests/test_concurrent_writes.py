@@ -7,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime, timezone
 
-from backend.ingestion.parsers.base_parser import EventDataParser, MetricDataParser
-import backend.database.init_db as init_db
+from backend.src.ingestion.parsers.base_parser import EventDataParser, MetricDataParser
+import backend.src.database.init_db as init_db
 
 
 class EventProducer(EventDataParser):
@@ -70,7 +70,7 @@ class ConcurrencySmokeTest(unittest.TestCase):
             self.skipTest('Schema file not found')
 
         try:
-            from backend.database.connection import get_db
+            from backend.src.database.connection import get_db
             conn = get_db(str(self.db_path))
             cur = conn.cursor()
             cur.executescript(schema_sql)

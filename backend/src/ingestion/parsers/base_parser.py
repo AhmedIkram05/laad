@@ -25,7 +25,18 @@ class BaseParser(ABC):
     """
 
     def __init__(self, db_path: Optional[str] = None, batch_size: int = 500):
-        self.db_path = db_path or os.getenv('DB_PATH', 'database/database.db')
+        if db_path:
+            self.db_path = db_path
+        else:
+            env_db = os.getenv('DB_PATH')
+            if env_db:
+                self.db_path = env_db
+            else:
+                try:
+                    from backend.src.database.connection import DB_PATH as DEFAULT_DB_PATH
+                    self.db_path = DEFAULT_DB_PATH
+                except Exception:
+                    self.db_path = 'database/database.db'
         self.batch_size = int(batch_size)
         self._buffer: list[Dict[str, Any]] = []
 
@@ -79,7 +90,7 @@ class BaseParser(ABC):
             if len(self.ref_buffer) >= self.batch_size:
                 conn = None
                 try:
-                    from backend.database.connection import get_db
+                    from backend.src.database.connection import get_db
                     conn = get_db(self.db_path)
                     self._flush_ref_buffer(conn)
                 finally:
@@ -100,7 +111,7 @@ class BaseParser(ABC):
                 location_code = COALESCE(excluded.location_code, atms.location_code)
         '''
         try:
-            from backend.ingestion.write_helper import write_batch
+            from backend.src.ingestion.write_helper import write_batch
             write_batch(conn, sql, self.ref_buffer)
         except Exception:
             logger.exception('Failed to flush dynamic ATM reference updates')
@@ -151,7 +162,7 @@ class BaseParser(ABC):
         This never raises; failures are logged only.
         """
         try:
-            from backend.database.connection import get_db
+            from backend.src.database.connection import get_db
 
             conn = get_db(self.db_path)
             cur = conn.cursor()
@@ -181,8 +192,8 @@ class EventDataParser(BaseParser):
         if not self._buffer:
             return
         try:
-            from backend.database.connection import get_db
-            from backend.ingestion.write_helper import write_batch
+            from backend.src.database.connection import get_db
+            from backend.src.ingestion.write_helper import write_batch
 
             conn = get_db(self.db_path)
             sql = (
@@ -230,8 +241,8 @@ class MetricDataParser(BaseParser):
         if not self._buffer:
             return
         try:
-            from backend.database.connection import get_db
-            from backend.ingestion.write_helper import write_batch
+            from backend.src.database.connection import get_db
+            from backend.src.ingestion.write_helper import write_batch
 
             conn = get_db(self.db_path)
             sql = (

@@ -21,7 +21,7 @@ python -m backend.main
 Run the pipeline first to populate the database, then:
 
 ```bash
-uvicorn backend.api.server:app --reload --port 8000
+uvicorn backend.src.api.server:app --reload --port 8000
 ```
 
 API docs available at `http://localhost:8000/docs`.
@@ -41,4 +41,4 @@ Change this after first login.
 pytest
 ```
 
-Current status: **26/26 passing.**
+Current status: **31/31 passing.**

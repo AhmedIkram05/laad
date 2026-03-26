@@ -4,7 +4,7 @@ import os
 import sqlite3
 import os
 
-from backend.ingestion.parsers.gcp_cloud_metrics import GcpCloudMetricsParser
+from backend.src.ingestion.parsers.gcp_cloud_metrics import GcpCloudMetricsParser
 from backend.tests.helpers import sample_path
 
 
@@ -13,7 +13,7 @@ class TestGcpCloudMetricsParser(unittest.TestCase):
         fd, path = tempfile.mkstemp(prefix='test_db_', suffix='.sqlite')
         os.close(fd)
         self.db_path = path
-        with open('backend/database/schema.sql', 'r') as f:
+        with open('backend/src/database/schema.sql', 'r') as f:
             schema = f.read()
         conn = sqlite3.connect(self.db_path)
         conn.executescript(schema)

@@ -3,7 +3,7 @@ import tempfile
 import os
 import sqlite3
 
-from backend.ingestion.parsers.base_parser import BaseParser
+from backend.src.ingestion.parsers.base_parser import BaseParser
 
 
 class DummyParser(BaseParser):
@@ -23,7 +23,7 @@ class TestBaseParser(unittest.TestCase):
         self.test_db_path = path
 
         # Execute project schema into the temp DB
-        with open('backend/database/schema.sql', 'r') as f:
+        with open('backend/src/database/schema.sql', 'r') as f:
             schema = f.read()
         conn = sqlite3.connect(self.test_db_path)
         try:

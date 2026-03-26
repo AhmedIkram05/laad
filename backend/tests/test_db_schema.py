@@ -8,9 +8,9 @@ class TestDBSchema(unittest.TestCase):
         self.conn = sqlite3.connect(':memory:')
         self.cur = self.conn.cursor()
 
-        schema_file = Path(__file__).resolve().parents[1] / 'database' / 'schema.sql'
+        schema_file = Path(__file__).resolve().parents[1] / 'src' / 'database' / 'schema.sql'
         if not schema_file.exists():
-            self.skipTest('database/schema.sql not found')
+            self.skipTest('src.database/schema.sql not found')
 
         with open(schema_file, 'r', encoding='utf-8') as fh:
             self.cur.executescript(fh.read())

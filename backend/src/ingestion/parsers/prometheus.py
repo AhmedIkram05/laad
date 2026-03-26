@@ -10,7 +10,7 @@ from io import StringIO
 import re
 from typing import Optional, Dict, Any
 from .base_parser import MetricDataParser
-from backend.ingestion.utils import parse_to_utc_iso
+from backend.src.ingestion.utils import parse_to_utc_iso
 
 
 PROMETHEUS_HEADERS = [

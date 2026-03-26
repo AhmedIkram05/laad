@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Optional, Dict, Any
 from .base_parser import EventDataParser
-from backend.ingestion.utils import parse_to_utc_iso
+from ..utils import parse_to_utc_iso
 
 
 class HardwareSensorParser(EventDataParser):

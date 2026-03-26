@@ -9,7 +9,7 @@ import csv
 from io import StringIO
 from typing import Optional, Dict, Any
 from .base_parser import MetricDataParser
-from backend.ingestion.utils import parse_to_utc_iso
+from ..utils import parse_to_utc_iso
 
 
 WINDOWS_HEADERS = [

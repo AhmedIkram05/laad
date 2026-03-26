@@ -4,7 +4,7 @@ import csv
 import tempfile
 import unittest
 from datetime import datetime
-from backend.ingestion.custom_data_generator import generate_dataset, SCENARIO_CORR
+from backend.src.ingestion.custom_data_generator import generate_dataset, SCENARIO_CORR
 
 class TestGeneratorScenarios(unittest.TestCase):
     def setUp(self):

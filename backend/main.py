@@ -28,7 +28,7 @@ from typing import Dict
 
 
 def init_db(db_path: str):
-    import backend.database.init_db as init_db_mod
+    import backend.src.database.init_db as init_db_mod
 
     print("Initialising database (schema + seeds)...")
     init_db_mod.init_db()
@@ -36,7 +36,7 @@ def init_db(db_path: str):
 
 def run_generator(output: str) -> None:
     """Run the project generator. Always regenerates to ensure freshness."""
-    import backend.ingestion.custom_data_generator as gen
+    import backend.src.ingestion.custom_data_generator as gen
     gen.generate_dataset(output=output)
 
 
@@ -111,13 +111,13 @@ def run_pipeline(
 
     # Phase 3: ingestion
     # Map generated files -> parser classes
-    from backend.ingestion.parsers.atm_app import AtmAppParser
-    from backend.ingestion.parsers.hardware_sensor import HardwareSensorParser
-    from backend.ingestion.parsers.terminal_handler import TerminalHandlerParser
-    from backend.ingestion.parsers.kafka_metrics import KafkaMetricsParser
-    from backend.ingestion.parsers.prometheus import PrometheusParser
-    from backend.ingestion.parsers.windows_os import WindowsOSParser
-    from backend.ingestion.parsers.gcp_cloud_metrics import GcpCloudMetricsParser
+    from backend.src.ingestion.parsers.atm_app import AtmAppParser
+    from backend.src.ingestion.parsers.hardware_sensor import HardwareSensorParser
+    from backend.src.ingestion.parsers.terminal_handler import TerminalHandlerParser
+    from backend.src.ingestion.parsers.kafka_metrics import KafkaMetricsParser
+    from backend.src.ingestion.parsers.prometheus import PrometheusParser
+    from backend.src.ingestion.parsers.windows_os import WindowsOSParser
+    from backend.src.ingestion.parsers.gcp_cloud_metrics import GcpCloudMetricsParser
 
     registry = [
         ("atm_application_log.json", AtmAppParser, "ATM_APP", "json"),
@@ -159,9 +159,8 @@ def run_pipeline(
     final_counts(db_path)
 
 
-_THIS_DIR = Path(__file__).resolve().parent
-DB_PATH = str(_THIS_DIR.joinpath("database", "database.db"))
-OUTPUT_DIR = "custom_synthetic_data_sources"
+OUTPUT_DIR = Path("custom_synthetic_data_sources")
+DB_PATH = str(OUTPUT_DIR.joinpath("database", "database.db"))
 
 
 def main():

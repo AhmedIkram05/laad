@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from backend.ingestion.custom_data_generator import generate_dataset
+from backend.src.ingestion.custom_data_generator import generate_dataset
 
 
 @pytest.fixture(scope='session', autouse=True)

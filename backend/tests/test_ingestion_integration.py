@@ -4,13 +4,13 @@ import sqlite3
 import tempfile
 import unittest
 
-from backend.ingestion.parsers.atm_app import AtmAppParser
-from backend.ingestion.parsers.gcp_cloud_metrics import GcpCloudMetricsParser
-from backend.ingestion.parsers.hardware_sensor import HardwareSensorParser
-from backend.ingestion.parsers.kafka_metrics import KafkaMetricsParser
-from backend.ingestion.parsers.prometheus import PrometheusParser
-from backend.ingestion.parsers.terminal_handler import TerminalHandlerParser
-from backend.ingestion.parsers.windows_os import WindowsOSParser
+from backend.src.ingestion.parsers.atm_app import AtmAppParser
+from backend.src.ingestion.parsers.gcp_cloud_metrics import GcpCloudMetricsParser
+from backend.src.ingestion.parsers.hardware_sensor import HardwareSensorParser
+from backend.src.ingestion.parsers.kafka_metrics import KafkaMetricsParser
+from backend.src.ingestion.parsers.prometheus import PrometheusParser
+from backend.src.ingestion.parsers.terminal_handler import TerminalHandlerParser
+from backend.src.ingestion.parsers.windows_os import WindowsOSParser
 
 
 class TestIngestionIntegration(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestIngestionIntegration(unittest.TestCase):
         os.close(fd)
         self.db_path = path
 
-        with open('backend/database/schema.sql', 'r') as f:
+        with open('backend/src/database/schema.sql', 'r') as f:
             schema = f.read()
 
         conn = sqlite3.connect(self.db_path)

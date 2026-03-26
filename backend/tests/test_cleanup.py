@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from backend.src.admin import cleanup as cleanup_mod
-from backend.database import init_db as init_db_module
+from backend.src.database import init_db as init_db_module
 
 
 def _apply_pragmas(conn: sqlite3.Connection):
