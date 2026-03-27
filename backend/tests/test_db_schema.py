@@ -45,6 +45,7 @@ class TestDBSchema(unittest.TestCase):
         self.cur.execute("PRAGMA table_info(anomalies);")
         cols = [r[1] for r in self.cur.fetchall()]
         self.assertIn('feedback_rating', cols)
+        self.assertIn('transaction_id', cols)
         self.assertIn('recommended_action', cols)
         self.assertNotIn('evidence_event_ids', cols)
         self.assertNotIn('evidence_metric_ids', cols)

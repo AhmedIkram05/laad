@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS anomalies (
     detected_at DATETIME NOT NULL,      -- UTC detection time
     anomaly_type TEXT NOT NULL,         -- Standard issue type (e.g., 'A1', 'A2')
     atm_id TEXT REFERENCES atms(atm_id),
-    correlation_id TEXT,                -- Optional isolated transaction UUID
+    correlation_id TEXT,                -- Optional trace/correlation id linking across services
+    transaction_id TEXT,                -- Optional business transaction id (e.g., payment UUID)
     model_confidence_score REAL,        -- e.g., 0.95 (How confident the AI is about this prediction)
     severity TEXT NOT NULL,             -- Severity level ('HIGH', 'CRITICAL')
     title TEXT NOT NULL,                -- UI display string
