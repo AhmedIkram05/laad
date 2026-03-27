@@ -1,0 +1,63 @@
+.barContainer {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 60px;
+    padding: 10px;
+    padding-left: 30px;
+    box-sizing: border-box;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--bg-tertiary);
+    gap: 5px;
+}
+
+.searchContainer {
+    position: relative;
+    width: 40%;
+    display: flex;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 10px 14px;
+  padding-left: 35px;
+  border: 1px solid var(--bg-tertiary);
+  font-size: 14px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.filterContainer {
+    position: relative;
+    width: 39px;
+    height: 39px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--bg-tertiary);
+    cursor: pointer;
+}
+
+.filterIcon {
+    font-size: 20px;
+    pointer-events: none;
+}
+
+.filterBox {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}

@@ -1,5 +1,5 @@
 .card {
-    padding: 16px;
+    padding: 15px;
     display: flex;
     justify-content: space-between;
     align-items: center;   
@@ -11,7 +11,7 @@
     display: flex;
     flex-direction: column;
     margin-left: 10px;
-    gap: 3px;
+    gap: 2px;
 }
 
 .title {
@@ -20,13 +20,18 @@
 }
 
 .alertIcon {
-    font-size: 23px;
+    font-size: 20px;
+}
+
+.anomalyCardTitle {
+    font-size: 17px;
 }
 
 .details {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
+    font-size: 15px;
 }
 
 .updates {
@@ -38,12 +43,18 @@
     display: flex;
     gap: 20px;
     margin-right: 40px;
+    align-items: center;
 }
 
 .view {
-    height: 45px;
-    width: 90px;
+    height: 35px;
+    width: 70px;
     background-color: var(--bg-primary);
-    transition: background-color 0.3s;
+    transition: background-color 0.2s;
     cursor: pointer;
+}
+
+.view:hover {
+  background-color: var(--bg-tertiary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }

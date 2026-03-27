@@ -8,6 +8,7 @@ import Starred from "./pages/Starred";
 import Completed from "./pages/Completed";
 import AnomalyData from "./pages/AnomalyData";
 import Settings from "./pages/Settings";
+import Login from "./pages/Login";
 
 
 function App() {
@@ -15,6 +16,9 @@ function App() {
 
     <BrowserRouter>
       <Routes>
+
+        {/* Login Pathway */}
+        <Route path="/login" element={<Login />} />
 
         {/* Redirect Root to Dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

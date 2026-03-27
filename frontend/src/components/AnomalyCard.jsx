@@ -11,7 +11,7 @@ import { GoAlert } from "react-icons/go";
 import './AnomalyCard.css'
 
 
-function AnomalyCard({ title, atmID, count, updatedTime }) {
+function AnomalyCard({ title, ID, count, updatedTime }) {
   const navigate = useNavigate();
 
   return (
@@ -22,11 +22,11 @@ function AnomalyCard({ title, atmID, count, updatedTime }) {
 
         <div className="title">
           <div className="alertIcon"><GoAlert /></div>
-            <h3>{title}</h3>
+          <h3 className="anomalyCardTitle">{title}</h3>
         </div>
 
         <div className="details">
-          <p>{atmID}</p>
+          <p>{ID}</p>
           <div className="updates">
             <p>{count}</p>
             <p>{updatedTime}</p>
