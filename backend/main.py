@@ -82,9 +82,11 @@ def final_counts(db_path: str):
             return cur.fetchone()[0]
         except Exception:
             return None
+    atms = one("SELECT COUNT(*) FROM atms")
     events = one("SELECT COUNT(*) FROM events")
     metrics = one("SELECT COUNT(*) FROM metrics")
     errors = one("SELECT COUNT(*) FROM ingestion_errors")
+    anomalies = one("SELECT COUNT(*) FROM anomalies")
     # Force WAL checkpoint to merge -wal and -shm files back into database.db
     # TRUNCATE mode also attempts to delete the -wal and -shm files on success.
     try:
@@ -93,9 +95,11 @@ def final_counts(db_path: str):
         pass
     conn.close()
     print("\n=== DB Summary ===")
+    print(f"ATMs: {atms}")
     print(f"events: {events}")
     print(f"metrics: {metrics}")
     print(f"ingestion_errors: {errors}")
+    print(f"anomalies: {anomalies}")
 
 
 def run_pipeline(
@@ -154,6 +158,20 @@ def run_pipeline(
                 fut.result()
             except Exception as e:
                 print(f"Ingestion worker failed for {path}: {e}")
+
+    # Run anomaly detection after ingestion so detected anomalies are included
+    # in the final counts. Use a safe wrapper so the detector implementation
+    # can be absent during early development.
+    try:
+        from backend.src.anomaly_detection.runner import run_detection
+
+        try:
+            run_detection(db_path=db_path)
+        except TypeError:
+            # Fallback if implementation expects a positional arg
+            run_detection(db_path)
+    except Exception:
+        print("Warning: anomaly detection run failed or not available; continuing")
 
     # Final counts
     final_counts(db_path)
