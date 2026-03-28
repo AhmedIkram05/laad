@@ -85,6 +85,7 @@ def final_counts(db_path: str):
     events = one("SELECT COUNT(*) FROM events")
     metrics = one("SELECT COUNT(*) FROM metrics")
     errors = one("SELECT COUNT(*) FROM ingestion_errors")
+    anomalies = one("SELECT COUNT(*) FROM anomalies")
     # Force WAL checkpoint to merge -wal and -shm files back into database.db
     # TRUNCATE mode also attempts to delete the -wal and -shm files on success.
     try:
@@ -96,6 +97,7 @@ def final_counts(db_path: str):
     print(f"events: {events}")
     print(f"metrics: {metrics}")
     print(f"ingestion_errors: {errors}")
+    print(f"anomalies: {anomalies}")
 
 
 def run_pipeline(
@@ -154,6 +156,16 @@ def run_pipeline(
                 fut.result()
             except Exception as e:
                 print(f"Ingestion worker failed for {path}: {e}")
+
+    # Phase 4: run anomaly detector
+    try:
+        from backend.src.anomaly_detection.anomaly_detector import AnomalyDetector
+        print("Running anomaly detection...")
+        detector = AnomalyDetector(db_path=str(db_path))
+        detector.main()
+        print("Anomaly detection complete.")
+    except Exception as e:
+        print(f"Anomaly detector failed (continuing): {e}")
 
     # Final counts
     final_counts(db_path)
