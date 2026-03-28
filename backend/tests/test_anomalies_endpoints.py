@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -90,6 +90,75 @@ def test_list_and_filters_and_get_and_feedback_and_resolve(tmp_path):
             # If 200, verify is_active is 0
             if res.status_code == 200:
                 assert res.json()["is_active"] == 0
+    finally:
+        conn.close()
+        app.dependency_overrides.clear()
+
+
+def test_group_by_atm_returns_grouped_rows(tmp_path):
+    tmp_db = tmp_path / "test_anomalies_group.db"
+    schema_path = os.path.join(os.path.dirname(init_db_module.__file__), "schema.sql")
+
+    init_db_module.init_db(db_path=str(tmp_db), schema_path=str(schema_path))
+
+    conn = _make_conn(tmp_db)
+
+    def override_get_db():
+        try:
+            yield conn
+        finally:
+            pass
+
+    app.dependency_overrides[auth_router.get_db_connection] = override_get_db
+
+    try:
+        with TestClient(app) as client:
+            # seed two ATMs
+            conn.execute("INSERT INTO atms (atm_id, os_version, location_code) VALUES (?, ?, ?)",
+                         ("ATM-A", "v1", "LOC-A"))
+            conn.execute("INSERT INTO atms (atm_id, os_version, location_code) VALUES (?, ?, ?)",
+                         ("ATM-B", "v1", "LOC-B"))
+
+            t1 = datetime.now(timezone.utc).isoformat()
+            t2 = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+
+            # Insert anomalies: two for ATM-A, one for ATM-B
+            conn.execute(
+                "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (t1, "A1", "ATM-A", "HIGH", "A", "explain", "act", '["ATM_APP"]', 1)
+            )
+            conn.execute(
+                "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (t2, "A2", "ATM-A", "CRITICAL", "B", "explain", "act", '["ATM_APP"]', 1)
+            )
+            conn.execute(
+                "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (t1, "A3", "ATM-B", "LOW", "C", "explain", "act", '["ATM_APP"]', 1)
+            )
+            conn.commit()
+
+            # Login to obtain token
+            resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+            assert resp.status_code == 200, resp.text
+            token = resp.json()["access_token"]
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # Request grouped anomalies by atm
+            r = client.get("/anomalies", params={"group_by": "atm", "is_active": 1}, headers=headers)
+            assert r.status_code == 200
+            body = r.json()
+            assert body["total"] == 2
+            assert len(body["data"]) == 2
+
+            groups = {row["atm_id"]: row for row in body["data"]}
+            assert groups["ATM-A"]["count"] == 2
+            assert groups["ATM-B"]["count"] == 1
+
+            for row in body["data"]:
+                assert "group_id" in row
+                assert "atm_id" in row
+                assert "count" in row
+                assert "latest" in row
     finally:
         conn.close()
         app.dependency_overrides.clear()
