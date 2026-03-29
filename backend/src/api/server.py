@@ -1,7 +1,7 @@
 """FastAPI web server entry point.
 
 Run with:
-    uvicorn backend.api.server:app --reload --port 8000
+    uvicorn backend.src.api.server:app --reload --port 8000
 """
 from __future__ import annotations
 

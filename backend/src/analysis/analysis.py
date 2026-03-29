@@ -2,6 +2,7 @@ import sqlite3
 from typing import List, Dict
 from datetime import datetime, timedelta
 import json
+from backend.src.database.connection import DB_PATH
 
 def rank_algorithm(anomalies):
 
@@ -569,7 +570,6 @@ def query(DB_PATH, sql: str, params: tuple = ()):  # -> List[Dict[str, Any]]
 
 # run analysis
 def main():
-    DB_PATH = "backend/custom_synthetic_data_sources/database/database.db"
     sql_query = "SELECT * FROM anomalies"
     anomalies = query(DB_PATH, sql_query)
    

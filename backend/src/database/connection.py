@@ -22,7 +22,11 @@ def get_db(db_path: str | None = None):
     except Exception:
         # If we cannot create the directory, let sqlite raise a clear error
         pass
-    conn = sqlite3.connect(str(p), timeout=5.0)
+    # Allow the connection to be used from different worker threads.
+    # FastAPI's dependency helpers may enter/exit context managers on
+    # different threads (contextmanager_in_threadpool), which causes
+    # sqlite3 to raise a ProgrammingError unless this flag is set.
+    conn = sqlite3.connect(str(p), timeout=5.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     # Apply robust runtime settings for concurrency and performance
     conn.execute("PRAGMA journal_mode = WAL")
