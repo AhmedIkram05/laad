@@ -444,11 +444,14 @@ class AnomalyDetector:
         Prometheus CSV row at 09:33:00 contains `metric_value=890iembre` (non-numeric — malformed)
         Expected alert: Malformed event ingestion detected. Schema validation failure. Out-of-order sequence.
         '''
-        anomalies = []
+        anomalies: List[Dict[str, Any]] = []
         kafka_by_atm: Dict[str, List[Dict[str, Any]]] = {}
+        kafka_missing_ts: Dict[str, List[str]] = {}
         prom_malformed = False
+        prom_malformed_ts: List[str] = []
         last_ts = None
 
+        # Collect evidence from the unified view
         for r in data:
             src = (r.get("source") or "").upper()
             last_ts = r.get("timestamp") or last_ts
@@ -460,59 +463,134 @@ class AnomalyDetector:
                     "ts": r.get("timestamp"),
                     "atm_status": r.get("atm_status"),
                     "transaction_rate_tps": self._payload_get(r, "transaction_rate_tps"),
+                    "row": r,
                 })
                 trtps_val = self._payload_get(r, "transaction_rate_tps")
                 if r.get("atm_status") is None or trtps_val is None:
-                    anomalies.append({
-                        "anomaly_type": "A7",
-                        "atm_id": atm if atm != "_none_" else None,
-                        "detected_at": r.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-                        "severity": "HIGH",
-                        "title": "Malformed Kafka event (missing fields).",
-                        "explanation": json.dumps({"row": r}),
-                    })
+                    kafka_missing_ts.setdefault(atm, []).append(r.get("timestamp"))
 
             if src in ("METRIC", "PROMETHEUS"):
                 if (r.get("metric_name") or "") and r.get("metric_value") is not None:
                     if self._as_float(r.get("metric_value")) is None:
                         prom_malformed = True
+                        prom_malformed_ts.append(r.get("timestamp"))
 
-        # check kafka out-of-order by comparing offsets -> timestamps
+        # Detect kafka out-of-order per ATM
+        kafka_out_of_order_atms: set = set()
         for atm, rows in kafka_by_atm.items():
-            # build list of (offset, ts) ignoring None offsets
-            seq = [(self._as_float(x["offset"]), x["ts"]) for x in rows if x.get("offset") is not None]
+            seq = [(self._as_float(x.get("offset")), x.get("ts")) for x in rows if x.get("offset") is not None]
             seq_sorted = sorted(seq, key=lambda x: x[0])
             for i in range(1, len(seq_sorted)):
                 prev_ts = seq_sorted[i - 1][1]
                 cur_ts = seq_sorted[i][1]
                 try:
                     if prev_ts and cur_ts:
-                        # Parse datetimes and require a minimum delta to avoid
-                        # flagging trivial ordering differences (same-minute duplicates).
-                        from datetime import datetime as _dt
-                        prev_dt = _dt.fromisoformat(prev_ts)
-                        cur_dt = _dt.fromisoformat(cur_ts)
+                        prev_dt = datetime.fromisoformat(prev_ts)
+                        cur_dt = datetime.fromisoformat(cur_ts)
                         if cur_dt < prev_dt and (prev_dt - cur_dt).total_seconds() >= 60:
-                            anomalies.append({
-                                "anomaly_type": "A7",
-                                "atm_id": atm if atm != "_none_" else None,
-                                "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
-                                "severity": "HIGH",
-                                "title": "Malformed or out-of-order Kafka events detected.",
-                                "explanation": json.dumps({"issue": "out_of_order", "atm": atm}),
-                            })
+                            kafka_out_of_order_atms.add(atm)
                             break
                 except Exception:
                     continue
 
-        if prom_malformed:
+        # Pull ingestion_errors and correlate Prometheus + Kafka failures (±5 minutes)
+        err_rows: List[Dict[str, Any]] = []
+        try:
+            conn = self._get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT id, timestamp, source, error_detail, raw_input FROM ingestion_errors ORDER BY timestamp ASC")
+            fetched = cur.fetchall()
+            for e in fetched:
+                try:
+                    ets = e[1] if isinstance(e, (list, tuple)) else e["timestamp"]
+                    ets_dt = datetime.fromisoformat(ets)
+                except Exception:
+                    continue
+                src = (e[2] if isinstance(e, (list, tuple)) else e["source"]) or ""
+                err_rows.append({
+                    "id": (e[0] if isinstance(e, (list, tuple)) else e["id"]),
+                    "ts": ets_dt,
+                    "source": src.upper(),
+                    "raw_input": (e[4] if isinstance(e, (list, tuple)) else e["raw_input"]),
+                    "error_detail": (e[3] if isinstance(e, (list, tuple)) else e["error_detail"]),
+                })
+        except Exception:
+            err_rows = []
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        # Find ingestion_error pairs (PROMETHEUS + KAFKA) that are within 5 minutes
+        prom_errs = [e for e in err_rows if e["source"].startswith("PROMETHEUS") or e["source"] == "METRIC"]
+        kafka_errs = [e for e in err_rows if e["source"].startswith("KAFKA")]
+
+        paired_errs: List[Dict[str, Any]] = []
+        five_min = timedelta(minutes=5)
+        for p in prom_errs:
+            for k in kafka_errs:
+                if abs((p["ts"] - k["ts"]).total_seconds()) <= five_min.total_seconds():
+                    paired_errs.append({"prom": p, "kafka": k})
+
+        # Emit A7s for: (1) unified-view evidence (missing fields or out-of-order) + prom malformed,
+        # or (2) ingestion_errors showing both PROMETHEUS & KAFKA within ±5 minutes.
+
+        # 1) Unified-view combination
+        for atm in set(list(kafka_by_atm.keys())):
+            has_missing = bool(kafka_missing_ts.get(atm))
+            has_out_of_order = atm in kafka_out_of_order_atms
+            if (has_missing or has_out_of_order) and prom_malformed:
+                anomalies.append({
+                    "anomaly_type": "A7",
+                    "atm_id": atm if atm != "_none_" else None,
+                    "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
+                    "severity": "HIGH",
+                    "title": "Malformed or out-of-order Kafka events correlated with Prometheus parse errors.",
+                    "explanation": json.dumps({
+                        "atm": atm,
+                        "kafka_missing_count": len(kafka_missing_ts.get(atm, [])),
+                        "out_of_order": has_out_of_order,
+                        "prom_malformed_count": len(prom_malformed_ts),
+                    }),
+                })
+
+        # 2) ingestion_errors pairs -> try to attribute to ATM via kafka raw_input JSON
+        seen_global_pair = False
+        for pair in paired_errs:
+            kraw = pair["kafka"]["raw_input"]
+            attributed_atm = None
+            try:
+                parsed = json.loads(kraw) if isinstance(kraw, str) else None
+                if isinstance(parsed, dict):
+                    attributed_atm = parsed.get("atm_id") or parsed.get("entity_id")
+            except Exception:
+                attributed_atm = None
+
+            anomalies.append({
+                "anomaly_type": "A7",
+                "atm_id": attributed_atm,
+                "detected_at": (pair["kafka"]["ts"].isoformat() if pair["kafka"]["ts"] else last_ts) or datetime.now(timezone.utc).isoformat(),
+                "severity": "HIGH",
+                "title": "Ingestion errors: Prometheus + Kafka failures detected in same time window.",
+                "explanation": json.dumps({
+                    "prom_err_id": pair["prom"]["id"],
+                    "kafka_err_id": pair["kafka"]["id"],
+                    "prom_ts": pair["prom"]["ts"].isoformat(),
+                    "kafka_ts": pair["kafka"]["ts"].isoformat(),
+                }),
+            })
+            seen_global_pair = True
+
+        # If prom_malformed but no kafka evidence in unified view, still emit a global Prometheus A7
+        if prom_malformed and not paired_errs and not any(a.get("anomaly_type") == "A7" for a in anomalies):
             anomalies.append({
                 "anomaly_type": "A7",
                 "atm_id": None,
                 "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
                 "severity": "HIGH",
                 "title": "Malformed Prometheus metric detected.",
-                "explanation": json.dumps({"issue": "prometheus_malformed"}),
+                "explanation": json.dumps({"issue": "prometheus_malformed", "samples": prom_malformed_ts}),
             })
 
         return anomalies
