@@ -3,7 +3,9 @@ from pathlib import Path
 
 # Default database path — match generator output location
 # Uses the project's `custom_synthetic_data_sources/database/database.db`
-OUTPUT_DIR = Path("custom_synthetic_data_sources")
+# Resolve package-relative so the folder is created under `backend/`, not
+# the process CWD (which can be the repo root when running tests or server).
+OUTPUT_DIR = Path(__file__).resolve().parents[2] / "custom_synthetic_data_sources"
 DB_PATH = str(OUTPUT_DIR.joinpath("database", "database.db"))
 
 def get_db(db_path: str | None = None):

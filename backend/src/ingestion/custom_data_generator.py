@@ -14,12 +14,13 @@ import random
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from typing import List
+from pathlib import Path
 
 from backend.src.ingestion.parsers.prometheus import PROMETHEUS_HEADERS
 from backend.src.ingestion.parsers.windows_os import WINDOWS_HEADERS
 from backend.src.ingestion.parsers.gcp_cloud_metrics import GCP_HEADERS
 
-OUTPUT_DIR = "custom_synthetic_data_sources"
+OUTPUT_DIR = str(Path(__file__).resolve().parents[2] / "custom_synthetic_data_sources")
 SEED = 12345
 random.seed(SEED)
 

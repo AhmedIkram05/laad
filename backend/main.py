@@ -171,14 +171,16 @@ def run_pipeline(
     final_counts(db_path)
 
 
-OUTPUT_DIR = Path("custom_synthetic_data_sources")
+# Use a package-relative output directory under the `backend/` folder
+OUTPUT_DIR = Path(__file__).resolve().parent / "custom_synthetic_data_sources"
 DB_PATH = str(OUTPUT_DIR.joinpath("database", "database.db"))
 
 
 def main():
     """Main entry point using hardcoded configuration for simplicity."""
     # Call the simplified pipeline: DB init -> generator (module defaults) -> ingest
-    run_pipeline(db_path=DB_PATH, output=OUTPUT_DIR)
+    # Pass the resolved output path as a string to avoid surprises with CWD
+    run_pipeline(db_path=DB_PATH, output=str(OUTPUT_DIR))
 
 
 if __name__ == "__main__":
