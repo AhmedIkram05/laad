@@ -36,6 +36,14 @@ def init_db(db_path=None, schema_path='schema.sql'):
 
     # Connect to the database and execute schema
     try:
+        # Remove existing database file to ensure a clean run (avoid mixing
+        # data from previous runs which can create spurious cross-day anomalies).
+        if os.path.exists(full_db_path):
+            try:
+                os.remove(full_db_path)
+                logging.info(f"Removed existing database file: {full_db_path}")
+            except Exception:
+                logging.exception("Failed to remove existing database file; continuing")
         # Use the centralised connection bootstrap so PRAGMAs are applied
         from backend.src.database.connection import get_db
 

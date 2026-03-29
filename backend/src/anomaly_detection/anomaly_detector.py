@@ -1,13 +1,3 @@
-"""Anomaly detection logic (A1..A7).
-
-This module implements the original Python detector structure (per the
-anomaly detection guide) but refactored to reliably detect all seven
-synthetic anomalies using the unified view `v_unified_analysis` and
-falling back to the raw JSON payload when needed.
-
-The detector is intentionally conservative about inserting duplicates:
-it checks for an existing `anomaly_type` + `atm_id` before inserting.
-"""
 from __future__ import annotations
 
 import json
@@ -77,21 +67,18 @@ class AnomalyDetector:
         except Exception:
             return None
 
-    def is_monotonically_increasing(self, values: List[float]) -> bool:
-        if len(values) < 3:
-            return False
-        # strictly increasing
-        for i in range(len(values) - 1):
-            try:
-                if not (values[i] < values[i + 1]):
-                    return False
-            except Exception:
-                return False
-        return True
-
-    # ----------------------- DETECTOR IMPLEMENTATIONS -----------------------
     def a1_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """A1: network timeout cascade (cross-source confirmation)."""
+        '''
+        A1: Network Timeout Cascade (ATM-GB-0003, 10:00)
+        Sources: ATM App Log, Kafka Stream, Terminal Handler Log
+        Correlation ID: `corr-0030-nnet-disc-0001`
+        Detection signals:
+        ATM App Log: `event_type=NETWORK_DISCONNECT` → `error_code=ERR-0040`
+        ATM App Log: `event_type=TIMEOUT` with `response_time_ms=30000`
+        Kafka: `atm_status=Offline`, `transaction_failure_reason=HOST_UNAVAILABLE`
+        Terminal Handler: `event_type=NETWORK_TIMEOUT` for ATM-GB-0003
+        Expected alert: ATM offline due to network failure. Cross-source confirmation.
+        '''        
         anomalies: List[Dict[str, Any]] = []
         atm_check: Dict[str, Dict[str, Any]] = {}
 
@@ -158,7 +145,17 @@ class AnomalyDetector:
         return anomalies
 
     def a2_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """A2: cassette depletion -> Out of Service."""
+        '''
+        Not 100% sure about the a2 anomaly but it the one i seem to understand more and what i understand from it is:
+        flag a2 anomaly when we have 2 lows, 2 empties, and then kafka confirms it:
+
+        Sources: ATM Hardware Sensor Log, Kafka Stream
+        - Detection signals:
+        - Hardware Log: `CASSETTE_LOW` (severity=WARNING) x 2 cassettes
+        - Hardware Log: `CASSETTE_EMPTY` (severity=CRITICAL) x 2 cassettes
+        - Kafka: `atm_status=Out of Service`, `transaction_failure_reason=CASH_DISPENSE_ERROR`
+        - Kafka: `transaction_rate_tps=0.0`, `transaction_success_rate=0.0`
+        '''        
         anomalies = []
         checklist: Dict[str, Dict[str, Any]] = {}
 
@@ -200,7 +197,17 @@ class AnomalyDetector:
         return anomalies
 
     def a3_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """A3: JVM memory leak -> OOM detection using Prometheus + GCP + handler logs."""
+        """
+        A3: JVM Memory Leak → OOM (Terminal Handler, 08:00–09:30)
+        Sources: Prometheus Metrics, GCP Cloud Metrics, Terminal Handler App Log
+        Detection signals:
+        Prometheus: `jvm_memory_used_bytes` rising monotonically: 300MB → 1040MB over 90 mins
+        Prometheus: `jvm_gc_pause_seconds_sum` increasing: 0.45s → 24.7s (GC thrashing)
+        Prometheus: `process_cpu_usage` rising to 0.94 (94%)
+        GCP: `container/cpu/usage_time` rising to 94%
+        Terminal Handler Log: `OutOfMemoryError` FATAL event
+        Expected alert: JVM heap leak detected. GC overhead climbing. OOM imminent.
+        """
         anomalies = []
         # Group memory by pod/service
         mem_by_pod: Dict[str, List[float]] = {}
@@ -211,8 +218,9 @@ class AnomalyDetector:
             src = (r.get("source") or "").upper()
             # Terminal handler OOM
             if src == "TERMINAL_HANDLER" and (r.get("event_type") == "OOM_ERROR" or r.get("severity") == "FATAL"):
-                pod = r.get("component") or self._payload_get(r, "pod_name") or "unknown"
+                pod = self._payload_get(r, "pod_name") or r.get("component") or "unknown"
                 oom_pods[pod] = True
+                # Record first-seen OOM timestamp as the anchor for the leak window
                 last_ts_by_pod.setdefault(pod, r.get("timestamp"))
 
             # Prometheus jvm memory
@@ -220,66 +228,132 @@ class AnomalyDetector:
                 pod = self._payload_get(r, "pod_name") or r.get("component") or "unknown"
                 v = self._as_float(r.get("metric_value") or self._payload_get(r, "metric_value"))
                 if v is not None:
-                    mem_by_pod.setdefault(pod, []).append(v)
-                    last_ts_by_pod.setdefault(pod, r.get("timestamp"))
+                    # store timestamped samples so we can window around the OOM event
+                    mem_by_pod.setdefault(pod, []).append((r.get("timestamp"), v))
 
         for pod, series in mem_by_pod.items():
-            if self.is_monotonically_increasing(series) and oom_pods.get(pod, False):
+            # Require evidence of OOMs for the pod first
+            if not oom_pods.get(pod, False):
+                continue
+            if not series:
+                continue
+
+            # Window the series to the 90 minutes before the recorded OOM event.
+            oom_ts_str = last_ts_by_pod.get(pod)
+            window_start = None
+            window_end = None
+            try:
+                if oom_ts_str:
+                    oom_dt = datetime.fromisoformat(oom_ts_str)
+                    window_end = oom_dt
+                    window_start = oom_dt - timedelta(minutes=90)
+            except Exception:
+                window_start = None
+                window_end = None
+
+            # Filter samples into the window (timestamps are ISO strings)
+            filtered = []
+            for tstr, val in series:
+                try:
+                    tdt = datetime.fromisoformat(tstr)
+                except Exception:
+                    continue
+                if window_start and window_end:
+                    if tdt >= window_start and tdt <= window_end:
+                        filtered.append(val)
+                else:
+                    filtered.append(val)
+
+            if len(filtered) < 3:
+                continue
+
+            first = filtered[0]
+            last = filtered[-1]
+            try:
+                rel_increase = (last - first) / (first if first != 0 else 1)
+            except Exception:
+                rel_increase = 0.0
+
+            increases = sum(1 for i in range(len(filtered) - 1) if filtered[i + 1] > filtered[i])
+            frac_increase = increases / max(1, len(filtered) - 1)
+
+            # Heuristic: consider a leak if either the relative increase is large
+            # or the majority of consecutive samples trend upwards.
+            if rel_increase >= 0.2 or frac_increase >= 0.6:
                 anomalies.append({
                     "anomaly_type": "A3",
                     "atm_id": None,
                     "detected_at": last_ts_by_pod.get(pod) or datetime.now(timezone.utc).isoformat(),
                     "severity": "MAJOR",
                     "title": "JVM memory leak suspected - heap usage increasing.",
-                    "explanation": json.dumps({"pod": pod, "points": series[-5:]}),
+                    "explanation": json.dumps({"pod": pod, "points": filtered[-5:], "rel_increase": rel_increase, "frac_increase": frac_increase}),
                 })
 
         return anomalies
 
     def a4_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """A4: Container restart loop (GCP restarts + terminal startups / OOMs)."""
+        """
+        A4: Container Restart Loop (Terminal Handler, 09:30–09:34)
+        Sources: GCP Cloud Metrics, Terminal Handler App Log
+        Detection signals:
+        GCP: `container/restart_count` = 1, then 2 within 4 minutes
+        Terminal Handler Log: `event_type=STARTUP` repeated 3× (container_id changes each time)
+        Terminal Handler Log: Two `FATAL OutOfMemoryError` events
+        Expected alert: Container crash loop detected. 2 restarts in under 5 minutes.
+        """
         anomalies = []
-        restarts_by_pod: Dict[str, List[Dict[str, Any]]] = {}
-        startup_counts_by_pod: Dict[str, int] = {}
-        fatal_counts_by_pod: Dict[str, int] = {}
-        last_ts_by_pod: Dict[str, str] = {}
+        # GCP: list of (timestamp, restart_count) pairs
+        gcp_restarts: List[Dict[str, Any]] = []
+        # Terminal handler: global counts
+        total_startups = 0
+        total_fatals = 0
+        last_ts: str | None = None
 
         for r in data:
             src = (r.get("source") or "").upper()
-            pod = self._payload_get(r, "pod_name") or r.get("component") or r.get("atm_id") or "unknown"
-            last_ts_by_pod.setdefault(pod, r.get("timestamp"))
+            last_ts = r.get("timestamp") or last_ts
 
-            if src == "CLOUD" or src == "GCP":
+            if src in ("CLOUD", "GCP"):
                 if (r.get("metric_name") or "") == "container/restart_count":
                     v = self._as_float(r.get("metric_value") or self._payload_get(r, "metric_value"))
                     if v is not None:
-                        restarts_by_pod.setdefault(pod, []).append({"ts": r.get("timestamp"), "count": v})
+                        gcp_restarts.append({"ts": r.get("timestamp"), "count": v})
 
             if src == "TERMINAL_HANDLER":
                 if r.get("event_type") == "STARTUP":
-                    startup_counts_by_pod[pod] = startup_counts_by_pod.get(pod, 0) + 1
+                    total_startups += 1
                 if r.get("event_type") == "OOM_ERROR" or r.get("severity") == "FATAL":
-                    fatal_counts_by_pod[pod] = fatal_counts_by_pod.get(pod, 0) + 1
+                    total_fatals += 1
 
-        for pod, restarts in restarts_by_pod.items():
-            # look for at least two restarts in a short window (<=5 minutes)
-            times = [r["ts"] for r in restarts if r.get("ts")]
-            if len(times) >= 2:
-                # simple heuristic: if there are multiple restart points, flag
-                if (startup_counts_by_pod.get(pod, 0) >= 3) or (fatal_counts_by_pod.get(pod, 0) >= 2):
-                    anomalies.append({
-                        "anomaly_type": "A4",
-                        "atm_id": None,
-                        "detected_at": last_ts_by_pod.get(pod) or datetime.now(timezone.utc).isoformat(),
-                        "severity": "MAJOR",
-                        "title": "Container restart loop causing instability.",
-                        "explanation": json.dumps({"pod": pod, "restarts": restarts, "startups": startup_counts_by_pod.get(pod, 0), "fatals": fatal_counts_by_pod.get(pod, 0)}),
-                    })
+        # Fire if GCP shows >=2 restarts AND terminal handler confirms crash evidence
+        if len(gcp_restarts) >= 2 and (total_startups >= 3 or total_fatals >= 2):
+            anomalies.append({
+                "anomaly_type": "A4",
+                "atm_id": None,
+                "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
+                "severity": "MAJOR",
+                "title": "Container restart loop causing instability.",
+                "explanation": json.dumps({
+                    "gcp_restarts": gcp_restarts,
+                    "total_startups": total_startups,
+                    "total_fatals": total_fatals,
+                }),
+            })
 
         return anomalies
 
     def a5_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """A5: Response time spike + success rate drop."""
+        """
+        A5: High Response Time Spike + Success Rate Drop (ATM-GB-0001, 09:30)
+        Sources: Kafka Stream, ATM App Log
+        Correlation IDs: `corr-0010-xxyy-aabb-1234`, `corr-0011-xyzw-ccdd-5678`
+        Detection signals:
+        Kafka: `response_time_ms` = 3200ms then 30000ms (normal: ~290ms)
+        Kafka: `transaction_success_rate` drops from 100% to 72% to 50%
+        Kafka: `failure_count` = 8, then 14
+        ATM App Log: `event_type=TIMEOUT` with `error_code=ERR-0012`
+        Expected alert: ATM-GB-0001 response time 10× above baseline. Success rate critically low.
+        """
         anomalies = []
         spikes_by_atm: Dict[str, List[Dict[str, Any]]] = {}
         timeouts_by_atm: Dict[str, List[Dict[str, Any]]] = {}
@@ -315,7 +389,16 @@ class AnomalyDetector:
         return anomalies
 
     def a6_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """A6: OS memory pressure causing application timeouts."""
+        """
+        A6: OS Memory Pressure → Application Timeout (ATM-GB-0002, 09:45)
+        Sources: Windows OS Metrics, ATM App Log
+        Detection signals:
+        Windows OS Metrics: `memory_usage_percent` escalating: 46% → 98.75% over 2 hours
+        Windows OS Metrics: `network_errors` growing: 0 → 22
+        Windows OS Metrics: `cpu_usage_percent` rising to 91.5%
+        ATM App Log: `event_type=TIMEOUT`, `error_detail` contains "ThreadAbortException" / memory pressure
+        Expected alert: ATM host memory critically high. Application timeout correlated with OS pressure.
+        """
         anomalies = []
         mem_by_atm: Dict[str, List[float]] = {}
         timeout_evidence: Dict[str, Dict[str, Any]] = {}
@@ -352,9 +435,16 @@ class AnomalyDetector:
         return anomalies
 
     def a7_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """A7: malformed / out-of-order Kafka events and malformed Prometheus rows."""
+        '''
+        A7: Malformed / Out-of-Order Kafka Events (ATM-GB-0004)
+        Sources: Kafka Stream, Prometheus Metrics
+        Detection signals:
+        Kafka offset 4050 has an earlier timestamp than expected (out-of-order)
+        Kafka offset 4051: `atm_status=null`, `transaction_rate_tps=null` (missing required fields)
+        Prometheus CSV row at 09:33:00 contains `metric_value=890iembre` (non-numeric — malformed)
+        Expected alert: Malformed event ingestion detected. Schema validation failure. Out-of-order sequence.
+        '''
         anomalies = []
-        # Kafka out-of-order / nulls
         kafka_by_atm: Dict[str, List[Dict[str, Any]]] = {}
         prom_malformed = False
         last_ts = None
@@ -364,9 +454,15 @@ class AnomalyDetector:
             last_ts = r.get("timestamp") or last_ts
             if src == "KAFKA":
                 atm = r.get("atm_id") or self._payload_get(r, "atm_id") or "_none_"
-                kafka_by_atm.setdefault(atm, []).append({"offset": r.get("kafka_offset"), "ts": r.get("timestamp"), "atm_status": r.get("atm_status"), "transaction_rate_tps": r.get("transaction_rate_tps")})
-                # null fields
-                if r.get("atm_status") is None or r.get("transaction_rate_tps") is None:
+                kafka_offset = self._payload_get(r, "kafka_offset")
+                kafka_by_atm.setdefault(atm, []).append({
+                    "offset": kafka_offset,
+                    "ts": r.get("timestamp"),
+                    "atm_status": r.get("atm_status"),
+                    "transaction_rate_tps": self._payload_get(r, "transaction_rate_tps"),
+                })
+                trtps_val = self._payload_get(r, "transaction_rate_tps")
+                if r.get("atm_status") is None or trtps_val is None:
                     anomalies.append({
                         "anomaly_type": "A7",
                         "atm_id": atm if atm != "_none_" else None,
@@ -376,31 +472,36 @@ class AnomalyDetector:
                         "explanation": json.dumps({"row": r}),
                     })
 
-            if src == "METRIC" or src == "PROMETHEUS":
+            if src in ("METRIC", "PROMETHEUS"):
                 if (r.get("metric_name") or "") and r.get("metric_value") is not None:
                     if self._as_float(r.get("metric_value")) is None:
                         prom_malformed = True
 
         # check kafka out-of-order by comparing offsets -> timestamps
         for atm, rows in kafka_by_atm.items():
-            # build list of (offset,ts) ignoring None offsets
+            # build list of (offset, ts) ignoring None offsets
             seq = [(self._as_float(x["offset"]), x["ts"]) for x in rows if x.get("offset") is not None]
-            # sort by offset and ensure timestamps are non-decreasing
             seq_sorted = sorted(seq, key=lambda x: x[0])
             for i in range(1, len(seq_sorted)):
                 prev_ts = seq_sorted[i - 1][1]
                 cur_ts = seq_sorted[i][1]
                 try:
-                    if prev_ts and cur_ts and cur_ts < prev_ts:
-                        anomalies.append({
-                            "anomaly_type": "A7",
-                            "atm_id": atm if atm != "_none_" else None,
-                            "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
-                            "severity": "HIGH",
-                            "title": "Malformed or out-of-order Kafka events detected.",
-                            "explanation": json.dumps({"issue": "out_of_order", "atm": atm}),
-                        })
-                        break
+                    if prev_ts and cur_ts:
+                        # Parse datetimes and require a minimum delta to avoid
+                        # flagging trivial ordering differences (same-minute duplicates).
+                        from datetime import datetime as _dt
+                        prev_dt = _dt.fromisoformat(prev_ts)
+                        cur_dt = _dt.fromisoformat(cur_ts)
+                        if cur_dt < prev_dt and (prev_dt - cur_dt).total_seconds() >= 60:
+                            anomalies.append({
+                                "anomaly_type": "A7",
+                                "atm_id": atm if atm != "_none_" else None,
+                                "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
+                                "severity": "HIGH",
+                                "title": "Malformed or out-of-order Kafka events detected.",
+                                "explanation": json.dumps({"issue": "out_of_order", "atm": atm}),
+                            })
+                            break
                 except Exception:
                     continue
 
@@ -410,13 +511,12 @@ class AnomalyDetector:
                 "atm_id": None,
                 "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
                 "severity": "HIGH",
-                "title": "Malformed or out-of-order Kafka events detected.",
+                "title": "Malformed Prometheus metric detected.",
                 "explanation": json.dumps({"issue": "prometheus_malformed"}),
             })
 
         return anomalies
 
-    # ----------------------- Orchestration & persistence -----------------------
     def detect_anomalies(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         detectors = [
             self.a1_detection,

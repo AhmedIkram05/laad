@@ -57,26 +57,31 @@ class PrometheusParser(MetricDataParser):
             except Exception:
                 pass
 
-            # Remove any characters that are not digits, signs, dot, comma or exponent
-            cleaned = re.sub(r"[^0-9\-\.,eE+ ]", "", s)
-            if cleaned == '':
-                raise ValueError('invalid metric_value')
+                # Disallow alphabetic characters other than exponent 'e' or 'E'.
+                # This prevents values like '890iembre' being coerced to 890.0.
+                if re.search(r'(?i)[a-df-z]', s):
+                    raise ValueError('invalid metric_value_contains_letters')
 
-            # If comma present and no dot, treat comma as decimal separator
-            if ',' in cleaned and '.' not in cleaned:
-                cleaned2 = cleaned.replace(',', '.')
-            else:
-                # remove thousands separators
-                cleaned2 = cleaned.replace(',', '')
+                # Remove any characters that are not digits, signs, dot, comma or exponent
+                cleaned = re.sub(r"[^0-9\-\.,eE+ ]", "", s)
+                if cleaned == '':
+                    raise ValueError('invalid metric_value')
 
-            try:
-                return float(cleaned2)
-            except Exception:
-                # As a last resort, extract first numeric substring
-                m = re.search(r'[-+]?[0-9]*\.[0-9]+|[-+]?[0-9]+', s)
-                if m:
-                    return float(m.group(0))
-                raise ValueError('invalid metric_value')
+                # If comma present and no dot, treat comma as decimal separator
+                if ',' in cleaned and '.' not in cleaned:
+                    cleaned2 = cleaned.replace(',', '.')
+                else:
+                    # remove thousands separators
+                    cleaned2 = cleaned.replace(',', '')
+
+                try:
+                    return float(cleaned2)
+                except Exception:
+                    # As a last resort, extract first numeric substring
+                    m = re.search(r'[-+]?[0-9]*\.[0-9]+|[-+]?[0-9]+', s)
+                    if m:
+                        return float(m.group(0))
+                    raise ValueError('invalid metric_value')
 
         metric_value = _parse_metric_value(raw_value)
 

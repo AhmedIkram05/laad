@@ -324,7 +324,6 @@ def inject_a1_network_timeout_cascade(atm_app, kafka, terminal, t0):
         "failure_count": 0,
         "correlation_id": corr,
         "transaction_id": txn,
-        "kafka_offset": 9050,
         "_anomaly": "A1_KAFKA_OFFLINE",
     })
     
@@ -397,7 +396,6 @@ def inject_a2_cassette_depletion(hardware, kafka, t0):
         "failure_count": 0,
         "correlation_id": corr,
         "transaction_id": make_txn(),
-        "kafka_offset": 9100,
         "_anomaly": "A2_KAFKA_OOS",
     })
 
@@ -579,7 +577,6 @@ def inject_a5_response_time_spike(kafka, atm_app, t0):
             "failure_count": fc,
             "correlation_id": corr,
             "transaction_id": txn,
-            "kafka_offset": 9000 + i,
             "_anomaly": "A5_SPIKE",
         })
 
@@ -741,11 +738,40 @@ def generate_dataset(output: str = OUTPUT_DIR, hours: int = HOURS, seed: int = S
     inject_a5_response_time_spike(kafka, atm_app, at(9, 30))
     inject_a6_os_memory_pressure(windows, atm_app, at(7, 45))
     inject_a7_malformed_kafka(kafka, prometheus)
-
-    print("Sorting and writing datasets...")
-    # Keep kafka unsorted to preserve intentional out-of-order anomalies (A7).
-    for data in [atm_app, hardware, terminal, prometheus, windows, gcp]:
-        data.sort(key=lambda r: r["timestamp"])
+    
+    # Ensure every kafka row has a contiguous per-ATM offset so injected
+    # rows (which were appended after the base stream) receive offsets and
+    # can participate in out-of-order detection for their ATM only.
+    base_offset = 1000
+    chunk_size = 100000
+    atm_order = []
+    for row in kafka:
+        atm = row.get('atm_id') or '_none_'
+        if atm not in atm_order:
+            atm_order.append(atm)
+    atm_bases = {atm: base_offset + idx * chunk_size for idx, atm in enumerate(atm_order)}
+    atm_counters = {atm: 0 for atm in atm_order}
+    for row in kafka:
+        atm = row.get('atm_id') or '_none_'
+        # Preserve any explicitly provided kafka_offset (used for A7 injections).
+        if row.get('kafka_offset') is not None:
+            # If a forced offset exists, ensure we advance the counter so later
+            # automatically assigned offsets don't collide within the chunk.
+            try:
+                forced = int(row.get('kafka_offset'))
+                # compute a relative counter position (if in same chunk)
+                base = atm_bases[atm]
+                if forced >= base:
+                    atm_counters[atm] = max(atm_counters[atm], forced - base + 1)
+            except Exception:
+                pass
+            continue
+        offset = atm_bases[atm] + atm_counters[atm]
+        try:
+            row['kafka_offset'] = offset
+        except Exception:
+            row.update({'kafka_offset': offset})
+        atm_counters[atm] += 1
 
     write_json(atm_app, "atm_application_log.json", output)
     write_json(hardware, "atm_hardware_sensor_log.json", output)
