@@ -43,4 +43,4 @@ Change this after first login.
 pytest
 ```
 
-Current status: **32/32 passing.**
+Current status: **33/33 passing.**

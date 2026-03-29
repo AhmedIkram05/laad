@@ -8,6 +8,13 @@ from typing import List, Dict, Any
 
 
 class AnomalyDetector:
+    """Simple rule-based detector for anomalies A1–A7.
+
+    The detector reads a unified view (or DB) and applies a set of
+    heuristics to identify the scenario-based anomalies described in the
+    training guide (A1..A7). Primary entry points are `load_data`,
+    `detect_anomalies`, and `save_anomalies`.
+    """
     def __init__(self, db_path: str | None = None):
         if db_path is None:
             db_path = str(
@@ -18,7 +25,13 @@ class AnomalyDetector:
             )
         self.db_path = db_path
 
-    def _get_conn(self):
+    def _get_conn(self) -> sqlite3.Connection:
+        """Return an SQLite connection configured for this detector.
+
+        Attempts to use the project's central `get_db` helper so PRAGMAs
+        (WAL, busy timeout, foreign keys) are applied. Falls back to a
+        plain sqlite3 connection if the helper is not available.
+        """
         try:
             # Use central helper if available to get PRAGMAs applied
             from backend.src.database.connection import get_db
@@ -29,7 +42,12 @@ class AnomalyDetector:
         conn.row_factory = sqlite3.Row
         return conn
 
-    def query(self, sql: str, params: tuple = ()):  # -> List[Dict[str, Any]]
+    def query(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        """Execute `sql` with `params` and return rows as list of dicts.
+
+        This is a convenience wrapper that opens and closes a connection
+        for each query.
+        """
         conn = self._get_conn()
         cur = conn.cursor()
         try:
@@ -46,7 +64,14 @@ class AnomalyDetector:
         rows = self.query("SELECT * FROM v_unified_analysis ORDER BY timestamp ASC")
         return rows
 
-    def _payload_get(self, row: Dict[str, Any], key: str):
+    def _payload_get(self, row: Dict[str, Any], key: str) -> Any:
+        """Get `key` from the row, preferring explicit column then JSON payload.
+
+        Many unified rows store a serialized `raw_payload` or `payload` column
+        containing the original input. This helper returns a value from the
+        direct column if present, otherwise attempts to parse and read the
+        JSON payload.
+        """
         # Prefer direct column, else try to read JSON from raw_payload
         if row.get(key) is not None:
             return row.get(key)
@@ -59,7 +84,12 @@ class AnomalyDetector:
         except Exception:
             return None
 
-    def _as_float(self, val):
+    def _as_float(self, val: Any) -> float | None:
+        """Safely coerce `val` to float, returning None on failure.
+
+        Used extensively when parsing metric or kafka numeric fields that
+        may be strings or missing.
+        """
         if val is None:
             return None
         try:
@@ -621,6 +651,11 @@ class AnomalyDetector:
         return found
 
     def save_anomalies(self, anomalies: List[Dict[str, Any]]) -> int:
+        """Persist detected anomalies to the `anomalies` table.
+
+        The function deduplicates by `(anomaly_type, atm_id)` and inserts
+        new rows. Returns the number of rows saved.
+        """
         if not anomalies:
             print("No anomalies to save.")
             return 0

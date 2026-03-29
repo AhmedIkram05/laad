@@ -149,6 +149,14 @@ def build_terminal_handler_log(start: datetime, end: datetime) -> List[dict]:
 
 
 def build_kafka_stream(start: datetime, end: datetime) -> List[dict]:
+    """
+    Build a simulated Kafka stream for each ATM between `start` and `end`.
+
+    Each minute there is a probabilistic chance to emit a transaction-like
+    record per ATM. Records include a provisional `kafka_offset` which may
+    be adjusted later when generating the final dataset to ensure per-ATM
+    contiguous offset ranges.
+    """
     rows = []
     offset = 1000
     for t in minutes_range(start, end, step_minutes=1):
@@ -716,6 +724,14 @@ def inject_a7_malformed_kafka(kafka, prometheus):
 
 
 def generate_dataset(output: str = OUTPUT_DIR, hours: int = HOURS, seed: int = SEED) -> None:
+    """
+    Generate the full synthetic dataset and write files to `output`.
+
+    This function builds baseline logs/metrics, injects A1-A7 anomalies
+    (which may append records with explicit offsets or malformed fields),
+    and then assigns final `kafka_offset` values so each ATM has a
+    contiguous, non-overlapping offset range. Files are written to disk.
+    """
     random.seed(seed)
     ensure_output(output)
     start = BASE_DATE
@@ -742,6 +758,10 @@ def generate_dataset(output: str = OUTPUT_DIR, hours: int = HOURS, seed: int = S
     # Ensure every kafka row has a contiguous per-ATM offset so injected
     # rows (which were appended after the base stream) receive offsets and
     # can participate in out-of-order detection for their ATM only.
+    #
+    # I want to give each ATM a wide, non-overlapping chunk of offsets
+    # (base_offset + idx*chunk_size). This guarantees offsets from
+    # different ATMs never collide and makes out-of-order checks ATM-local.
     base_offset = 1000
     chunk_size = 100000
     atm_order = []

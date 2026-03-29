@@ -43,10 +43,10 @@ class TestPrometheusParser(unittest.TestCase):
         ok = self.parser.process_line(bad, source='PROMETHEUS')
         self.assertFalse(ok)
 
-        # Feed a malformed numeric value that should be sanitised (e.g. '890iembre')
+        # Feed a malformed numeric value that should be rejected by the parser
         malformed_numeric = '2026-03-05T09:15:00Z,http_requests_total,counter,890iembre,auth,pod-1,cid,,prod,desc'
         ok = self.parser.process_line(malformed_numeric, source='PROMETHEUS')
-        self.assertTrue(ok)
+        self.assertFalse(ok)
 
         # Flush and verify metrics rows and ingestion_errors
         self.parser.flush()
@@ -58,8 +58,8 @@ class TestPrometheusParser(unittest.TestCase):
         err_count = cur.fetchone()[0]
         conn.close()
 
-        # two good lines + one sanitised malformed numeric
-        self.assertEqual(metrics_count, len(good_lines) + 1)
+        # only the two good lines should be accepted; malformed numeric rejected
+        self.assertEqual(metrics_count, len(good_lines))
         self.assertGreaterEqual(err_count, 1)
 
 
