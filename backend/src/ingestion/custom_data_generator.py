@@ -747,6 +747,17 @@ def generate_dataset(output: str = OUTPUT_DIR, hours: int = HOURS, seed: int = S
     for data in [atm_app, hardware, terminal, prometheus, windows, gcp]:
         data.sort(key=lambda r: r["timestamp"])
 
+    # Reassign kafka offsets sequentially to avoid large, injected offset values
+    # (e.g. 9000) that can cause unexpected out-of-order detections for other ATMs.
+    # Keep the current list order (unsorted) so intentional out-of-order
+    # anomalies created by injection still trigger A7 for the intended ATM.
+    base_offset = 1000
+    for i, row in enumerate(kafka):
+        try:
+            row['kafka_offset'] = base_offset + i
+        except Exception:
+            row.update({'kafka_offset': base_offset + i})
+
     write_json(atm_app, "atm_application_log.json", output)
     write_json(hardware, "atm_hardware_sensor_log.json", output)
     write_json(terminal, "terminal_handler_app_log.json", output)

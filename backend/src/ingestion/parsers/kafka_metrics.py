@@ -40,13 +40,15 @@ class KafkaMetricsParser(MetricDataParser):
         if not entity_id:
             raise ValueError('missing entity_id')
 
+        # Keep full payload (including response_time_ms) so detectors can read
+        # response_time_ms from the payload when the primary metric is different.
         row = {
             'timestamp': ts,
             'source': 'KAFKA',
             'entity_id': entity_id,
             'metric_name': metric_name,
             'metric_value': float(metric_value),
-            'payload': json.dumps({k: v for k, v in obj.items() if k not in ('timestamp', 'atm_id', 'transaction_rate_tps', 'response_time_ms')})
+            'payload': json.dumps({k: v for k, v in obj.items() if k not in ('timestamp', 'atm_id')})
         }
 
         return row
