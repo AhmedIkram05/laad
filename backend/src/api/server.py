@@ -21,6 +21,7 @@ from backend.src.auth.auth_router import router as authRouter
 from backend.src.events.events_router import router as eventsRouter
 from backend.src.metrics.metrics_router import router as metricsRouter
 from backend.src.timeline.timeline_router import router as timelineRouter
+from backend.src.analysis_router.analysis_router import router as analysisRouter
 
 logger = logging.getLogger(__name__)
 
@@ -69,3 +70,4 @@ app.include_router(atmsRouter)
 app.include_router(eventsRouter)
 app.include_router(metricsRouter)
 app.include_router(timelineRouter)
+app.include_router(analysisRouter)

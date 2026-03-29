@@ -1,0 +1,580 @@
+import sqlite3
+from typing import List, Dict
+from datetime import datetime, timedelta
+import json
+
+def rank_algorithm(anomalies):
+
+    '''
+    these are the other key analysis i could think of that would help (I discarded previous ones, don't think we need them)
+    1) ranked critical issue that needs to be resolved
+    2) list of atm's that got operations affected
+
+    How i would approah this
+    1) i would have an algorithm to rank critical issues based on this factors(atm-anomaly frequency, operation_affected_gravity, severity breakdown,
+     is_transaction_ip)
+    2) operation_affected_gravity ranking: A1 - A4 - A3 - A2 - A6 - A5 - A7 
+    3) send all unique atm-ids for the list of atm's that got affected
+    '''
+
+    '''
+    ranked anomaly would contain all the normal fields and i have added an issue score and atm score which is basically for the frontend to use to rank
+    the issues in an atm, so like the overall system ranked by atm's(you can put the score beside, also put the frequency of issues/anomalies), 
+    then when you click view it now shows all the anomalies ranked. I have ranked the anomalies by putting atms with higher frequency at top 
+    rank because i feel an atm with huge anomalies is worse than 1 system with critical anomaly.
+    for the frontend, addie would give you the anomaly in the ranked order so as you receive it you want to use it like a fifo setup.
+    addie you should probably not change the order, just receive the ranked anomaly(main passes the args to you already) and then add those fields, 
+    don't tweak the order.
+    '''
+    
+    # get the atm anomaly frequency(this gives us the frequecy of anomaly each atm has)
+    # atm_counts = {}
+    # for a in anomalies:
+    #     aid = a['atm_id']
+    #     atm_counts[aid] = atm_counts.get(aid, 0) + 1
+
+    # implement the operation affected gravity mapping
+    operation_ranking = {'A1': 7, 'A4': 6, 'A3': 5, 'A2': 4, 'A6': 3, 'A5': 2, 'A7': 1}
+    
+    # severity breakdown mapping
+    severity_map = {"CRITICAL": 3, "HIGH": 2, "MAJOR":1, "WARNING": 0}
+
+    # transaction in progress mapping
+    transaction_map = {'is_transaction_t': 1, 'is_transaction_f': 0}
+
+    combined_weights = {}
+
+    # to improve performance, i would create kv pair of anomaly so i can get a better search time
+    # anomaly_map = {}
+    counter_id = 0
+    atm_tracker = {}
+
+    # combine weights to get the total weight for ranking
+    for a in anomalies:
+        counter_id += 1
+        # get score without frequency to rank anomalies in atm
+        inner_score = (
+                        operation_ranking.get(a['anomaly_type'], 0) +
+                        severity_map.get(a['severity'], 0) +
+                        (transaction_map.get('is_transaction_t', 0) if a['transaction_id'] else transaction_map.get('is_transaction_f', 0))
+                    )
+        
+        # rank anomaly by score
+        a['issue_score'] = inner_score
+        combined_weights[counter_id] = inner_score
+        atm_tracker[counter_id] = a
+        # calculate score with frequency to rank atm 
+        # total_contribution = inner_score + atm_counts.get(unique_id, 0)
+        # combined_weights[unique_id] = combined_weights.get(unique_id, 0) + total_contribution
+        
+        #list of all issues in atm
+        # if unique_id not in anomaly_map:
+        #     anomaly_map[unique_id] = []
+        # anomaly_map[unique_id].append(a)
+
+    # get ranked atms from critical to less critical
+    ranked_dict = sorted(combined_weights.items(), key = lambda x: x[1], reverse = True)
+
+    # rank the anomalies
+    ranked_anomaly = []
+    
+    for id,_ in ranked_dict:
+        ranked_anomaly.append(atm_tracker.get(id))        
+
+        # sort the atm issues
+        # atm_issues.sort(key = lambda x: x['issue_score'], reverse = True )
+
+        #rank the atm issues and append it in order
+        # for issues in atm_issues:
+        #     issues['atm_score'] = total_score
+        #     ranked_anomaly.append(issues)
+
+    # unique affected atms
+    # affected_atms = set(a['atm_id'] for a in anomalies)
+
+    return ranked_anomaly
+
+# A1 detailed analysis(recommended fix, operation impact, root cause)
+def A1(atm_id, error_seen, max_timeout, kafka_offline, terminal_timeout):
+
+    # the anomalie explanation in details
+    explanation = (
+                    f"{atm_id} experienced a network timeout cascade. "
+                    f"ATM application logs show a NETWORK_DISCONNECT event"
+                    f"{' with ERR-0040' if error_seen else ''}, "
+                    f"followed by a TIMEOUT"
+                    f"{f' at {max_timeout}ms' if max_timeout else ''}. "
+                    f"{'Kafka telemetry marked the ATM Offline and reported HOST_UNAVAILABLE. ' if kafka_offline else ''}"
+                    f"{'Terminal handler logs also recorded NETWORK_TIMEOUT, confirming a cross-source network failure.' if terminal_timeout else ''}"
+                  )
+
+
+    # this would let client know if it an anomalie that would disrupt operations
+    operational_impact = "ATM unavailable for customer transactions due to network connectivity failure."
+
+    # recommended fix for anomalie
+    recommendation = (
+                        "Investigate the network link between the ATM and terminal handler, "
+                        "validate backend is reachable, and restore connections before returning the ATM to service."
+                      )
+
+    return explanation, operational_impact, recommendation
+    
+# A2 detailed analysis(recommended fix, operation impact, root cause)
+def A2(atm_id,low_count, empty_count, out_of_service, dispense_error, zero_tps):
+
+    # the anomalie explanation in details
+    explanation = (
+                    f"{atm_id} showed a cash depletion sequence in hardware telemetry, "
+                    f"with {low_count} CASSETTE_LOW event followed by {empty_count} CASSETTE_EMPTY event. "
+                    f"{'Kafka telemetry also showed the ATM as Out of Service. ' if out_of_service else ''}"
+                    f"{'Transaction metrics dropped to zero, indicating cash dispensing was no longer possible. ' if zero_tps else ''}"
+                    f"{'A cash dispense error was also observed in correlated telemetry. ' if dispense_error else ''}"
+                    "This indicates the ATM exhausted available cash cassettes."
+                  )
+    
+    # this would let client know if it an anomalie that would disrupt operations
+    operational_impact = "ATM cannot complete cash withdrawal operations and may be unavailable to customers at this location."
+    
+    # recommended fix for anomalie
+    recommendation =  "Dispatch cash replenishment team, inspect cassette state, and keep the ATM out of service until cash is available."
+
+    return explanation, operational_impact, recommendation
+
+# A3 detailed analysis(recommended fix, operation impact, root cause)
+def A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen):
+
+  # the anomalie explanation in details
+    explanation =  (
+                    f"Terminal handler memory usage increased from {mem_start:.0f} to {mem_end:.0f} bytes over the analysis window, "
+                    f"while GC pause cumulative rose from {gc_start:.2f}s to {gc_end:.2f}s. "
+                    f"{'CPU usage also rose sharply, indicating GC thrashing. ' if high_cpu else ''}"
+                    f"{'A FATAL OutOfMemoryError was recorded in handler logs, confirming heap exhaustion.' if oom_seen else ''}"
+                   )
+    
+    # this would let client know if it an anomalie that would disrupt operations
+    operational_impact = "Backend transaction processing is unstable and at risk of service interruption across affected ATM flows."
+
+    # recommended fix for anomalie
+    recommendation =  "Inspect JVM heap growth, review memory allocation behaviour, observe garbage collection thoroughly, and restart the affected service if it required."
+
+    return explanation, operational_impact, recommendation
+
+# A4 detailed analysis(recommended fix, operation impact, root cause)
+def A4(max_restart, fatal_count, startup_count):
+
+    # the anomalie explanation in details
+    explanation = (
+                    f"Container restart telemetry showed repeated restart activity"
+                    f"{f' up to {max_restart:.0f} restart' if max_restart is not None else ''}. "
+                    f"Handler logs recorded {startup_count} STARTUP event"
+                    f"{f' and {fatal_count} fatal failure' if fatal_count else ''}, "
+                    "indicating the service repeatedly crashed and restarted within a short window."
+                  )
+    
+    # this would let client know if it an anomalie that would disrupt operations
+    operational_impact =" Service would be unstable which may interrupt or delay transaction handling across multiple ATM sessions."
+
+    # recommended fix for anomalie
+    recommendation = "Investigate the crash source, validate memory and container health, and make the service stable before returning it to normal traffic."
+
+    return explanation, operational_impact, recommendation
+
+# A5 detailed analysis(recommended fix, operation impact, root cause)
+def A5(atm_id, max_rt, min_success, max_failures, timeout_seen):  
+    # the anomalie explanation in details
+    explanation = (
+                    f"{atm_id} experienced a response-time spike, with latency rising to {max_rt:.0f}ms. "
+                    f"{f'Transaction success rate fell to {min_success:.0f}%. ' if min_success is not None else ''}"
+                    f"{f'Failure count increased to {max_failures:.0f}. ' if max_failures is not None else ''}"
+                    f"{'ATM application logs also recorded a TIMEOUT with ERR-0012, confirming transaction degraded.' if timeout_seen else ''}"
+                  )
+    
+    # this would let client know if it an anomalie that would disrupt operations
+    operational_impact = " Customers may experience slow responses, failed transactions, and degraded ATM service quality."
+
+    # recommended fix for anomalie
+    recommendation = "Investigate latency, review host/network responsiveness, and monitor whether response time continues to rise toward timeout conditions."
+
+    return explanation, operational_impact, recommendation
+
+# A6 detailed analysis(recommended fix, operation impact, root cause)
+def A6(atm_id, mem_start, mem_max, cpu_max, net_error_max, timeout_seen):
+
+    # the anomalie explanation in details
+    explanation = (
+                    f"{atm_id} showed increasing host resource pressure, with memory usage rising from {mem_start:.2f}% to {mem_max:.2f}%"
+                    f"{f' and CPU reaching {cpu_max:.2f}%' if cpu_max is not None else ''}. "
+                    f"{f'Network errors also rose to {net_error_max:.0f}. ' if net_error_max is not None else ''}"
+                    f"{'ATM application logs recorded a TIMEOUT with memory-pressure indicators such as ThreadAbortException.' if timeout_seen else ''}"
+                )
+    # this would let client know if it an anomalie that would disrupt operations
+    operational_impact = "ATM responsiveness is degraded and transactions may fail under host resource exhaustion."
+
+    # recommended fix for anomalie
+    recommendation ="Investigate host memory pressure, review CPU and network health, and restart or rebalance the affected ATM process if resource contention persists."
+
+    return explanation, operational_impact, recommendation
+
+# A7 detailed analysis(recommended fix, operation impact, root cause)
+def A7(atm_id,  missing_field_count, malformed_metric, ooo):
+
+    # the anomalie explanation in details
+    explanation = (
+                    f"Malformed event ingestion was detected for {atm_id or 'the monitored stream'}, including "
+                    f"{missing_field_count} event with required fields missing"
+                    f"{' and out-of-order Kafka sequencing' if ooo else ''}"
+                    f"{' as well as non-numeric metric values in Prometheus data' if malformed_metric else ''}. "
+                    "This indicates data-quality issues in the ingestion or event pipeline."
+                  )
+    
+    # this would let client know if it an anomalie that would disrupt operations
+    operational_impact = "Monitoring accuracy is reduced, which may hide real operational issues or generate misleading diagnostics."
+
+    # recommended fix for anomalie
+    recommendation =  "Validate if schema design is followed, inspect event ordering in the Kafka pipeline, and correct malformed metric ingestion before relying analysis."
+
+    return explanation, operational_impact, recommendation
+
+def time_window(endtime_arg,time_delta):
+
+    # convert to numeric so i can subtract to get estimated start time
+    time_num = datetime.fromisoformat(endtime_arg)
+    start_time_num = time_num - timedelta(minutes = time_delta)
+
+    end_time = time_num.strftime('%Y-%m-%d %H:%M:%S')
+    # convert back to string
+    start_time = start_time_num.strftime('%Y-%m-%d %H:%M:%S')
+    
+    return start_time, end_time
+
+'''
+I have to delete the queries and field logic since i need too deliver the code quickly to the frontend, 
+most of those fields don't exist so i just have to go with what evidence gives even if some key fields might be missing
+'''
+def build_detailed_table(anomalies):
+    detailed_rows = []
+    
+    for a in anomalies:
+        
+        A_code = a['anomaly_type']
+        atm_id = a.get('atm_id')
+        raw = a.get("explanation")
+        exp = json.loads(raw)
+
+        if A_code == "A1":
+
+            end_time_arg = a['detected_at']         
+
+             # get start time and endtime(i would use 10 minutes as my estimated time delta for A1)
+            start_time, end_time = time_window(end_time_arg, 10)
+            
+            #explanation.json so i can quickly scan keys i need:
+            # '{"network_disconnect": true, "error_code_correct": true, "timeout": true, "kafka_offline": true, "kafka_host_unavailable": true, "terminal_timeout": true, "last_ts": "2026-03-30T07:59:00+00:00"}
+
+            # checklist
+            error_seen, max_timeout, kafka_offline, terminal_timeout = (False, 0, False, False) 
+
+            # use explanation to get keys 
+            error_seen = exp.get('error_code_correct')
+            max_timeout = 30000 if exp.get('timeout') else max_timeout
+            kafka_offline = exp.get("kafka_offline")
+            terminal_timeout = exp.get("terminal_timeout")
+
+            explanation, operation_impact, recommendation = A1(atm_id, error_seen, max_timeout, kafka_offline, terminal_timeout) 
+
+            detailed_rows.append({
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation
+            })        
+
+        elif A_code == "A2":
+            
+            end_time_arg = a['detected_at']
+
+            # get start time and endtime (i would use 60 minutes as my estimated time delta for A2(it seems like a long process for it to occur))
+            start_time, end_time = time_window(end_time_arg, 60)
+
+            #explanation.json so i can quickly scan keys i need:
+            #{"low": 2, "empty": 2, "kafka_oos": true, "kafka_dispense_error": true, "kafka_trtps_zero": true, "last_ts": "2026-03-30T07:59:00+00:00"}
+            
+            # checklist
+            low_count, empty_count, out_of_service, dispense_error, zero_tps = (0, 0, False, False, False) 
+            
+            # use explanation to get keys 
+            low_count = exp.get('low')
+            empty_count = exp.get('empty') 
+            out_of_service = exp.get("kafka_oos")
+            dispense_error = exp.get("kafka_dispense_error")
+            zero_tps = exp.get("kafka_trtps_zero")
+
+            explanation, operation_impact, recommendation = A2(atm_id, low_count, empty_count, out_of_service, dispense_error, zero_tps) 
+
+            detailed_rows.append({
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation
+            })        
+
+        elif A_code == "A3":
+
+            end_time_arg = a['detected_at']
+
+           
+            # get start time and endtime (i would use 100 minutes as my estimated time delta for A3(just memory usage takes 90 minutes, so i think the rest would be in 10)
+            start_time, end_time = time_window(end_time_arg, 100)
+
+            #explanation.json so i can quickly scan keys i need:
+            #'{"pod": "terminal-handler-pod-0", "points": [300000114.0, 299999099.0, 300000870.0, 299999128.0, 1040000000.0], "rel_increase": 2.4666749982422456, "frac_increase": 0.55}'
+
+            # checklist
+            mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen = (0, 0, 0, 0, False, False) 
+            points = exp.get("points")
+            
+            #gets first and last point
+            mem_start = points[0] if points else mem_start
+            mem_end =  points[-1] if points else mem_end
+
+            #no gc start in explanation so we have to skip that metric
+
+            high_cpu = True if exp.get("frac_increase") >= 0.5 else high_cpu
+            oom_seen = True
+
+            explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen) 
+
+            detailed_rows.append({
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation
+            })        
+
+
+        elif A_code == "A4":
+
+            end_time_arg = a['detected_at']
+
+            # get start time and endtime(i would use 5 minutes as my estimated time delta for A4(i think the guide specifically says under 5 minutes so this is more factual than estimate))
+            start_time, end_time = time_window(end_time_arg, 5)
+            
+            #explanation.json so i can quickly scan keys i need:
+            #'{"gcp_restarts": [{"ts": "2026-03-29T09:32:00+00:00", "count": 1.0} {"ts": "2026-03-29T09:34:00+00:00", "count": 2.0}], "total_startups": 3, "total_fatals": 3}'
+
+            # checklist
+            max_restart, fatal_count, startup_count = (0, 0, 0) 
+            
+            # get max count
+            restart = exp.get("gcp_restarts", [])
+            for r in restart:
+                count = r.get("count", 0)
+                if count > max_restart:
+                    max_restart = count
+            
+            fatal_count = exp.get('total_fatals')
+            startup_count = exp.get('total_startups')
+
+            explanation, operation_impact, recommendation = A4(max_restart, fatal_count, startup_count) 
+
+            detailed_rows.append({
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation
+            })        
+
+        elif A_code == "A5":
+
+            end_time_arg = a['detected_at']
+
+            # get start time and endtime (i would use 10 minutes as my estimated time delta for A5)
+            start_time, end_time = time_window(end_time_arg, 10)
+
+            #explanation.json so i can quickly scan keys i need:
+            #'{"spikes": [{"ts": "2026-03-29T09:30:00+00:00", "rt": 3200.0, "sr": 72.0, "fc": 8.0}, {"ts": "2026-03-29T09:31:00+00:00", "rt": 30000.0, "sr": 50.0, "fc": 14.0}], "timeouts": [{"ts": "2026-03-29T09:30:00+00:00", "txn": "txn-d95dbe59-dfe"}, {"ts": "2026-03-29T09:31:00+00:00", "txn": "txn-d95dbe59-dfe"}]}', 
+
+            # checklist
+            max_rt5, min_success, max_failures, timeout_seen = (0, None, 0, False) 
+
+            #get max response time
+            spikes = exp.get("spikes", [])
+            for s in spikes:
+                rt = s.get("rt", 0)
+                if rt > max_rt5:
+                    max_rt5 = rt
+                    
+            #get min success
+            spikes = exp.get("spikes", [])
+            for s in spikes:
+                sr = s.get("sr", 0)
+                if min_success is None or sr < min_success:
+                    print(min_success)
+                    min_success = sr
+                       
+            # get max failure
+            spikes = exp.get("spikes", [])
+            for s in spikes:
+                fc = s.get("fc", 0)
+                if fc > max_failures:
+                    max_failures = fc
+
+            timeout = exp.get("timeouts")
+            if timeout:
+                timeout_seen = True
+  
+            
+            explanation, operation_impact, recommendation = A5(atm_id, max_rt5, min_success, max_failures, timeout_seen) 
+
+            detailed_rows.append({
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation
+            })        
+        
+        elif A_code == "A6":
+
+            end_time_arg = a['detected_at']
+
+            # get start time and endtime (i would use 120 minutes as my estimated time delta for A6(it seems like a long process for it to occur))
+            start_time, end_time= time_window(end_time_arg, 120)
+
+            #explanation.json so i can quickly scan keys i need:
+            #'{"memory_samples": [10.06, 24.63, 19.09, 10.13, 35.13], "timeout": {"ts": "2026-03-29T09:45:00+00:00", "error_detail": "ThreadAbortException: memory pressure", "error_code": "ERR-MEM"}}'
+
+            # checklist
+            mem_start, mem_max, cpu_max, net_error_max, timeout_seen = (0, 0, 0, 0, False)
+            
+            #get mem start
+            spikes = exp.get("memory_samples", [])
+
+            mem_start = spikes[0] if spikes else mem_start
+
+            for s in spikes:
+                if s > mem_max:
+                    mem_max = s
+            
+            timeout = exp.get("timeout", {})
+            error = timeout.get("error_detail")
+            if error == "ThreadAbortException: memory pressure":        
+                timeout_seen = True        
+
+            explanation, operation_impact, recommendation = A6(atm_id, mem_start, mem_max, cpu_max, net_error_max, timeout_seen) 
+
+            detailed_rows.append({
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation
+            })        
+
+
+        elif A_code == "A7":
+             
+            end_time_arg = a['detected_at']
+
+            # get start time and endtime (i would use 10 minutes as my estimated time delta for A7)
+            start_time, end_time = time_window(end_time_arg, 10)
+            
+            #explanation.json so i can quickly scan keys i need:
+            #'{"prom_err_id": 2, "kafka_err_id": 1, "prom_ts": "2026-03-29T15:18:57.814751+00:00", "kafka_ts": "2026-03-29T15:18:57.667783+00:00"}'
+            
+            # checklist
+            missing_field_count, malformed_metric, ooo  = (0, False, False) 
+            
+            if exp.get("prom_err_id"):
+                missing_field_count += 1
+                malformed_metric = True
+
+            if exp.get("kafka_err_id"):
+                missing_field_count += 1
+                ooo = True
+            
+            explanation, operation_impact, recommendation = A7(atm_id,  missing_field_count, malformed_metric, ooo) 
+
+            detailed_rows.append({
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation
+            })        
+
+    return detailed_rows
+
+
+# create connection
+def _get_conn(DB_PATH):
+    try:
+        # Use central helper if available to get PRAGMAs applied
+        from backend.src.database.connection import get_db
+
+        conn = get_db(DB_PATH)
+    except Exception:
+        conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+# query db to get the table fields
+def query(DB_PATH, sql: str, params: tuple = ()):  # -> List[Dict[str, Any]]
+    conn = _get_conn(DB_PATH)
+    cur = conn.cursor()
+    try:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+# run analysis
+def main():
+    DB_PATH = "backend/custom_synthetic_data_sources/database/database.db"
+    sql_query = "SELECT * FROM anomalies"
+    anomalies = query(DB_PATH, sql_query)
+   
+   
+    ranked_anomaly= rank_algorithm(anomalies)
+    data = build_detailed_table(ranked_anomaly)
+    
+    return data 
