@@ -67,18 +67,6 @@ class AnomalyDetector:
         except Exception:
             return None
 
-    def is_monotonically_increasing(self, values: List[float]) -> bool:
-        if len(values) < 3:
-            return False
-        # strictly increasing
-        for i in range(len(values) - 1):
-            try:
-                if not (values[i] < values[i + 1]):
-                    return False
-            except Exception:
-                return False
-        return True
-
     def a1_detection(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         '''
         A1: Network Timeout Cascade (ATM-GB-0003, 10:00)
