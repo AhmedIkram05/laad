@@ -74,6 +74,7 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
   });
 
 
+
   return (
     <>
 
@@ -101,15 +102,15 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
           ) : (
             searchedAnomalies.map((a) => (
               <AnomalyCard
-                key={a.group_id}
-                id={a.representative_id}
+                key={a.id}
+                id={a.id}
                 title={a.title || "Title Unknown"}
                 atm_id={a.atm_id || "ATM ID Unknown"}
-                severity={a.representative_severity || "Severity Unknown"}
-                update_time={formatTime(a.latest_detected_at)}
+                severity={a.severity || "Severity Unknown"}
+                update_time={formatTime(a.detected_at)}
                 anomaly_type={a.anomaly_type}
                 is_starred={a.is_starred}
-                toggle_star={() => handleStar(a.representative_id)}
+                toggle_star={() => handleStar(a.id)}
               />
             ))
           )}

@@ -133,16 +133,16 @@ function AnomalyData() {
           {/* ATM Details */}
           <div className="anomaly-page__right-column">
             <SectionBox
-              title="ATM Issue"
+              title="Details:"
               rightSlot={
                 <div className="anomaly-info-badge">
                   <GoInfo size={16} />
                 </div>
               }
             >
-              <p><strong>ATM:</strong> {data.ATM_ID || "ATM ID Unknown."}</p>
-              <p><strong>Severity:</strong> {data.Severity || "Severity Unknown."}</p>
-              <p><strong>Time:</strong> {data.Event_Time || "Time Unknown."}</p>
+              <p><strong>ATM:</strong> {data.ATM_ID || "N/A"}</p>
+              <p><strong>Severity:</strong> {data.Severity || "Severity Unknown"}</p>
+              <p><strong>Time:</strong> {data.Event_Time || "Time Unknown"}</p>
             </SectionBox>
           </div>
         </div>

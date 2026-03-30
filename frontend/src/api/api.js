@@ -21,7 +21,7 @@ const request = async (endpoint, options = {}) => {
 
 
 export const fetchAnomalies = (is_active = 1) =>
-  request(`/api/anomalies?group_by=atm_anomaly&is_active=${is_active}`);
+  request(`/api/anomalies?is_active=${is_active}`);
 
 export const fetchDetailedAnalysis = (anomaly_type) =>
   request(`/api/analysis/detailed?Anomaly=${anomaly_type}`);

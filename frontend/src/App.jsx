@@ -26,7 +26,7 @@ function App() {
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/starred" element={<Starred />} />
                         <Route path="/completed" element={<Completed />} />
-                        <Route path="/data/:id" element={<AnomalyData />} />
+                        <Route path="/data/:anomaly_type" element={<AnomalyData />} />
                     </Route>
                 </Route>
             </Routes>
