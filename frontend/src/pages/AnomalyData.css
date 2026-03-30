@@ -1,0 +1,150 @@
+.anomaly-page { 
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  padding: 24px 32px;
+}
+
+.anomaly-page__inner {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.anomaly-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.anomaly-page__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.anomaly-page__subtitle {
+  margin: 10px 0px 10px;
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 1;
+  color: #404040;
+}
+
+.anomaly-page__button-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.anomaly-action-button {
+  width: 200px;
+  height: 50px;
+  padding: 10px 16px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.anomaly-action-button--primary,
+.anomaly-action-button--secondary {
+  background: var(--accent-primary);
+  border: 1px solid var(--bg-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.anomaly-action-button--primary:hover,
+.anomaly-action-button--secondary:hover {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-tertiary);
+}
+
+.buttonIcon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  font-size: large;
+}
+
+.anomaly-page__main-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+}
+
+.anomaly-page__left-column,
+.anomaly-page__right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.anomaly-section-box {
+  border: 1px solid var(--bg-secondary);
+  background-color: var(--accent-primary);
+  overflow: hidden;
+  min-height: 130px;
+}
+
+.anomaly-section-box__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 4px;
+}
+
+.anomaly-section-box__body {
+  padding: 0px 18px 18px;
+}
+
+h2 {
+  font-size: 18px;
+}
+
+.anomaly-info-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--bg-tertiary);
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+p {
+  margin-top: 5px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .anomaly-page__main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .anomaly-page {
+    padding: 20px 16px;
+  }
+
+  .anomaly-page__title {
+    font-size: 1.8rem;
+  }
+
+  .anomaly-page__button-group {
+    width: 100%;
+  }
+
+  .anomaly-action-button {
+    width: 100%;
+  }
+}

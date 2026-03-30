@@ -7,36 +7,31 @@ import Dashboard from "./pages/Dashboard";
 import Starred from "./pages/Starred";
 import Completed from "./pages/Completed";
 import AnomalyData from "./pages/AnomalyData";
-import Settings from "./pages/Settings";
 import Login from "./pages/Login";
-
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
-  return (
+    return (
+        <BrowserRouter>
+            <Routes>
+                {/* Login Pathway */}
+                <Route path="/login" element={<Login />} />
 
-    <BrowserRouter>
-      <Routes>
+                {/* Redirect Root to Dashboard */}
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        {/* Login Pathway */}
-        <Route path="/login" element={<Login />} />
-
-        {/* Redirect Root to Dashboard */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-        {/* Set Main Layout to Pages */}
-        <Route element={<MainLayout />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/starred" element={<Starred />} />
-          <Route path="/completed" element={<Completed />} />
-          <Route path="/data" element={<AnomalyData />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-
-      </Routes>
-    </BrowserRouter>
-
-  );
+                {/* Set Main Layout to Pages */}
+                <Route element={<ProtectedRoute />}>
+                    <Route element={<MainLayout />}>
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/starred" element={<Starred />} />
+                        <Route path="/completed" element={<Completed />} />
+                        <Route path="/data/:id" element={<AnomalyData />} />
+                    </Route>
+                </Route>
+            </Routes>
+        </BrowserRouter>
+    );
 }
-
 
 export default App;

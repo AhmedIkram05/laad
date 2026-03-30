@@ -3,6 +3,6 @@
     width: 45px;
     font-size: x-large;
     border: none;
-    background-color: var(--bg-secondary);
+    background-color: var(--accent-primary);
     cursor: pointer;
 }

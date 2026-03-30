@@ -2,7 +2,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 
 /* Import Icons */
-import { GoHome, GoStar, GoCheckCircle, GoSignOut, GoTools } from "react-icons/go";
+import { GoHome, GoStar, GoCheckCircle, GoSignOut } from "react-icons/go";
 
 /* Import Styles */
 import './SideNavbar.css'
@@ -28,8 +28,6 @@ function SideNavbar() {
 
       <div className="settingsContainer">
         <div className="buttonContainer">
-            <button className={`button ${active("/settings") ? "active" : ""}`} onClick={() => navigate("/settings")}>
-          <span className="icon"><GoTools/></span><span className="text">Settings</span></button>
             <button className="button" onClick={() => navigate("/login")}>
           <span className="icon"><GoSignOut/></span><span className="text">Log Out</span></button>
         </div>

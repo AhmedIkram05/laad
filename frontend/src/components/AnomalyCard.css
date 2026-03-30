@@ -3,8 +3,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;   
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--bg-tertiary);
+    background-color: var(--accent-primary);
+    border: 1px solid var(--bg-secondary);
+}
+
+.card:hover {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 
 .body {
@@ -50,7 +55,9 @@
     height: 35px;
     width: 70px;
     background-color: var(--bg-primary);
-    transition: background-color 0.2s;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    border: 1px solid rgba(21, 21, 21, 0.8);
+    border-radius: 2px;
     cursor: pointer;
 }
 

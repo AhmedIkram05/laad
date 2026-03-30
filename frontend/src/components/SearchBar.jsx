@@ -10,7 +10,7 @@ function SearchBar({ search, setSearch, filterBy, setFilterBy }) {
   // Filtering Options
   const filterOptions = [
     { label: "Title", value: "title" },
-    { label: "ID", value: "ID" }
+    { label: "ATM ID", value: "atm_id" }
   ];
 
 

@@ -21,6 +21,7 @@
   width: 100%;
   padding: 10px 14px;
   padding-left: 35px;
+  background-color: var(--bg-primary);
   border: 1px solid var(--bg-tertiary);
   font-size: 14px;
 }
