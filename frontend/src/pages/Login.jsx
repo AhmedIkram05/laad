@@ -1,6 +1,7 @@
 /* Import Libraries */
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
 
 /* Import Styles */
 import "./Login.css";
@@ -16,6 +17,8 @@ function Login() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+
+    const { login } = useAuth();
 
     // This is used to handle logins in the form
     const handleLogin = async () => {
@@ -49,8 +52,8 @@ function Login() {
                 return;
             }
 
-            localStorage.setItem("jwt", data.access_token);
-            localStorage.setItem("role", data.role);
+            // store token via AuthProvider (it will fetch /auth/me API endpoint)
+            login(data.access_token);
             navigate("/dashboard");
         } catch {
             setError("Could not reach the server. Please try again.");

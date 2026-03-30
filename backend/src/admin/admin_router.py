@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+import sqlite3
 
 from backend.src.auth.auth_router import get_db_connection, require_admin
 from backend.src.admin.cleanup import run_cleanup
@@ -19,6 +20,12 @@ ALLOWED_RETENTION_DAYS = [7, 30, 60, 90, 365]
 
 class RetentionUpdateRequest(BaseModel):
     days: int
+
+
+class AdminCreateUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
 
 
 @router.get("/retention", dependencies=[Depends(require_admin)])
@@ -55,3 +62,30 @@ def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connec
 def trigger_cleanup():
     """Admin only. Manually triggers the cleanup job immediately."""
     return run_cleanup()
+
+
+@router.post("/users", dependencies=[Depends(require_admin)], status_code=201)
+def admin_create_user(request: AdminCreateUserRequest, conn=Depends(get_db_connection), current_user: dict = Depends(require_admin)):
+    """Admin-only endpoint to create persistent users (role may be 'admin' or 'user')."""
+    if request.role not in ("admin", "user"):
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'")
+
+    try:
+        import bcrypt
+        password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+    except Exception:
+        raise HTTPException(status_code=500, detail="bcrypt unavailable")
+
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (request.username, password_hash, request.role),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="username already exists")
+
+    # Return created user info
+    user_id = cur.lastrowid if cur is not None else None
+    logger.info(f"Admin '{current_user.get('sub')}' created user '{request.username}' role={request.role}")
+    return {"id": user_id, "username": request.username, "role": request.role}

@@ -225,3 +225,33 @@ def test_register_bad_payload(client_and_conn):
     # Short password
     resp2 = client.post("/auth/register", json={"username": "u2", "password": "123"})
     assert resp2.status_code == 400
+
+
+
+
+
+def test_admin_create_user_endpoint(client_and_conn):
+    client, conn = client_and_conn
+    # Login admin
+    resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+    assert resp.status_code == 200
+    admin_token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # Create a new admin via admin endpoint
+    r = client.post("/admin/users", json={"username": "created_admin", "password": "adminpass", "role": "admin"}, headers=headers)
+    assert r.status_code == 201, r.text
+    data = r.json()
+    assert data["username"] == "created_admin"
+    assert data["role"] == "admin"
+
+    # Non-admin cannot create
+    # First login as a normal user
+    client.post("/auth/register", json={"username": "plainuser", "password": "pass123"})
+    resp2 = client.post("/auth/login", data={"username": "plainuser", "password": "pass123"})
+    assert resp2.status_code == 200
+    user_token = resp2.json()["access_token"]
+    headers_user = {"Authorization": f"Bearer {user_token}"}
+
+    forbidden = client.post("/admin/users", json={"username": "nope", "password": "x", "role": "user"}, headers=headers_user)
+    assert forbidden.status_code == 403
