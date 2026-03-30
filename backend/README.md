@@ -1,6 +1,6 @@
 # Backend — NCR Atleos Log Aggregation Platform
 
-## Setup
+## Setup (if needed?)
 
 ```bash
 python -m venv .venv
