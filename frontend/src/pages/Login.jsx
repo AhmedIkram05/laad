@@ -64,6 +64,7 @@ function Login() {
             <div className="loginBox">
                 <h1 className="loginTitle">Log In</h1>
 
+                {searchParams.get("registered") === "1" && <p className="loginSuccess">Account created. Please sign in.</p>}
                 {error && <p className="loginError">{error}</p>}
 
                 {/* Username */}
@@ -74,10 +75,13 @@ function Login() {
                 <label htmlFor="password">Password:</label>
                 <input type="password" id="password" name="password" className="loginInput" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
 
-                {/* Login Button */}
+                {/* Login & Sign Up Buttons */}
                 <div className="loginButtonContainer">
                     <button className="loginButton" onClick={handleLogin}>
                         Login
+                    </button>
+                    <button className="loginButton" onClick={() => navigate('/signup')}>
+                        Create account
                     </button>
                 </div>
             </div>

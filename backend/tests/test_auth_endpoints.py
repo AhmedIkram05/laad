@@ -193,3 +193,35 @@ def test_redeem_expired_and_used_token_and_created_by(client_and_conn):
     row = conn.execute("SELECT created_by FROM otp_tokens WHERE token = ?", (token,)).fetchone()
     assert row is not None
     assert row["created_by"] is not None
+
+
+def test_register_success(client_and_conn):
+    client, conn = client_and_conn
+    resp = client.post("/auth/register", json={"username": "newuser", "password": "secret123"})
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["username"] == "newuser"
+
+    # Verify DB row created and default role applied
+    row = conn.execute("SELECT username, role FROM users WHERE username = ?", ("newuser",)).fetchone()
+    assert row is not None
+    assert row["username"] == "newuser"
+    assert row["role"] == "user"
+
+
+def test_register_duplicate_username(client_and_conn):
+    client, _ = client_and_conn
+    # 'admin' is seeded by init_db
+    resp = client.post("/auth/register", json={"username": "admin", "password": "whatever"})
+    assert resp.status_code == 409
+
+
+def test_register_bad_payload(client_and_conn):
+    client, _ = client_and_conn
+    # Missing password (Pydantic will return 422 for missing required fields)
+    resp = client.post("/auth/register", json={"username": "useronly"})
+    assert resp.status_code == 422
+
+    # Short password
+    resp2 = client.post("/auth/register", json={"username": "u2", "password": "123"})
+    assert resp2.status_code == 400

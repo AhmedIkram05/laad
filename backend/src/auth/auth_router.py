@@ -19,6 +19,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
+import sqlite3
 
 from backend.src.database.connection import get_db
 
@@ -85,6 +86,11 @@ def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
 # Request models
 class OtpGenerateRequest(BaseModel):
     role: str = "user"
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
 
 
 # Endpoints
@@ -191,3 +197,34 @@ def redeem_otp_token(token: str, conn=Depends(get_db_connection)):
     jwt_token = create_access_token(username=guest_username, role=row["role"])
     logger.info(f"OTP redeemed, guest session created (role={row['role']})")
     return {"access_token": jwt_token, "token_type": "bearer", "role": row["role"]}
+
+
+
+@router.post("/register", status_code=201)
+def register(request: RegisterRequest, conn=Depends(get_db_connection)):
+    """Create a new user account.
+
+    Minimal fields required: `username`, `password`.
+    Does not auto-login; returns HTTP 201 on success.
+    """
+    # Basic validation
+    if not request.username or not request.password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="username and password are required")
+
+    if len(request.password) < 6:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="password must be at least 6 characters")
+
+    # Hash the password and insert the user
+    password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (request.username, password_hash, "user"),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="username already exists")
+
+    user_id = cur.lastrowid if cur is not None else None
+    logger.info(f"New user created: '{request.username}' (id={user_id})")
+    return {"message": "Account created successfully", "username": request.username, "id": user_id}

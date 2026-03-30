@@ -8,6 +8,7 @@ import Starred from "./pages/Starred";
 import Completed from "./pages/Completed";
 import AnomalyData from "./pages/AnomalyData";
 import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
             <Routes>
                 {/* Login Pathway */}
                 <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
 
                 {/* Redirect Root to Dashboard */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
