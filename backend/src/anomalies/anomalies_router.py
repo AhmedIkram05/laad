@@ -176,7 +176,16 @@ def listAnomalies(
                             WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0
                         END DESC, a5.detected_at DESC
                         LIMIT 1
-                    ) AS correlation_id
+                    ) AS correlation_id,
+                    (
+                        SELECT a6.is_starred FROM anomalies a6
+                        WHERE a6.atm_id = g.atm_id AND a6.anomaly_type = g.anomaly_type
+                        ORDER BY CASE UPPER(a6.severity)
+                            WHEN 'CRITICAL' THEN 4 WHEN 'HIGH' THEN 3
+                            WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0
+                        END DESC, a6.detected_at DESC
+                        LIMIT 1
+                    ) AS is_starred
                 FROM groups g
                 ORDER BY g.latest_detected_at DESC
                 LIMIT ? OFFSET ?
@@ -264,8 +273,10 @@ def resolveAnomaly(
     if not row:
         raise HTTPException(status_code=404, detail="Anomaly not found")
     if not row["is_active"]:
-        raise HTTPException(status_code=400, detail="Anomaly is already resolved")
-    conn.execute("UPDATE anomalies SET is_active = 0 WHERE id = ?", (anomalyId,))
+        raise HTTPException(
+            status_code=400, detail="Anomaly is already resolved")
+    conn.execute(
+        "UPDATE anomalies SET is_active = 0 WHERE id = ?", (anomalyId,))
     conn.commit()
     logger.info(f"Anomaly {anomalyId} resolved by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_active": 0, "message": "Anomaly resolved"}
@@ -282,7 +293,8 @@ def submitFeedback(
     Overwrites any existing rating — one rating per anomaly.
     """
     if request.rating not in ("LIKE", "DISLIKE"):
-        raise HTTPException(status_code=400, detail="Rating must be 'LIKE' or 'DISLIKE'")
+        raise HTTPException(
+            status_code=400, detail="Rating must be 'LIKE' or 'DISLIKE'")
     row = conn.execute(
         "SELECT id FROM anomalies WHERE id = ?", (anomalyId,)
     ).fetchone()
@@ -316,5 +328,6 @@ def toggleStar(
         (newStarred, anomalyId)
     )
     conn.commit()
-    logger.info(f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")
+    logger.info(
+        f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_starred": newStarred}
