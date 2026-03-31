@@ -1,13 +1,15 @@
+
+////////////////////////////////////////////////////////////////////////////////
+/////      TEMPLATE FOR ANOMALY DETAIL CARDS DISPLAYED IN LISTS            /////
+////////////////////////////////////////////////////////////////////////////////
+
+
 /* Import Libraries */
 import { useNavigate } from "react-router-dom";
-
-/* Import Components */
-import StarIcon from "../components/StarIcon";
-
-/* Import Icons */
 import { GoAlert } from "react-icons/go";
 
-/* Import Styles */
+/* Import Components + Styles */
+import StarIcon from "../components/StarIcon";
 import "./AnomalyCard.css";
 
 
@@ -25,7 +27,7 @@ function AnomalyCard({ id, title, atm_id, severity, update_time, anomaly_type, i
           <h3 className="anomalyCardTitle">{title}</h3>
         </div>
 
-        {/* ATM ID, Count, Updated Time */}
+        {/* ATM ID, Severity, Updated Time */}
         <div className="details">
           <p>{atm_id}</p>
           <div className="updates">
@@ -49,6 +51,5 @@ function AnomalyCard({ id, title, atm_id, severity, update_time, anomaly_type, i
 
   );
 }
-
 
 export default AnomalyCard;
