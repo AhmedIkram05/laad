@@ -143,9 +143,9 @@ def seed_retention_config(cursor):
     now_iso = datetime.now(timezone.utc).isoformat()
     cursor.execute(
         "INSERT INTO retention_config (id, retention_days, updated_at) VALUES (1, ?, ?)",
-        (30, now_iso)
+        (7, now_iso)
     )
-    logging.info("Seeded retention_config (id=1, retention_days=30)")
+    logging.info("Seeded retention_config (id=1, retention_days=7)")
 
 
 if __name__ == "__main__":

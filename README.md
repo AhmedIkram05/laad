@@ -1,16 +1,75 @@
-# React + Vite
+# Log Aggregation Analysis and Diagnostics Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+User manual for running and testing the frontend and backend of the log aggregration, analysis and diagnostics system for NCR Atleos.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Python 3.8+ (virtual environment recommended)
+- Node.js (v16+ recommended) and `npm`
+- `pip` for Python packages
 
-## React Compiler
+## Backend (Python)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Setup
 
-## Expanding the ESLint configuration
+From the repository root or the `backend` directory:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+### Running the Pipeline
+
+Initialises the database, generates 24h of synthetic data, and ingests all log sources into the database.
+
+```bash
+# Must be run from the backend directory
+python main.py
+```
+
+### Running the API Server
+
+Run the pipeline first to populate the database, then start the API server from the repo root:
+
+```bash
+# Must be run from the root directory
+uvicorn backend.src.api.server:app --reload --port 8000
+```
+
+API docs: <http://localhost:8000/docs>
+
+### Default Admin Account
+
+Seeded automatically on first `python -m backend.main` for development purposes:
+
+- **Username:** admin
+- **Password:** admin
+
+### Running Tests
+
+From the repository root run:
+
+```bash
+pytest
+```
+
+Current test status: 34/34 passing.
+
+## Frontend (React + Vite)
+
+### Setup
+
+```bash
+cd frontend
+npm install
+```
+
+### Development
+
+```bash
+npm run dev
+```
+
+The frontend development server runs via Vite (default port 5173). Open the app in your browser and ensure the backend API is running at <http://localhost:8000> for full functionality.
