@@ -1,3 +1,10 @@
+
+////////////////////////////////////////////////////////////////////////////////
+/////      TEMPLATE FOR ANOMALY LIST PAGES, RECEIVES A PAGE AND FILTER     /////
+/////      AND DISPLAYS RELEVANT ANOMALIES                                 /////
+////////////////////////////////////////////////////////////////////////////////
+
+
 /* Import Libraries */
 import { useState, useEffect } from "react";
 import { GoIssueDraft } from "react-icons/go";
@@ -8,7 +15,8 @@ import AnomalyCard from "../components/AnomalyCard";
 import "./AnomalyListPage.css";
 
 /* Other Imports */
-import { fetchAnomalies, toggleStar } from "../api/api";
+import { fetchAnomalies, fetchDetailedAnalysis, toggleStar } from "../api/api";
+
 
 function AnomalyListPage({ title, filter, isActive = 1 }) {
   const [search, setSearch] = useState(""); // Search User Input Text
@@ -19,16 +27,36 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
 
 
   useEffect(() => {
-    // Fetch Anomaly Data
+    // Fetch Anomaly Data: Uses GET /anomalies for data
+    // and GET /detailed analysis for ordering
     const load = async () => {
       try {
-        const json = await fetchAnomalies(isActive);
+        const [anomalyRes, analysisRes] = await Promise.all([
+          fetchAnomalies(isActive),
+          fetchDetailedAnalysis()
+        ])
+        let anomaliesData = anomalyRes.data;
+        const analysisData = analysisRes.data;
 
         // Filter Data for Specific Page
-        const filtered = filter ? json.data.filter(filter) : json.data;
+        if (filter) {
+          anomaliesData = anomaliesData.filter(filter);
+        }
 
-        setAnomalies(filtered);
-        setTotal(json.total);
+        // Order anomalies by analysis algorithm
+        const orderMap = {};
+        analysisData.forEach((item, index) => {
+          orderMap[item.Anomaly] = index;
+        });
+
+        const sorted = [...anomaliesData].sort((a,b) => {
+          const orderA = orderMap[a.anomaly_type] ?? Infinity;
+          const orderB = orderMap[b.anomaly_type] ?? Infinity;
+          return orderA - orderB;
+        })
+
+        setAnomalies(sorted);
+        setTotal(anomalyRes.total);
       } catch (err) {
         console.error("Failed to fetch anomalies.", err);
       } finally {
@@ -50,35 +78,35 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
   };
 
 
-    // Calculate Time Updated
-    const formatTime = (timestamp) => {
-        const diff = Math.floor((Date.now() - new Date(timestamp)) / 60000);
-        if (diff < 1) return "Just now";
-        if (diff < 60) return `${diff} mins ago`;
-        const hours = Math.floor(diff / 60);
-        return `${hours} hrs ago`;
-    };
+  // Calculate Time Updated
+  const formatTime = (timestamp) => {
+    const diff = Math.floor((Date.now() - new Date(timestamp)) / 60000);
+    if (diff < 1) return "Just now";
+    if (diff < 60) return `${diff} mins ago`;
+    const hours = Math.floor(diff / 60);
+    return `${hours} hrs ago`;
+  };
 
 
-    // Search Bar Logic
-    const searchedAnomalies = anomalies.filter((a) => {
-        const value = String(a[filterBy] ?? "").toLowerCase();
-        return value.includes(search.toLowerCase());
-    });
+  // Search Bar Logic
+  const searchedAnomalies = anomalies.filter((a) => {
+    const value = String(a[filterBy] ?? "").toLowerCase();
+    return value.includes(search.toLowerCase());
+  });
 
 
-    return (
-      <>
-        {/* Search and Filter Bar */}
-        <SearchBar search={search} setSearch={setSearch} filterBy={filterBy} setFilterBy={setFilterBy} />
+  return (
+    <>
+      {/* Search and Filter Bar */}
+      <SearchBar search={search} setSearch={setSearch} filterBy={filterBy} setFilterBy={setFilterBy} />
 
-        {/* Main Page Content */}
-        <div className="mainContainer">
-          {/* Title and Count */}
-          <div className="titleContainer">
-            <h1>{title}</h1>
-            <h2>({total})</h2>
-          </div>
+      {/* Main Page Content */}
+      <div className="mainContainer">
+        {/* Title and Count */}
+        <div className="titleContainer">
+          <h1>{title}</h1>
+          <h2>({total})</h2>
+        </div>
 
         {/* Anomaly Cards (and Loading) */}
         <div className="anomalyContainer">
@@ -108,10 +136,12 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
               />
             )
           )}
-                </div>
-            </div>
-        </>
-    );
+        </div>
+      </div>
+
+    </>
+
+  );
 }
 
 export default AnomalyListPage;
