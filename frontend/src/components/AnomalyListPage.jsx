@@ -23,7 +23,6 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
   const [filterBy, setFilterBy] = useState("title"); // Filter Field
   const [anomalies, setAnomalies] = useState([]); // Grouped Anomaly Data
   const [loading, setLoading] = useState(true); // Loading Indicator
-  const [total, setTotal] = useState(0); // Anomaly Count
 
 
   useEffect(() => {
@@ -56,7 +55,6 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
         })
 
         setAnomalies(sorted);
-        setTotal(anomalyRes.total);
       } catch (err) {
         console.error("Failed to fetch anomalies.", err);
       } finally {
@@ -64,14 +62,14 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
       }
     };
       load();
-  }, [filter]);
+  }, [filter, isActive]);
 
 
   // Handle Toggling Starred
   const handleStar = async (id) => {
     try {
       await toggleStar(id);
-      setAnomalies((prev) => prev.map((a) => (a.representative_id === id ? { ...a, is_starred: !a.is_starred } : a)));
+      setAnomalies((prev) => prev.map((a) => (a.id === id ? { ...a, is_starred: !a.is_starred } : a)));
     } catch (err) {
       console.error("Failed to star anomaly.", err);
     }
@@ -105,7 +103,7 @@ function AnomalyListPage({ title, filter, isActive = 1 }) {
         {/* Title and Count */}
         <div className="titleContainer">
           <h1>{title}</h1>
-          <h2>({total})</h2>
+          <h2>({searchedAnomalies.length})</h2>
         </div>
 
         {/* Anomaly Cards (and Loading) */}
