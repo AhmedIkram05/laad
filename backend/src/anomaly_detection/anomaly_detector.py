@@ -357,10 +357,16 @@ class AnomalyDetector:
 
         # Fire if GCP shows >=2 restarts AND terminal handler confirms crash evidence
         if len(gcp_restarts) >= 2 and (total_startups >= 3 or total_fatals >= 2):
+            # Prefer using detection on the last restart sample timestamp
+            detected_ts = None
+            try:
+                detected_ts = gcp_restarts[-1].get("ts") or last_ts
+            except Exception:
+                detected_ts = last_ts
             anomalies.append({
                 "anomaly_type": "A4",
                 "atm_id": None,
-                "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
+                "detected_at": detected_ts or datetime.now(timezone.utc).isoformat(),
                 "severity": "MAJOR",
                 "title": "Container restart loop causing instability.",
                 "explanation": json.dumps({
@@ -585,22 +591,54 @@ class AnomalyDetector:
                     }),
                 })
 
-        # 2) ingestion_errors pairs -> try to attribute to ATM via kafka raw_input JSON
+        # 2) ingestion_errors pairs -> try to attribute to ATM via kafka/prom raw_input
         seen_global_pair = False
         for pair in paired_errs:
             kraw = pair["kafka"]["raw_input"]
+            praw = pair["prom"]["raw_input"]
             attributed_atm = None
+            detected_iso = None
+            # Try to parse Kafka raw_input as JSON to extract atm_id/timestamp from ingestion_errors table
             try:
-                parsed = json.loads(kraw) if isinstance(kraw, str) else None
-                if isinstance(parsed, dict):
-                    attributed_atm = parsed.get("atm_id") or parsed.get("entity_id")
+                if isinstance(kraw, str) and kraw.strip().startswith("{"):
+                    parsed_k = json.loads(kraw)
+                    if isinstance(parsed_k, dict):
+                        attributed_atm = parsed_k.get("atm_id") or parsed_k.get("entity_id") or attributed_atm
+                        detected_iso = detected_iso or parsed_k.get("timestamp")
+                else:
+                    # fallback: look for an ISO-like timestamp at start
+                    if isinstance(kraw, str) and kraw.strip():
+                        first = kraw.split(',')[0].strip()
+                        if first:
+                            detected_iso = detected_iso or first
             except Exception:
-                attributed_atm = None
+                pass
+            # Parse Prometheus raw_input (CSV) to get original timestamp if possible from ingestion_errors table
+            try:
+                if isinstance(praw, str) and praw.strip().startswith('{'):
+                    parsed_p = json.loads(praw)
+                    if isinstance(parsed_p, dict):
+                        attributed_atm = attributed_atm or parsed_p.get("atm_id") or parsed_p.get("entity_id")
+                        detected_iso = detected_iso or parsed_p.get("timestamp")
+                elif isinstance(praw, str) and praw.strip():
+                    first = praw.split(',')[0].strip()
+                    if first:
+                        detected_iso = detected_iso or first
+            except Exception:
+                pass
+            # finalize detected_at: prefer original event timestamp, then ingestion timestamp
+            detected_at_val = None
+            try:
+                detected_at_val = detected_iso or (pair["kafka"]["ts"].isoformat() if pair["kafka"]["ts"] else (pair["prom"]["ts"].isoformat() if pair["prom"]["ts"] else None))
+            except Exception:
+                detected_at_val = None
+
+            detected_iso_final = detected_at_val or last_ts or datetime.now(timezone.utc).isoformat()
 
             anomalies.append({
                 "anomaly_type": "A7",
                 "atm_id": attributed_atm,
-                "detected_at": (pair["kafka"]["ts"].isoformat() if pair["kafka"]["ts"] else last_ts) or datetime.now(timezone.utc).isoformat(),
+                "detected_at": detected_iso_final,
                 "severity": "HIGH",
                 "title": "Ingestion errors: Prometheus + Kafka failures detected in same time window.",
                 "explanation": json.dumps({
