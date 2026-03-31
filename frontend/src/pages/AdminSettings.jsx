@@ -10,6 +10,7 @@ function AdminSettings() {
 
     const [cUsername, setCUsername] = useState("");
     const [cPassword, setCPassword] = useState("");
+    const [cPasswordConfirm, setCPasswordConfirm] = useState("");
     const [cRole, setCRole] = useState("user");
     const [createMsg, setCreateMsg] = useState("");
     const [createErr, setCreateErr] = useState("");
@@ -136,6 +137,14 @@ function AdminSettings() {
             setCreateErr("username and password required");
             return;
         }
+        if (!cPasswordConfirm) {
+            setCreateErr("confirm password required");
+            return;
+        }
+        if (cPassword !== cPasswordConfirm) {
+            setCreateErr("passwords do not match");
+            return;
+        }
         setCreating(true);
         try {
             const res = await fetch(`${API_BASE_URL}/admin/users`, {
@@ -144,7 +153,7 @@ function AdminSettings() {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${jwt}`,
                 },
-                body: JSON.stringify({ username: cUsername, password: cPassword, role: cRole }),});
+                body: JSON.stringify({ username: cUsername, password: cPassword, confirm_password: cPasswordConfirm, role: cRole }),});
             const data = await res.json();
             if (!res.ok) {
                 setCreateErr(data.detail ?? data.message ?? "Create failed");
@@ -152,6 +161,7 @@ function AdminSettings() {
             setCreateMsg(`Created user ${data.username} (${data.role})`);
             setCUsername("");
             setCPassword("");
+            setCPasswordConfirm("");
         } catch (err) {
             setCreateErr("Could not reach server");
         } finally {
@@ -204,6 +214,9 @@ function AdminSettings() {
 
                         <label>Password:</label>
                         <input type="password" className="loginInput" value={cPassword} onChange={(e) => setCPassword(e.target.value)} />
+
+                        <label>Confirm Password:</label>
+                        <input type="password" className="loginInput" value={cPasswordConfirm} onChange={(e) => setCPasswordConfirm(e.target.value)} />
 
                         <label>Role:</label>
                         <select value={cRole} onChange={(e) => setCRole(e.target.value)} className="loginInput">

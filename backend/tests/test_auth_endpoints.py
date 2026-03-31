@@ -153,7 +153,7 @@ def test_admin_create_user_endpoint(client_and_conn):
     headers = {"Authorization": f"Bearer {admin_token}"}
 
     # Create a new admin via admin endpoint
-    r = client.post("/admin/users", json={"username": "created_admin", "password": "adminpass", "role": "admin"}, headers=headers)
+    r = client.post("/admin/users", json={"username": "created_admin", "password": "adminpass", "confirm_password": "adminpass", "role": "admin"}, headers=headers)
     assert r.status_code == 201, r.text
     data = r.json()
     assert data["username"] == "created_admin"
@@ -167,5 +167,5 @@ def test_admin_create_user_endpoint(client_and_conn):
     user_token = resp2.json()["access_token"]
     headers_user = {"Authorization": f"Bearer {user_token}"}
 
-    forbidden = client.post("/admin/users", json={"username": "nope", "password": "x", "role": "user"}, headers=headers_user)
+    forbidden = client.post("/admin/users", json={"username": "nope", "password": "x", "confirm_password": "x", "role": "user"}, headers=headers_user)
     assert forbidden.status_code == 403

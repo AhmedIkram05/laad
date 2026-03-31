@@ -25,6 +25,7 @@ class RetentionUpdateRequest(BaseModel):
 class AdminCreateUserRequest(BaseModel):
     username: str
     password: str
+    confirm_password: str
     role: str = "user"
 
 
@@ -76,6 +77,9 @@ def trigger_wipe():
 @router.post("/users", dependencies=[Depends(require_admin)], status_code=201)
 def admin_create_user(request: AdminCreateUserRequest, conn=Depends(get_db_connection), current_user: dict = Depends(require_admin)):
     """Admin-only endpoint to create persistent users (role may be 'admin' or 'user')."""
+    # Ensure password confirmation matches
+    if request.password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="passwords do not match")
     if request.role not in ("admin", "user"):
         raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'")
 
