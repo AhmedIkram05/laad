@@ -61,33 +61,6 @@ def test_admin_login_and_me(client):
     assert me.json()["role"] == "admin"
 
 
-def test_otp_generate_redeem_and_guests(client):
-    # Admin login
-    resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
-    assert resp.status_code == 200
-    admin_token = resp.json()["access_token"]
-    admin_headers = {"Authorization": f"Bearer {admin_token}"}
-
-    # Generate a user OTP
-    gen = client.post("/auth/otp/generate", json={"role": "user"}, headers=admin_headers)
-    assert gen.status_code == 200, gen.text
-    otp = gen.json()["token"]
-
-    # Redeem the OTP
-    redeem = client.post("/auth/otp/redeem", params={"token": otp})
-    assert redeem.status_code == 200, redeem.text
-    guest_token = redeem.json()["access_token"]
-    assert redeem.json()["role"] == "user"
-
-    # Redeeming again should return 410
-    redeem_again = client.post("/auth/otp/redeem", params={"token": otp})
-    assert redeem_again.status_code == 410
-
-    # Guest must not be able to generate OTPs (admin-only)
-    guest_headers = {"Authorization": f"Bearer {guest_token}"}
-    forbidden = client.post("/auth/otp/generate", json={"role": "user"}, headers=guest_headers)
-    assert forbidden.status_code == 403
-
 
 @pytest.fixture
 def client_and_conn(tmp_path):
@@ -134,65 +107,6 @@ def test_missing_and_malformed_token(client_and_conn):
     r2 = client.get("/auth/me", headers={"Authorization": "Bearer not_a_jwt"})
     assert r2.status_code == 401
 
-
-def test_generate_invalid_role_and_nonexistent_redeem(client_and_conn):
-    client, conn = client_and_conn
-    # Login admin
-    resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
-    assert resp.status_code == 200
-    admin_token = resp.json()["access_token"]
-    headers = {"Authorization": f"Bearer {admin_token}"}
-
-    # Invalid role
-    gen = client.post("/auth/otp/generate", json={"role": "invalid_role"}, headers=headers)
-    assert gen.status_code == 400
-
-    # Redeem nonexistent token
-    redeem = client.post("/auth/otp/redeem", params={"token": "nope"})
-    assert redeem.status_code == 404
-
-
-def test_redeem_expired_and_used_token_and_created_by(client_and_conn):
-    client, conn = client_and_conn
-    # Login admin
-    resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
-    admin_token = resp.json()["access_token"]
-    headers = {"Authorization": f"Bearer {admin_token}"}
-
-    # Generate a token (valid)
-    gen = client.post("/auth/otp/generate", json={"role": "user"}, headers=headers)
-    assert gen.status_code == 200
-    token = gen.json()["token"]
-
-    # Force-create an expired token
-    expired = "expiredtok123"
-    past = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
-    conn.execute(
-        "INSERT INTO otp_tokens (token, role, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-        (expired, "user", 1, datetime.now(timezone.utc).isoformat(), past)
-    )
-    conn.commit()
-
-    r = client.post("/auth/otp/redeem", params={"token": expired})
-    assert r.status_code == 410
-
-    # Force-create a used token
-    used = "usedtok123"
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        "INSERT INTO otp_tokens (token, role, created_by, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (used, "user", 1, now, (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(), now)
-    )
-    conn.commit()
-
-    r2 = client.post("/auth/otp/redeem", params={"token": used})
-    assert r2.status_code == 410
-
-    # Ensure the generated token has created_by populated (admin id exists)
-    # We previously generated `token` via the API; fetch it
-    row = conn.execute("SELECT created_by FROM otp_tokens WHERE token = ?", (token,)).fetchone()
-    assert row is not None
-    assert row["created_by"] is not None
 
 
 def test_register_success(client_and_conn):

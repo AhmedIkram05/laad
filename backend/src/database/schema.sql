@@ -84,24 +84,12 @@ CREATE TABLE IF NOT EXISTS users (
     created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
 
--- 7. OTP TOKENS: One-time access tokens (admin generates OTP in settings --> sends to guest)
-CREATE TABLE IF NOT EXISTS otp_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    token TEXT NOT NULL UNIQUE,
-    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('admin', 'user')),
-    created_by INTEGER REFERENCES users(id),
-    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    expires_at DATETIME NOT NULL,
-    used_at DATETIME                -- NULL = not yet redeemed
-);
-
--- 8. RETENTION CONFIG: Configuration for data retention rules
+-- 7. RETENTION CONFIG: Configuration for data retention rules
 CREATE TABLE IF NOT EXISTS retention_config (
     id INTEGER PRIMARY KEY CHECK (id = 1),
-    retention_days INTEGER NOT NULL DEFAULT 30,
+    retention_days INTEGER NOT NULL DEFAULT 7,
     updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
-
 
 
 -- ==============================================================================
@@ -111,9 +99,6 @@ CREATE TABLE IF NOT EXISTS retention_config (
 
 -- Users: allow fast lookup by username for authentication and lookups
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-
--- OTP Tokens: allow fast lookup by token for redemption / validation
-CREATE INDEX IF NOT EXISTS idx_otp_token ON otp_tokens(token);
 
 -- Events: allow fast lookups by correlation id when tracing a transaction across sources
 CREATE INDEX IF NOT EXISTS idx_events_correlation   ON events(correlation_id);

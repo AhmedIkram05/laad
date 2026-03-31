@@ -22,7 +22,6 @@ function App() {
                 {/* Login Pathway */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
-
                 {/* Redirect Root to Dashboard */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
 

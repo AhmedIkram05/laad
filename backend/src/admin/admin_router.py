@@ -9,13 +9,13 @@ from pydantic import BaseModel
 import sqlite3
 
 from backend.src.auth.auth_router import get_db_connection, require_admin
-from backend.src.admin.cleanup import run_cleanup
+from backend.src.admin.cleanup import run_cleanup, run_wipe
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-ALLOWED_RETENTION_DAYS = [7, 30, 60, 90, 365]
+ALLOWED_RETENTION_DAYS = [1, 7, 30, 60, 90, 365]
 
 
 class RetentionUpdateRequest(BaseModel):
@@ -42,7 +42,7 @@ def get_retention(conn=Depends(get_db_connection)):
 @router.put("/retention", dependencies=[Depends(require_admin)])
 def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connection)):
     """Admin only. Updates the data retention period.
-    Allowed values: 7, 30, 60, 90, 365 days.
+    Allowed values: 1, 7, 30, 60, 90, 365 days.
     """
     if request.days not in ALLOWED_RETENTION_DAYS:
         raise HTTPException(
@@ -62,6 +62,15 @@ def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connec
 def trigger_cleanup():
     """Admin only. Manually triggers the cleanup job immediately."""
     return run_cleanup()
+
+
+@router.post("/cleanup/wipe", dependencies=[Depends(require_admin)])
+def trigger_wipe():
+    """Admin only. Permanently deletes all rows from cleanup tables and VACUUMs.
+
+    This is a destructive operation. Only admin access is allowed.
+    """
+    return run_wipe()
 
 
 @router.post("/users", dependencies=[Depends(require_admin)], status_code=201)
