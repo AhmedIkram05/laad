@@ -1,58 +1,42 @@
 .navbarContainer {
     min-height: 100vh;
-    width: 230px;
+    width: 220px;
     background-color: var(--bg-secondary);
-    border: 1px solid var(--accent-primary);
-    display: flex;
-    flex-direction: column;
+    border: 1px solid var(--bg-tertiary);
 }
 
 .buttonContainer {
     display: flex;
     flex-direction: column;
-    gap: 1px;
-    margin-top: 130px;
+    margin-top: 50%;
+    gap: 10px;
 }
 
 .settingsContainer {
-    margin-top: auto;
-    padding-bottom: 170px;
+    margin-top: 170%;
 }
 
 .button {
-    height: 50px;
+    height: 45px;
     display: flex;
     align-items: center;
     background-color: var(--bg-secondary);
     border: none;
     transition: background-color 0.3s;
     cursor: pointer;
-    font-family: inherit;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.03);
 }
 
 .button.active, .button:hover {
-  background-color: var(--accent-primary);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-}
-
-
-.buttonContainer .button:last-child {
-  border-bottom: none;
+  background-color: var(--bg-tertiary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .icon {
     margin-left: 10%;
-    font-size: 18px;
+    font-size: large;
 }
 
 .text {
     margin-left: 5%;
-    font-size: 17px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-* {
-  box-sizing: border-box;
+    font-size: 15px;
 }

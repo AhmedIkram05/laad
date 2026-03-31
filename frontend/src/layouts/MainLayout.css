@@ -12,8 +12,3 @@
     box-sizing: border-box;
     background-color: var(--bg-primary);
 }
-
-html, body {
-  height: 100%;
-  overflow: hidden;
-}

@@ -1,11 +1,6 @@
-.titleContainer {
-  font-size: 34px;
-  margin-bottom: 10px;
-}
-
 .panelBox {
   border: 1px solid var(--bg-tertiary);
-  background-color: none;
+  background-color: transparent;
   padding: 22px;
   border-radius: 8px;
   box-shadow: none;

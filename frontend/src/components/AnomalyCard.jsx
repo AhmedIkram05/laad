@@ -32,7 +32,7 @@ function AnomalyCard({ id, title, atm_id, severity, update_time, anomaly_type, i
           <p>{atm_id}</p>
           <div className="updates">
             <p>{severity}</p>
-            <p>Received: {update_time}</p>
+            <p>Updated: {update_time}</p>
           </div>
         </div>
 

@@ -7,7 +7,7 @@
     padding-left: 30px;
     box-sizing: border-box;
     background-color: var(--bg-secondary);
-    border: 1px solid var(--accent-primary);
+    border: 1px solid var(--bg-tertiary);
     gap: 5px;
 }
 
@@ -15,7 +15,6 @@
     position: relative;
     width: 40%;
     display: flex;
-    border: 1px solid var(--accent-primary);
 }
 
 .searchInput {
@@ -24,8 +23,7 @@
   padding-left: 35px;
   background-color: var(--bg-primary);
   border: 1px solid var(--bg-tertiary);
-  font-size: 15px;
-  font-family: inherit;
+  font-size: 14px;
 }
 
 .searchIcon {
@@ -46,7 +44,7 @@
     align-items: center;
     justify-content: center;
     background-color: var(--bg-primary);
-    border: 1px solid var(--accent-primary);
+    border: 1px solid var(--bg-tertiary);
     cursor: pointer;
 }
 

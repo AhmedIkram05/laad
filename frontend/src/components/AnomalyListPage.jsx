@@ -18,7 +18,7 @@ import "./AnomalyListPage.css";
 import { fetchAnomalies, fetchDetailedAnalysis, toggleStar } from "../api/api";
 
 
-function AnomalyListPage({ title, subtitle, filter, isActive = 1 }) {
+function AnomalyListPage({ title, filter, isActive = 1 }) {
   const [search, setSearch] = useState(""); // Search User Input Text
   const [filterBy, setFilterBy] = useState("title"); // Filter Field
   const [anomalies, setAnomalies] = useState([]); // Grouped Anomaly Data
@@ -105,9 +105,6 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1 }) {
           <h1>{title}</h1>
           <h2>({searchedAnomalies.length})</h2>
         </div>
-
-        {/* Subtitle */}
-        <p className="subtitleContainer">{subtitle ?? "Detected anomalies across ATM and server systems, prioritised by severity."}</p>
 
         {/* Anomaly Cards (and Loading) */}
         <div className="anomalyContainer">

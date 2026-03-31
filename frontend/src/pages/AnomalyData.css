@@ -1,11 +1,11 @@
-.anomaly-page {
+.anomaly-page { 
   min-height: 100vh;
-  background: var(--bg-primary);
-  padding: 40px 32px;
+  background-color: var(--bg-primary);
+  padding: 24px 32px;
 }
 
 .anomaly-page__inner {
-  max-width: 1300px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -13,112 +13,84 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 24px;
+  gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
 .anomaly-page__title {
   margin: 0;
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .anomaly-page__subtitle {
-  margin-top: 10px;
-  max-width: 680px;
+  margin: 10px 0px 10px;
+  max-width: 720px;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1;
   color: #404040;
 }
 
 .anomaly-page__button-group {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .anomaly-action-button {
-  min-width: 180px;
-  height: 48px;
-  padding: 0 18px;
-  border-radius: 10px;
-  font-size: 16px;
+  width: 200px;
+  height: 50px;
+  padding: 10px 16px;
+  border-radius: 5px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: all 0.2s ease;
+}
+
+.anomaly-action-button--primary,
+.anomaly-action-button--secondary {
+  background: var(--accent-primary);
+  border: 1px solid var(--bg-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  font-family: inherit;
+  gap: 6px;
 }
 
-.anomaly-action-button--primary {
-  background: var(--bg-secondary);
-  border: none;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.3);
-}
-
-.anomaly-action-button--secondary {
-  background: var(--accent-secondary);
-  border: none;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
-}
-
-.anomaly-action-button--primary:hover {
-  background: var(--accent-secondary);
-  border: none;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
-  transform: translateY(-2px);
-}
-
+.anomaly-action-button--primary:hover,
 .anomaly-action-button--secondary:hover {
   background: var(--bg-secondary);
-  border: none;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.3);
-  transform: translateY(-2px);
-}
-
-
-.anomaly-action-button:active {
-  transform: scale(0.96);
+  border: 1px solid var(--bg-tertiary);
 }
 
 .buttonIcon {
   display: inline-flex;
   align-items: center;
-  font-size: 18px;
+  margin-right: 6px;
+  font-size: large;
 }
 
 .anomaly-page__main-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
-  gap: 24px;
+  gap: 20px;
 }
 
 .anomaly-page__left-column,
 .anomaly-page__right-column {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .anomaly-section-box {
-  border: 1px solid var(--bg-tertiary);
-  background: var(--bg-primary);
-  backdrop-filter: blur(10px);
-  border-radius: 14px;
-  box-shadow: -2px 5px 24px rgba(15, 23, 42, 0.2);
-  min-height: 130px;
+  border: 1px solid var(--bg-secondary);
+  background-color: var(--accent-primary);
   overflow: hidden;
-  transition: all 0.25s ease;
-}
-
-.anomaly-section-box:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.3);
+  min-height: 130px;
 }
 
 .anomaly-section-box__header {
@@ -126,86 +98,33 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 18px 18px 6px;
-}
-
-.anomaly-section-box__title {
-  font-size: 20px;
-  font-weight: 700;
+  padding: 16px 16px 4px;
 }
 
 .anomaly-section-box__body {
-  padding: 6px 18px 18px;
-  line-height: 1.6;
+  padding: 0px 18px 18px;
+}
+
+h2 {
+  font-size: 18px;
 }
 
 .anomaly-info-badge {
-  width: 40px;
-  height: 40px;
-  font-size: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   border: 1px solid var(--bg-tertiary);
   background: var(--bg-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
 }
 
-.anomaly-info-badge:hover {
-  transform: scale(1.1);
+p {
+  margin-top: 5px;
 }
 
-.anomaly-status-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--accent-secondary);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.anomaly-status-pill {
-  margin-left: auto;
-}
-
-.detail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 6px;
-}
-
-.detail-row {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  align-items: center;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--accent-tertiary);
-}
-
-.anomaly-detail-row:last-child {
-  border-bottom: none;
-}
-
-.anomaly-detail-label {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.anomaly-detail-value {
-  font-size: 14px;
-  font-weight: 600;
-  text-align: right;
-}
-
-.anomaly-detail-value {
-  margin-left: auto;
-}
-
-
-/* Added Responsiveness: */
+/* Responsive */
 @media (max-width: 1024px) {
   .anomaly-page__main-grid {
     grid-template-columns: 1fr;
@@ -218,7 +137,11 @@
   }
 
   .anomaly-page__title {
-    font-size: 26px;
+    font-size: 1.8rem;
+  }
+
+  .anomaly-page__button-group {
+    width: 100%;
   }
 
   .anomaly-action-button {

@@ -189,8 +189,8 @@ function AdminSettings() {
                         </select>
 
                         <div className="buttonRow mt12">
-                            <button className="loginButton--secondary" onClick={saveRetention} disabled={savingRetention}>Save</button>
-                            <button className="loginButton--primary dangerButton" onClick={runCleanup} disabled={cleanupRunning}>Delete All Now</button>
+                            <button className="loginButton" onClick={saveRetention} disabled={savingRetention}>Save</button>
+                            <button className="loginButton dangerButton" onClick={runCleanup} disabled={cleanupRunning}>Delete All Now</button>
                         </div>
 
                         {retentionUpdatedAt && <p className="muted">Last updated: {formatTimestamp(retentionUpdatedAt)}</p>}
@@ -224,7 +224,7 @@ function AdminSettings() {
                             <option value="admin">admin</option>
                         </select>
                         <div className="mt12">
-                            <button className="loginButton--secondary" onClick={handleCreate} disabled={creating}>Create</button>
+                            <button className="loginButton" onClick={handleCreate} disabled={creating}>Create</button>
                         </div>
                     </section>
                 </div>

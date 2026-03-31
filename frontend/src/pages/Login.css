@@ -8,31 +8,19 @@
 }
 
 .loginBox {
-    width: 360px;
+    width: 350px;
     padding: 35px;
     border-radius: 5px;
-    gap: 10px;
-    background-color: var(--bg-primary);
+    background-color: var(--bg-secondary);
     border: 1px solid var(--bg-tertiary);
-    box-shadow: 0 6px 16px rgba(87, 114, 177, 0.2);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     display: flex;
     flex-direction: column;
 }
 
 .loginTitle {
     text-align: center;
-    margin: 40px;
-}
-
-.loginTitle::after {
-  content: "";
-  display: block;
-  width: 45px;
-  height: 3px;
-  margin: 10px auto 0;
-  border-radius: 2px;
-  background: var(--accent-primary);
-  opacity: 0.5;
+    margin: 30px;
 }
 
 .loginInput {
@@ -40,16 +28,10 @@
   width: 100%;
   padding: 10px;
   margin: 8px 0 30px 0;
-  border: 1px solid var(--accent-secondary);
+  border: 1px solid var(--bg-tertiary);
   border-radius: 5px;
   font-size: 14px;
   box-sizing: border-box;
-}
-
-.loginInput:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(117, 162, 230, 0.25);
 }
 
 .loginButtonContainer {
@@ -60,34 +42,17 @@
     gap: 16px;
 }
 
-.loginButton--primary {
+.loginButton {
     height: 40px;
-    width: 100px;
-    border: 1px solid var(--accent-primary);
+    width: 90px;
+    border: 1px solid var(--bg-tertiary);
     border-radius: 5px;
-    background-color: var(--bg-secondary);
+    background-color: var(--bg-primary);
     transition: background-color 0.2s, box-shadow 0.2s;
     cursor: pointer;
-    font: inherit;
 }
 
-.loginButton--secondary {
-    height: 40px;
-    width: 100px;
-    border: 1px solid var(--accent-primary);
-    border-radius: 5px;
-    background-color: var(--accent-secondary);
-    transition: background-color 0.2s, box-shadow 0.2s;
-    cursor: pointer;
-    font: inherit;
-}
-
-.loginButton--primary:hover {
-  background-color: var(--accent-secondary);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.loginButton--secondary:hover {
-  background-color: var(--bg-secondary);
+.loginButton:hover {
+  background-color: var(--bg-tertiary);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
