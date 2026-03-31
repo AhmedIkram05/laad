@@ -16,7 +16,7 @@ function SideNavbar() {
 
   const active = (path) => location.pathname === path;
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <div className="navbarContainer">
@@ -36,7 +36,7 @@ function SideNavbar() {
             <button className={`button ${active("/admin/settings") ? "active" : ""}`} onClick={() => navigate("/admin/settings")}>
               <span className="icon"><FiSettings/></span><span className="text">Admin Settings</span>
             </button>)}
-          <button className="button" onClick={() => navigate("/login")}>
+          <button className="button" onClick={() => { logout(); navigate("/login", { replace: true }); }}>
             <span className="icon"><GoSignOut/></span><span className="text">Log Out</span>
           </button>
         </div>
