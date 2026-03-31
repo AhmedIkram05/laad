@@ -80,10 +80,10 @@ function Login() {
 
                 {/* Login & Sign Up Buttons */}
                 <div className="loginButtonContainer">
-                    <button className="loginButton" onClick={handleLogin}>
+                    <button className="loginButton--primary" onClick={handleLogin}>
                         Login
                     </button>
-                    <button className="loginButton" onClick={() => navigate('/signup')}>
+                    <button className="loginButton--secondary" onClick={() => navigate('/signup')}>
                         Create account
                     </button>
                 </div>

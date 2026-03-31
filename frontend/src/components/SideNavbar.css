@@ -1,42 +1,58 @@
 .navbarContainer {
     min-height: 100vh;
-    width: 220px;
+    width: 230px;
     background-color: var(--bg-secondary);
-    border: 1px solid var(--bg-tertiary);
+    border: 1px solid var(--accent-primary);
+    display: flex;
+    flex-direction: column;
 }
 
 .buttonContainer {
     display: flex;
     flex-direction: column;
-    margin-top: 50%;
-    gap: 10px;
+    gap: 1px;
+    margin-top: 130px;
 }
 
 .settingsContainer {
-    margin-top: 170%;
+    margin-top: auto;
+    padding-bottom: 170px;
 }
 
 .button {
-    height: 45px;
+    height: 50px;
     display: flex;
     align-items: center;
     background-color: var(--bg-secondary);
     border: none;
     transition: background-color 0.3s;
     cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.03);
 }
 
 .button.active, .button:hover {
-  background-color: var(--bg-tertiary);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  background-color: var(--accent-primary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+}
+
+
+.buttonContainer .button:last-child {
+  border-bottom: none;
 }
 
 .icon {
     margin-left: 10%;
-    font-size: large;
+    font-size: 18px;
 }
 
 .text {
     margin-left: 5%;
-    font-size: 15px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+* {
+  box-sizing: border-box;
 }

@@ -5,15 +5,16 @@ html, body {
 
 :root {
   /* Background Colours */
-  --bg-primary: #FFFDF6;
-  --bg-secondary: #B4B8AB;
-  --bg-tertiary: #A6AB9C;
+  --bg-primary: #ffffff;
+  --bg-secondary: #86AEE9;
+  --bg-tertiary: #EBEBEB;
 
   /* Text Colours */
-  --text-primary: #000000;
-  --text-secondary: #252525;
+  --text-primary: #34372F;
 
   /* Extra Colour / Details */
-  --accent-primary: #DDE7DA;
+  --accent-primary: #75A2E6;
+  --accent-secondary: #A9C5EF;
+  --accent-tertiary: #CCCCCC;
 
 }
