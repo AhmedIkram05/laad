@@ -75,19 +75,6 @@ def _insert_sample_rows(db_path: str, retention_days: int = 1, old_count: int = 
             "INSERT INTO ingestion_errors (timestamp, source, error_detail) VALUES (?, 'INGEST', ?)",
             (new_ts, f"err new {i}")
         )
-
-    # otp_tokens
-    for i in range(old_count):
-        cur.execute(
-            "INSERT INTO otp_tokens (token, role, created_at, expires_at) VALUES (?, 'user', ?, ?)",
-            (f"told{i}", old_ts, (now + timedelta(days=1)).isoformat())
-        )
-    for i in range(new_count):
-        cur.execute(
-            "INSERT INTO otp_tokens (token, role, created_at, expires_at) VALUES (?, 'user', ?, ?)",
-            (f"tnew{i}", new_ts, (now + timedelta(days=1)).isoformat())
-        )
-
     conn.commit()
     conn.close()
 
@@ -134,7 +121,7 @@ def test_run_cleanup_deletes_old_rows(tmp_path, monkeypatch, retention_days):
     conn2.close()
 
 
-def test_run_cleanup_defaults_to_30_when_no_config(tmp_path, monkeypatch):
+def test_run_cleanup_defaults_to_7_when_no_config(tmp_path, monkeypatch):
     db_file = tmp_path / "test_cleanup2.db"
     init_db_module.init_db(db_path=str(db_file))
 
@@ -161,7 +148,7 @@ def test_run_cleanup_defaults_to_30_when_no_config(tmp_path, monkeypatch):
     monkeypatch.setattr(cleanup_mod, "get_db", _test_get_db3)
 
     result = cleanup_mod.run_cleanup()
-    assert result["retention_days"] == 30
+    assert result["retention_days"] == 7
 
 
 def test_batched_delete_commits_between_batches(tmp_path, monkeypatch):
