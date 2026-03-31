@@ -285,6 +285,7 @@ def build_detailed_table(anomalies):
             explanation, operation_impact, recommendation = A1(atm_id, error_seen, max_timeout, kafka_offline, terminal_timeout) 
 
             detailed_rows.append({
+                "id": a.get('id'),
                 "ATM_ID": atm_id,
                 "Anomaly": A_code,
                 "Severity": a['severity'],
@@ -319,6 +320,7 @@ def build_detailed_table(anomalies):
             explanation, operation_impact, recommendation = A2(atm_id, low_count, empty_count, out_of_service, dispense_error, zero_tps) 
 
             detailed_rows.append({
+                "id": a.get('id'),
                 "ATM_ID": atm_id,
                 "Anomaly": A_code,
                 "Severity": a['severity'],
@@ -357,6 +359,7 @@ def build_detailed_table(anomalies):
             explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen) 
 
             detailed_rows.append({
+                "id": a.get('id'),
                 "ATM_ID": atm_id,
                 "Anomaly": A_code,
                 "Severity": a['severity'],
@@ -395,6 +398,7 @@ def build_detailed_table(anomalies):
             explanation, operation_impact, recommendation = A4(max_restart, fatal_count, startup_count) 
 
             detailed_rows.append({
+                "id": a.get('id'),
                 "ATM_ID": atm_id,
                 "Anomaly": A_code,
                 "Severity": a['severity'],
@@ -431,7 +435,6 @@ def build_detailed_table(anomalies):
             for s in spikes:
                 sr = s.get("sr", 0)
                 if min_success is None or sr < min_success:
-                    print(min_success)
                     min_success = sr
                        
             # get max failure
@@ -449,6 +452,7 @@ def build_detailed_table(anomalies):
             explanation, operation_impact, recommendation = A5(atm_id, max_rt5, min_success, max_failures, timeout_seen) 
 
             detailed_rows.append({
+                "id": a.get('id'),
                 "ATM_ID": atm_id,
                 "Anomaly": A_code,
                 "Severity": a['severity'],
@@ -490,6 +494,7 @@ def build_detailed_table(anomalies):
             explanation, operation_impact, recommendation = A6(atm_id, mem_start, mem_max, cpu_max, net_error_max, timeout_seen) 
 
             detailed_rows.append({
+                "id": a.get('id'),
                 "ATM_ID": atm_id,
                 "Anomaly": A_code,
                 "Severity": a['severity'],
@@ -526,6 +531,7 @@ def build_detailed_table(anomalies):
             explanation, operation_impact, recommendation = A7(atm_id,  missing_field_count, malformed_metric, ooo) 
 
             detailed_rows.append({
+                "id": a.get('id'),
                 "ATM_ID": atm_id,
                 "Anomaly": A_code,
                 "Severity": a['severity'],

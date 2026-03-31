@@ -78,8 +78,8 @@ function AnomalyData() {
 
                     {/* Mark as... Buttons */}
                     <div className="anomaly-page__button-group">
-                        <ActionButton label="Mark as Starred" icon={<GoStar />} onClick={toggleStar(data.id)} />
-                        <ActionButton label="Mark as Completed" icon={<GoCheckCircle />} primary onClick={resolveAnomaly(data.id)} />
+                        <ActionButton label="Mark as Starred" icon={<GoStar />} onClick={() => toggleStar(data.id)} />
+                        <ActionButton label="Mark as Completed" icon={<GoCheckCircle />} primary onClick={() => resolveAnomaly(data.id)} />
                     </div>
                 </div>
 
