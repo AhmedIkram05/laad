@@ -249,20 +249,19 @@ def resolveAnomaly(
     currentUser: dict = Depends(get_current_user),
     conn=Depends(get_db_connection)
 ):
-    """Admin only. Marks an anomaly as resolved (is_active = 0)."""
+    """Admin only. Marks an anomaly as resolved (is_active = 0) or unresolved."""
     row = conn.execute(
         "SELECT id, is_active FROM anomalies WHERE id = ?", (anomalyId,)
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Anomaly not found")
-    if not row["is_active"]:
-        raise HTTPException(
-            status_code=400, detail="Anomaly is already resolved")
+    
+    new_active = 0 if row["is_active"] else 1
     conn.execute(
-        "UPDATE anomalies SET is_active = 0 WHERE id = ?", (anomalyId,))
+        "UPDATE anomalies SET is_active = ? WHERE id = ?", (new_active, anomalyId))
     conn.commit()
-    logger.info(f"Anomaly {anomalyId} resolved by '{currentUser['sub']}'")
-    return {"id": anomalyId, "is_active": 0, "message": "Anomaly resolved"}
+    logger.info(f"Anomaly {anomalyId} active status toggled to {new_active} by '{currentUser['sub']}'")
+    return {"id": anomalyId, "is_active": new_active, "message": "Anomaly status toggled"}
 
 
 @router.patch("/{anomalyId}/star")

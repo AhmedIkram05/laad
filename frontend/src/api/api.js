@@ -18,8 +18,13 @@ const request = async (endpoint, options = {}) => {
     return res.json();
 };
 
-export const fetchAnomalies = (is_active = 1) =>
-    request(`/api/anomalies?is_active=${is_active}`);
+export const fetchAnomalies = (is_active = 1) => {
+    let url = `/api/anomalies`;
+    if (is_active !== "") {
+        url += `?is_active=${is_active}`;
+    }
+    return request(url);
+};
 
 export const fetchDetailedAnalysis = (anomaly_type) =>
     request(`/api/analysis/detailed?Anomaly=${anomaly_type}`);
@@ -31,12 +36,6 @@ export const toggleStar = (id) =>
 
 export const fetchAnomalyDetail = (id) =>
     request(`/api/anomalies/${id}`);
-
-export const fetchATM = (atmId) =>
-    request(`/api/atms/${atmId}`);
-
-export const fetchTimeline = (atmId, from, to, offset = 0) =>
-    request(`/api/timeline?atm_id=${atmId}&from_date=${from}&to_date=${to}&limit=10&offset=${offset}`);
 
 export const resolveAnomaly = (id) =>
     request(`/api/anomalies/${id}/resolve`, {
