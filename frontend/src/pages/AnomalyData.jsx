@@ -9,11 +9,6 @@ import "./AnomalyData.css";
 /* Other Imports */
 import { fetchDetailedAnalysis, resolveAnomaly, toggleStar } from "../api/api";
 
-//////////////////////////////////////////////////////
-//////////   NOTE: THIS HAS BEEN STRIPPED   //////////
-//////////   BACK TO DATA THAT WILL BE      //////////
-//////////   RECEIVED FROM ANALYSIS         //////////
-//////////////////////////////////////////////////////
 
 function SectionBox({ title, children, rightSlot }) {
     return (
@@ -27,6 +22,7 @@ function SectionBox({ title, children, rightSlot }) {
     );
 }
 
+
 function ActionButton({ label, primary = false, icon, onClick }) {
     return (
         <button onClick={onClick} className={`anomaly-action-button ${primary ? "anomaly-action-button--primary" : "anomaly-action-button--secondary"}`}>
@@ -35,6 +31,23 @@ function ActionButton({ label, primary = false, icon, onClick }) {
         </button>
     );
 }
+
+
+function formatEventTime(range) {
+  if (!range) return "Unknown";
+
+  const [startStr] = range.split(" - ");
+  const start = new Date(startStr);
+
+  const dateOptions = { day: "numeric", month: "short", year: "numeric" };
+  const timeOptions = { hour: "2-digit", minute: "2-digit", hour12: false };
+
+  const date = start.toLocaleDateString("en-GB", dateOptions);
+  const time = start.toLocaleTimeString("en-GB", timeOptions);
+
+  return `${date}, ${time}`;
+}
+
 
 function AnomalyData() {
     const { anomaly_type } = useParams();
@@ -58,22 +71,19 @@ function AnomalyData() {
 
     if (!data) return <p>Loading...</p>;
 
-    const handleStar = () => {
-        alert("Star toggled (mock)");
-    };
-
-    const handleResolve = () => {
-        alert("Marked as completed (mock)");
-    };
 
     return (
         <div className="anomaly-page">
             <div className="anomaly-page__inner">
+
                 {/* Title and Subtitle */}
                 <div className="anomaly-page__header">
                     <div>
                         <h1 className="anomaly-page__title">{data.Title || "Title Unknown"}</h1>
-                        <p className="anomaly-page__subtitle">Review analysis, understand the ATM issue, and track the recommended next steps.</p>
+                        <p className="anomaly-page__subtitle">
+                        Review analysis, understand the ATM issue, and track the
+                        recommended next steps.
+                        </p>
                     </div>
 
                     {/* Mark as... Buttons */}
@@ -102,22 +112,27 @@ function AnomalyData() {
                     {/* ATM Details */}
                     <div className="anomaly-page__right-column">
                         <SectionBox
-                            title="Details:"
+                            title="Details"
                             rightSlot={
                                 <div className="anomaly-info-badge">
                                     <GoInfo size={16} />
                                 </div>
                             }
                         >
-                            <p>
-                                <strong>ATM:</strong> {data.ATM_ID || "N/A"}
-                            </p>
-                            <p>
-                                <strong>Severity:</strong> {data.Severity || "Severity Unknown"}
-                            </p>
-                            <p>
-                                <strong>Time:</strong> {data.Event_Time || "Time Unknown"}
-                            </p>
+                            <div className="detail-list">
+                                <div className="detail-row">
+                                    <p><strong>ATM:</strong></p>
+                                    <p>{data.ATM_ID || "N/A"}</p>
+                                </div>
+                                <div className="detail-row">
+                                    <p><strong>Severity:</strong></p>
+                                    <p><div className="anomaly-status-pill">{data.Severity || "Severity Unknown"}</div></p>
+                                </div>
+                                <div className="detail-row">
+                                    <p><strong>Time Received:</strong></p>
+                                    <p>{formatEventTime(data.Event_Time) || "Time Unknown"}</p>
+                                </div>
+                            </div>
                         </SectionBox>
                     </div>
                 </div>
