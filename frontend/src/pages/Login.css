@@ -61,7 +61,7 @@
 
 .loginButton--primary {
     height: 40px;
-    width: 100px;
+    width: 125px;
     border: 1px solid var(--accent-primary);
     border-radius: 5px;
     background-color: var(--bg-secondary);
@@ -72,7 +72,7 @@
 
 .loginButton--secondary {
     height: 40px;
-    width: 100px;
+    width: 125px;
     border: 1px solid var(--accent-primary);
     border-radius: 5px;
     background-color: var(--accent-secondary);

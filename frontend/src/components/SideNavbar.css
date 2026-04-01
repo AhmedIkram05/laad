@@ -30,7 +30,7 @@
     transition: background-color 0.3s;
     cursor: pointer;
     font-family: inherit;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.03);
+    /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.03); */
 }
 
 .button.active, .button:hover {
