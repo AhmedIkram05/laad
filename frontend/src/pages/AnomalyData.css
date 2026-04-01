@@ -13,9 +13,15 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  flex-wrap: nowrap;
   gap: 24px;
   flex-wrap: wrap;
   margin-bottom: 28px;
+}
+
+.anomaly-page__header > div:first-child {
+  min-width: 0;
+  flex: 1;
 }
 
 .anomaly-page__title {
@@ -81,7 +87,6 @@
   transform: translateY(-2px);
 }
 
-
 .anomaly-action-button:active {
   transform: scale(0.96);
 }
@@ -144,23 +149,6 @@
 .anomaly-section-box__body {
   padding: 6px 18px 18px;
   line-height: 1.6;
-}
-
-.anomaly-info-badge {
-  width: 40px;
-  height: 40px;
-  font-size: 30px;
-  border-radius: 999px;
-  border: 1px solid var(--bg-tertiary);
-  background: var(--bg-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.anomaly-info-badge:hover {
-  transform: scale(1.1);
 }
 
 .anomaly-status-pill {
