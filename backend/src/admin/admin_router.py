@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import sqlite3
 
 from backend.src.auth.auth_router import get_db_connection, require_admin
-from backend.src.admin.cleanup import run_cleanup, run_wipe
+from backend.src.admin.cleanup import run_wipe
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +57,6 @@ def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connec
     conn.commit()
     logger.info(f"Retention period updated to {request.days} days")
     return {"retention_days": request.days, "message": "Retention period updated"}
-
-
-@router.post("/cleanup/run", dependencies=[Depends(require_admin)])
-def trigger_cleanup():
-    """Admin only. Manually triggers the cleanup job immediately."""
-    return run_cleanup()
 
 
 @router.post("/cleanup/wipe", dependencies=[Depends(require_admin)])

@@ -2,9 +2,7 @@
 
 Endpoints:
     GET   /anomalies                    — paginated, filterable anomaly list (supports grouping)
-    GET   /anomalies/{id}               — single anomaly detail
     PATCH /anomalies/{id}/resolve       — mark anomaly inactive (admin only)
-    POST  /anomalies/{id}/feedback      — submit like/dislike rating
     PATCH /anomalies/{id}/star          — toggle starred
 """
 from __future__ import annotations
@@ -245,21 +243,6 @@ def listAnomalies(
     return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
 
 
-@router.get("/{anomalyId}")
-def getAnomaly(
-    anomalyId: int,
-    currentUser: dict = Depends(get_current_user),
-    conn=Depends(get_db_connection)
-):
-    """Returns a single anomaly by ID."""
-    row = conn.execute(
-        "SELECT * FROM anomalies WHERE id = ?", (anomalyId,)
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Anomaly not found")
-    return dict(row)
-
-
 @router.patch("/{anomalyId}/resolve")
 def resolveAnomaly(
     anomalyId: int,
@@ -280,32 +263,6 @@ def resolveAnomaly(
     conn.commit()
     logger.info(f"Anomaly {anomalyId} resolved by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_active": 0, "message": "Anomaly resolved"}
-
-
-@router.post("/{anomalyId}/feedback")
-def submitFeedback(
-    anomalyId: int,
-    request: FeedbackRequest,
-    currentUser: dict = Depends(get_current_user),
-    conn=Depends(get_db_connection)
-):
-    """Submit like/dislike feedback on an anomaly.
-    Overwrites any existing rating — one rating per anomaly.
-    """
-    if request.rating not in ("LIKE", "DISLIKE"):
-        raise HTTPException(
-            status_code=400, detail="Rating must be 'LIKE' or 'DISLIKE'")
-    row = conn.execute(
-        "SELECT id FROM anomalies WHERE id = ?", (anomalyId,)
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Anomaly not found")
-    conn.execute(
-        "UPDATE anomalies SET feedback_rating = ? WHERE id = ?",
-        (request.rating, anomalyId)
-    )
-    conn.commit()
-    return {"id": anomalyId, "feedback_rating": request.rating}
 
 
 @router.patch("/{anomalyId}/star")
