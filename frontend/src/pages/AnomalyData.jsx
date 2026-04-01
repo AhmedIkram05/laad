@@ -8,7 +8,7 @@ import BackButton from "../components/BackButton";
 import "./AnomalyData.css";
 
 /* Other Imports */
-import { fetchDetailedAnalysis, resolveAnomaly, toggleStar } from "../api/api";
+import { fetchAnomalies, fetchDetailedAnalysis, resolveAnomaly, toggleStar } from "../api/api";
 
 
 function SectionBox({ title, children, rightSlot }) {
@@ -84,13 +84,30 @@ function AnomalyData() {
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await fetchDetailedAnalysis(anomaly_type);
+                const [analysisRes, anomaliesRes] = await Promise.all([
+                    fetchDetailedAnalysis(anomaly_type),
+                    fetchAnomalies()
+                ]);
 
-                const selected = res.data.find((item) => item.Anomaly === anomaly_type);
+                const selectedAnalysis = analysisRes.data.find(
+                    (item) => item.Anomaly === anomaly_type
+                );
 
-                setData(selected || res.data[0]);
+                const analysis = selectedAnalysis || analysisRes.data[0];
+
+                const matchedAnomaly = anomaliesRes.data.find(
+                    (a) => a.anomaly_type === anomaly_type
+                );
+
+                setData(analysis);
+
+                if (matchedAnomaly) {
+                    setIsStarred(matchedAnomaly.is_starred === 1);
+                    setIsCompleted(matchedAnomaly.is_active === 0);
+                }
+
             } catch (err) {
-                console.error("Failed to fetch analysis", err);
+                console.error("Failed to fetch data", err);
             }
         };
 
