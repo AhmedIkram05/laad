@@ -9,11 +9,6 @@ import "./AnomalyData.css";
 /* Other Imports */
 import { fetchDetailedAnalysis, resolveAnomaly, toggleStar } from "../api/api";
 
-//////////////////////////////////////////////////////
-//////////   NOTE: THIS HAS BEEN STRIPPED   //////////
-//////////   BACK TO DATA THAT WILL BE      //////////
-//////////   RECEIVED FROM ANALYSIS         //////////
-//////////////////////////////////////////////////////
 
 function SectionBox({ title, children, rightSlot }) {
     return (
@@ -27,18 +22,63 @@ function SectionBox({ title, children, rightSlot }) {
     );
 }
 
-function ActionButton({ label, primary = false, icon, onClick }) {
+
+function ActionButton({ label, primary = false, completed = false, icon, onClick }) {
     return (
-        <button onClick={onClick} className={`anomaly-action-button ${primary ? "anomaly-action-button--primary" : "anomaly-action-button--secondary"}`}>
+        <button
+            onClick={onClick}
+            className={`anomaly-action-button 
+                ${primary ? "anomaly-action-button--primary" : "anomaly-action-button--secondary"} 
+                ${completed ? "anomaly-action-button--completed" : ""}`}
+        >
             {icon && <span className="buttonIcon">{icon}</span>}
             <span>{label}</span>
         </button>
     );
 }
 
+
+function formatEventTime(range) {
+  if (!range) return "Unknown";
+
+  const [startStr] = range.split(" - ");
+  const start = new Date(startStr);
+
+  const dateOptions = { day: "numeric", month: "short", year: "numeric" };
+  const timeOptions = { hour: "2-digit", minute: "2-digit", hour12: false };
+
+  const date = start.toLocaleDateString("en-GB", dateOptions);
+  const time = start.toLocaleTimeString("en-GB", timeOptions);
+
+  return `${date}, ${time}`;
+}
+
+
 function AnomalyData() {
     const { anomaly_type } = useParams();
     const [data, setData] = useState(null);
+    const [isCompleted, setIsCompleted] = useState(false);
+    const [isStarred, setIsStarred] = useState(false);
+
+    const handleComplete = async () => {
+        try {
+            await resolveAnomaly(data.id);
+            setIsCompleted(true);
+        } catch (err) {
+            console.error("Failed to resolve anomaly", err);
+        }
+    };
+
+    const handleStar = async () => {
+        if (!data) return;
+
+        try {
+            await toggleStar(data.id);
+            setIsStarred(prev => !prev);
+        } catch (err) {
+            console.error("Failed to toggle star", err);
+        }
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -58,28 +98,37 @@ function AnomalyData() {
 
     if (!data) return <p>Loading...</p>;
 
-    const handleStar = () => {
-        alert("Star toggled (mock)");
-    };
-
-    const handleResolve = () => {
-        alert("Marked as completed (mock)");
-    };
 
     return (
         <div className="anomaly-page">
             <div className="anomaly-page__inner">
+
                 {/* Title and Subtitle */}
                 <div className="anomaly-page__header">
                     <div>
                         <h1 className="anomaly-page__title">{data.Title || "Title Unknown"}</h1>
-                        <p className="anomaly-page__subtitle">Review analysis, understand the ATM issue, and track the recommended next steps.</p>
+                        <p className="anomaly-page__subtitle">
+                        Review analysis, understand the ATM issue, and track the
+                        recommended next steps.
+                        </p>
                     </div>
 
                     {/* Mark as... Buttons */}
                     <div className="anomaly-page__button-group">
-                        <ActionButton label="Mark as Starred" icon={<GoStar />} onClick={() => toggleStar(data.id)} />
-                        <ActionButton label="Mark as Completed" icon={<GoCheckCircle />} primary onClick={() => resolveAnomaly(data.id)} />
+                        <ActionButton
+                            label={isStarred ? "Starred" : "Mark as Starred"}
+                            icon={<GoStar />}
+                            primary={!isStarred}
+                            completed={isStarred}
+                            onClick={handleStar}
+                        />
+                        <ActionButton
+                            label={isCompleted ? "Completed" : "Mark as Completed"}
+                            icon={<GoCheckCircle />}
+                            primary={!isCompleted}
+                            completed={isCompleted}
+                            onClick={handleComplete}
+                        />
                     </div>
                 </div>
 
@@ -102,22 +151,27 @@ function AnomalyData() {
                     {/* ATM Details */}
                     <div className="anomaly-page__right-column">
                         <SectionBox
-                            title="Details:"
+                            title="Details"
                             rightSlot={
                                 <div className="anomaly-info-badge">
                                     <GoInfo size={16} />
                                 </div>
                             }
                         >
-                            <p>
-                                <strong>ATM:</strong> {data.ATM_ID || "N/A"}
-                            </p>
-                            <p>
-                                <strong>Severity:</strong> {data.Severity || "Severity Unknown"}
-                            </p>
-                            <p>
-                                <strong>Time:</strong> {data.Event_Time || "Time Unknown"}
-                            </p>
+                            <div className="detail-list">
+                                <div className="detail-row">
+                                    <p><strong>ATM:</strong></p>
+                                    <p>{data.ATM_ID || "N/A"}</p>
+                                </div>
+                                <div className="detail-row">
+                                    <p><strong>Severity:</strong></p>
+                                    <p><div className="anomaly-status-pill">{data.Severity || "Severity Unknown"}</div></p>
+                                </div>
+                                <div className="detail-row">
+                                    <p><strong>Time Received:</strong></p>
+                                    <p>{formatEventTime(data.Event_Time) || "Time Unknown"}</p>
+                                </div>
+                            </div>
                         </SectionBox>
                     </div>
                 </div>

@@ -68,7 +68,7 @@ function Signup() {
                 <input type="password" id="confirmPassword" name="confirmPassword" className="loginInput" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSignup()} />
 
                 <div className="loginButtonContainer">
-                    <button className="loginButton" onClick={handleSignup} disabled={loading}>
+                    <button className="loginButton--primary" onClick={handleSignup} disabled={loading}>
                         Create account
                     </button>
                 </div>
