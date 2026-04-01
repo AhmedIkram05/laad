@@ -1,6 +1,6 @@
 # Log Aggregation Analysis and Diagnostics Platform
 
-User manual for running and testing the frontend and backend of the log aggregration, analysis and diagnostics system for NCR Atleos.
+User Manual for Running and Testing our Log Aggregration Analysis and Diagnostics System, Built for NCR Atleos.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ API docs: <http://localhost:8000/docs>
 
 ### Default Admin Account
 
-Seeded automatically on first `python -m backend.main` for development purposes:
+Seeded automatically on first `python main.py` run, for development purposes:
 
 - **Username:** admin
 - **Password:** admin
@@ -55,7 +55,7 @@ From the repository root run:
 pytest
 ```
 
-Current test status: 39/39 passing.
+Current test status: 38/38 passing.
 
 ## Frontend (React + Vite)
 
