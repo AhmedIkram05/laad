@@ -7,16 +7,17 @@
     flex-direction: column;
 }
 
+
 .buttonContainer {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    margin-top: 130px;
+    margin-top: 0;
 }
 
 .settingsContainer {
     margin-top: auto;
-    padding-bottom: 170px;
+    padding-bottom: 0;
 }
 
 .button {
