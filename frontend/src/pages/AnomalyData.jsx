@@ -8,7 +8,7 @@ import BackButton from "../components/BackButton";
 import "./AnomalyData.css";
 
 /* Other Imports */
-import { fetchAnomalies, fetchDetailedAnalysis, resolveAnomaly, toggleStar } from "../api/api";
+import { fetchAnomalies, fetchDetailedAnalysis, toggleComplete, toggleStar } from "../api/api";
 
 
 function SectionBox({ title, children, rightSlot }) {
@@ -58,13 +58,14 @@ function formatEventTime(range) {
 function AnomalyData() {
     const { anomaly_type } = useParams();
     const [data, setData] = useState(null);
-    const [isCompleted, setIsCompleted] = useState(false);
+    const [isCompleted, setIsCompleted] = useState(true);
     const [isStarred, setIsStarred] = useState(false);
 
     const handleComplete = async () => {
+        if (!data) return;
         try {
-            await resolveAnomaly(data.id);
-            setIsCompleted(true);
+            await toggleComplete(data.id);
+            setIsCompleted(prev => !prev);
         } catch (err) {
             console.error("Failed to resolve anomaly", err);
         }
@@ -72,7 +73,6 @@ function AnomalyData() {
 
     const handleStar = async () => {
         if (!data) return;
-
         try {
             await toggleStar(data.id);
             setIsStarred(prev => !prev);
