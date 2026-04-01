@@ -1,9 +1,10 @@
 /* Import Libraries */
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { GoStar, GoCheckCircle, GoInfo } from "react-icons/go";
+import { GoStar, GoCheckCircle } from "react-icons/go";
 
-/* Import Styles */
+/* Import Components + Styles */
+import BackButton from "../components/BackButton";
 import "./AnomalyData.css";
 
 /* Other Imports */
@@ -103,13 +104,14 @@ function AnomalyData() {
         <div className="anomaly-page">
             <div className="anomaly-page__inner">
 
-                {/* Title and Subtitle */}
-                <div className="anomaly-page__header"> 
-                    <div>
+                {/* Back Button */}
+                <div className="anomaly-page__header">
+                    <div className="back-button-container"><BackButton/></div>
+
+                    {/* Title and Subtitle */}
+                    <div className="anomaly-page__text">
                         <h1 className="anomaly-page__title">{data.Title || "Title Unknown"}</h1>
-                        <p className="anomaly-page__subtitle">
-                        Review analysis, understand the ATM issue, and track the
-                        recommended next steps.
+                        <p className="anomaly-page__subtitle">Review analysis, understand the ATM issue, and track the recommended next steps.
                         </p>
                     </div>
 

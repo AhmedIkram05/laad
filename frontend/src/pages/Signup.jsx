@@ -72,6 +72,14 @@ function Signup() {
                         Create account
                     </button>
                 </div>
+
+                <div className="existingAccount">
+                    <p>Got an account?</p>
+                    <button className="returnButton" onClick={() => navigate("/login")}>
+                        Log in
+                    </button>
+                </div>
+
             </div>
         </div>
     );

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import BackButton from "../components/BackButton";
 import "./Login.css";
 import "./AdminSettings.css";
 
@@ -173,7 +174,8 @@ function AdminSettings() {
 
     return (
         <div className="mainContainer">
-            <div className="titleContainer">
+            <div className="settingsTitleContainer">
+                <BackButton />
                 <h1>Admin Settings</h1>
             </div>
             <div className="panelBox">
