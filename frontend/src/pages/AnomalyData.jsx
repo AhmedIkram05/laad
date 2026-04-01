@@ -104,7 +104,7 @@ function AnomalyData() {
             <div className="anomaly-page__inner">
 
                 {/* Title and Subtitle */}
-                <div className="anomaly-page__header">
+                <div className="anomaly-page__header"> 
                     <div>
                         <h1 className="anomaly-page__title">{data.Title || "Title Unknown"}</h1>
                         <p className="anomaly-page__subtitle">
@@ -150,14 +150,7 @@ function AnomalyData() {
 
                     {/* ATM Details */}
                     <div className="anomaly-page__right-column">
-                        <SectionBox
-                            title="Details"
-                            rightSlot={
-                                <div className="anomaly-info-badge">
-                                    <GoInfo size={16} />
-                                </div>
-                            }
-                        >
+                        <SectionBox title="Details">
                             <div className="detail-list">
                                 <div className="detail-row">
                                     <p><strong>ATM:</strong></p>
