@@ -755,6 +755,3 @@ class AnomalyDetector:
         data = self.load_data()
         anns = self.detect_anomalies(data)
         self.save_anomalies(anns)
-
-
-        prin
