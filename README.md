@@ -55,7 +55,7 @@ From the repository root run:
 pytest
 ```
 
-Current test status: 38/38 passing in ~10.3s.
+Current test status: 39/39 passing.
 
 ## Frontend (React + Vite)
 
