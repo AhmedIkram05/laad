@@ -86,6 +86,13 @@
   transform: scale(0.96);
 }
 
+.anomaly-action-button--completed {
+    background-color: #3e6093;
+    color: #FFFFFF;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.3);
+    border: none;
+}
+
 .buttonIcon {
   display: inline-flex;
   align-items: center;
@@ -205,7 +212,7 @@
 }
 
 
-/* Added Responsiveness: */
+/* Responsiveness: */
 @media (max-width: 1024px) {
   .anomaly-page__main-grid {
     grid-template-columns: 1fr;

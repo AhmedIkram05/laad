@@ -23,9 +23,14 @@ function SectionBox({ title, children, rightSlot }) {
 }
 
 
-function ActionButton({ label, primary = false, icon, onClick }) {
+function ActionButton({ label, primary = false, completed = false, icon, onClick }) {
     return (
-        <button onClick={onClick} className={`anomaly-action-button ${primary ? "anomaly-action-button--primary" : "anomaly-action-button--secondary"}`}>
+        <button
+            onClick={onClick}
+            className={`anomaly-action-button 
+                ${primary ? "anomaly-action-button--primary" : "anomaly-action-button--secondary"} 
+                ${completed ? "anomaly-action-button--completed" : ""}`}
+        >
             {icon && <span className="buttonIcon">{icon}</span>}
             <span>{label}</span>
         </button>
@@ -52,6 +57,28 @@ function formatEventTime(range) {
 function AnomalyData() {
     const { anomaly_type } = useParams();
     const [data, setData] = useState(null);
+    const [isCompleted, setIsCompleted] = useState(false);
+    const [isStarred, setIsStarred] = useState(false);
+
+    const handleComplete = async () => {
+        try {
+            await resolveAnomaly(data.id);
+            setIsCompleted(true);
+        } catch (err) {
+            console.error("Failed to resolve anomaly", err);
+        }
+    };
+
+    const handleStar = async () => {
+        if (!data) return;
+
+        try {
+            await toggleStar(data.id);
+            setIsStarred(prev => !prev);
+        } catch (err) {
+            console.error("Failed to toggle star", err);
+        }
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -88,8 +115,20 @@ function AnomalyData() {
 
                     {/* Mark as... Buttons */}
                     <div className="anomaly-page__button-group">
-                        <ActionButton label="Mark as Starred" icon={<GoStar />} onClick={() => toggleStar(data.id)} />
-                        <ActionButton label="Mark as Completed" icon={<GoCheckCircle />} primary onClick={() => resolveAnomaly(data.id)} />
+                        <ActionButton
+                            label={isStarred ? "Starred" : "Mark as Starred"}
+                            icon={<GoStar />}
+                            primary={!isStarred}
+                            completed={isStarred}
+                            onClick={handleStar}
+                        />
+                        <ActionButton
+                            label={isCompleted ? "Completed" : "Mark as Completed"}
+                            icon={<GoCheckCircle />}
+                            primary={!isCompleted}
+                            completed={isCompleted}
+                            onClick={handleComplete}
+                        />
                     </div>
                 </div>
 
