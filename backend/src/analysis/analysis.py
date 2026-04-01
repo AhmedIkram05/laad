@@ -1,6 +1,6 @@
 import sqlite3
 from typing import List, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 from backend.src.database.connection import DB_PATH
 
@@ -44,6 +44,7 @@ def rank_algorithm(anomalies):
     transaction_map = {'is_transaction_t': 1, 'is_transaction_f': 0}
 
     combined_weights = {}
+    reference_time = get_reference_now(anomalies)
 
     # to improve performance, i would create kv pair of anomaly so i can get a better search time
     # anomaly_map = {}
@@ -53,12 +54,21 @@ def rank_algorithm(anomalies):
     # combine weights to get the total weight for ranking
     for a in anomalies:
         counter_id += 1
+        
+        #time map
+        time_score = get_age_score(a.get('detected_at'), reference_time)
+
         # get score without frequency to rank anomalies in atm
         inner_score = (
                         operation_ranking.get(a['anomaly_type'], 0) +
                         severity_map.get(a['severity'], 0) +
-                        (transaction_map.get('is_transaction_t', 0) if a['transaction_id'] else transaction_map.get('is_transaction_f', 0))
+                        (transaction_map.get('is_transaction_t', 0) if a['transaction_id'] else transaction_map.get('is_transaction_f', 0))+
+                        time_score
                     )
+        
+        #just did a little testing with the weight, the weight currently makes a little difference which i think is fine since we need balance
+        # print(inner_score - time_score)
+
         
         # rank anomaly by score
         a['issue_score'] = inner_score
@@ -94,6 +104,58 @@ def rank_algorithm(anomalies):
     # affected_atms = set(a['atm_id'] for a in anomalies)
 
     return ranked_anomaly
+
+# this would get the automated static time by doing max detected at plus 2 days, okay correction: it just the max detected at time, no 2 days
+def get_reference_now(anomalies):
+    max_dt = None
+
+    for a in anomalies:
+
+        dt = datetime.fromisoformat(a["detected_at"])
+
+        if max_dt is None or dt > max_dt:
+            max_dt = dt
+
+    #just use current time as max, if we are not able to get the max
+    if max_dt is None:
+        return datetime.now().astimezone()
+
+    return max_dt
+
+
+#create time weight(Instead of weighting time i think a conditional weight approach would make more sense)
+def get_age_score(detected_at, reference_time):
+    dt = datetime.fromisoformat(detected_at)
+
+    '''
+    get the current date and subtract it to get the hour difference (wait on second thought use a static date,
+    because i want to cap it at 48 hours to balance it)
+    '''
+    # now = datetime.now(timezone.utc)
+
+    '''
+    using static data (maybe 2026 4 of, okay now that i think about it i might want automated static time instead, 
+    detected at looks to recent, i suspect the system regenrates new timestamp every run) 
+    '''
+    # reference_now = datetime.fromisoformat("2026-04-01T12:00:00+00:00")
+    
+    '''
+    calculate total hours (2 days - 48 hours) 
+    (reference time is the 2 days after max detected at in anomalie set)
+    (okay, after final run i think ref time is best to be max detected at time so it gets more balanced)
+    '''
+    age_hours = (reference_time - dt).total_seconds() / 3600
+    
+    #create conditional mapping for total age
+    if age_hours >= 48:
+        return 3
+    elif age_hours >= 24:
+        return 2
+    elif age_hours >= 6:
+        return 1
+    else:
+        return 0
+
 
 # A1 detailed analysis(recommended fix, operation impact, root cause)
 def A1(atm_id, error_seen, max_timeout, kafka_offline, terminal_timeout):
@@ -241,6 +303,7 @@ def time_window(endtime_arg,time_delta):
 
     # convert to numeric so i can subtract to get estimated start time
     time_num = datetime.fromisoformat(endtime_arg)
+
     start_time_num = time_num - timedelta(minutes = time_delta)
 
     end_time = time_num.strftime('%Y-%m-%d %H:%M:%S')
