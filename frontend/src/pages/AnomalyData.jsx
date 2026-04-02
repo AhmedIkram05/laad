@@ -172,8 +172,8 @@ function AnomalyData() {
                         <SectionBox title="Details">
                             <div className="detail-list">
                                 <div className="detail-row">
-                                    <p><strong>ATM:</strong></p>
-                                    <p>{data.ATM_ID || "N/A"}</p>
+                                    <p><strong>ATM / Server:</strong></p>
+                                    <p>{data.ATM_ID ?? "SERVER"}</p>
                                 </div>
                                 <div className="detail-row">
                                     <p><strong>Severity:</strong></p>

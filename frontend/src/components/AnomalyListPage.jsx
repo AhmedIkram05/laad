@@ -112,7 +112,7 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1 }) {
                             <p>No anomalies found.</p>
                         </div>
                     ) : (
-                        searchedAnomalies.map((a) => <AnomalyCard key={a.id} id={a.id} title={a.title || "Title Unknown"} atm_id={a.atm_id || "ATM: N/A"} severity={a.severity || "Severity Unknown"} anomaly_type={a.anomaly_type} update_time={formatTime(a.detected_at)} is_starred={a.is_starred} toggle_star={() => handleStar(a.id)} />)
+                        searchedAnomalies.map((a) => <AnomalyCard key={a.id} id={a.id} title={a.title || "Title Unknown"} atm_id={a.atm_id ?? "SERVER"} severity={a.severity || "Severity Unknown"} anomaly_type={a.anomaly_type} update_time={formatTime(a.detected_at)} is_starred={a.is_starred} toggle_star={() => handleStar(a.id)} />)
                     )}
                 </div>
             </div>
