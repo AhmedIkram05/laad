@@ -17,7 +17,7 @@ from backend.src.admin.cleanup import run_cleanup
 from backend.src.admin.admin_router import router as adminRouter
 from backend.src.anomalies.anomalies_router import router as anomaliesRouter
 from backend.src.auth.auth_router import router as authRouter
-from backend.src.analysis_router.analysis_router import router as analysisRouter
+from backend.src.analysis.analysis_router import router as analysisRouter
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,9 @@ scheduler = BackgroundScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manages scheduler startup and shutdown."""
-    scheduler.add_job(run_cleanup, "interval", hours=6, id="cleanup")
+    scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     scheduler.start()
-    logger.info("Cleanup scheduler started (interval: 6h)")
+    logger.info("Cleanup scheduler started (interval: 1h)")
     yield
     scheduler.shutdown()
     logger.info("Cleanup scheduler stopped")

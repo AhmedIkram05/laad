@@ -33,21 +33,24 @@ def test_get_analysis(tmp_path):
 
     app.dependency_overrides[auth_router.get_db_connection] = override_get_db
 
+    import backend.src.analysis.analysis as analysis_mod
+    original_db_path = analysis_mod.DB_PATH
+    analysis_mod.DB_PATH = str(tmp_db)
+
     try:
         with TestClient(app) as client:
             # seed an ATM referenced by anomalies
-            conn.execute("INSERT INTO atms (atm_id, os_version, location_code) VALUES (?, ?, ?)",
-                         ("ATM-1", "v1", "LOC-1"))
+            conn.execute("INSERT INTO atms (atm_id, os_version, location_code) VALUES (?, ?, ?)", ("ATM-1", "v1", "LOC-1"))
 
             now = datetime.now(timezone.utc).isoformat()
 
             conn.execute(
                 "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (now, "A1", "ATM-1", "HIGH", "TestHigh", "explain", "act", "[\"ATM_APP\"]", 1)
+                (now, "A1", "ATM-1", "HIGH", "TestHigh", '{}', "act", "[\"ATM_APP\"]", 1)
             )
             conn.execute(
                 "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ((datetime.now(timezone.utc).isoformat()), "A2", "ATM-1", "CRITICAL", "TestCritical", "explain", "act", "[\"ATM_APP\"]", 1)
+                ((datetime.now(timezone.utc).isoformat()), "A2", "ATM-1", "CRITICAL", "TestCritical", '{}', "act", "[\"ATM_APP\"]", 1)
             )
             conn.commit()
 
@@ -58,13 +61,11 @@ def test_get_analysis(tmp_path):
             headers = {"Authorization": f"Bearer {token}"}
 
             # analysis
-            a = client.get("/analysis", headers=headers)
+            a = client.get("/analysis/detailed", headers=headers)
             assert a.status_code == 200
-            assert len(a) == 2
             data = a.json()["data"]
-
-
-            
+            assert len(data) == 2
     finally:
+        analysis_mod.DB_PATH = original_db_path
         conn.close()
         app.dependency_overrides.clear()
