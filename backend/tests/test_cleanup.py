@@ -55,7 +55,7 @@ def _insert_sample_rows(db_path: str, retention_days: int = 1, old_count: int = 
     # anomalies
     for i in range(old_count):
         cur.execute(
-            "INSERT INTO anomalies (detected_at, anomaly_type, severity, title, explanation) VALUES (?, 'A1', 'HIGH', ?, ?)",
+            "INSERT INTO anomalies (detected_at, anomaly_type, severity, title, explanation, is_active) VALUES (?, 'A1', 'HIGH', ?, ?, 0)",
             (old_ts, f"old anomaly {i}", "ex")
         )
     for i in range(new_count):
@@ -108,7 +108,8 @@ def test_run_cleanup_deletes_old_rows(tmp_path, monkeypatch, retention_days):
 
     assert result["retention_days"] == retention_days
     # verify per-table deleted counts are >= 1 for our old inserts
-    for table, _col in cleanup_mod.TABLE_CONFIG:
+    for t_config in cleanup_mod.TABLE_CONFIG:
+        table = t_config[0]
         assert table in result["deleted"]
         assert result["deleted"][table] >= 1
 

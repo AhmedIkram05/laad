@@ -15,18 +15,20 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 5000
 
 TABLE_CONFIG = [
-    ("events",           "timestamp"),
-    ("metrics",          "timestamp"),
-    ("ingestion_errors", "timestamp"),
+    ("events",           "timestamp", ""),
+    ("metrics",          "timestamp", ""),
+    ("ingestion_errors", "timestamp", ""),
+    ("anomalies",        "detected_at", "AND is_active = 0"),
 ]
 
 
-def batched_delete(conn, table: str, col: str, cutoff: str) -> int:
+def batched_delete(conn, table: str, col: str, cutoff: str, extra_cond: str = "") -> int:
     """Deletes rows older than cutoff in batches of BATCH_SIZE.
     Commits between batches to yield the WAL write-lock to ingestion workers.
     """
-    if (table, col) not in TABLE_CONFIG:
-        raise ValueError(f"Invalid table/column for cleanup: {table}.{col}")
+    valid_tables = {t[0] for t in TABLE_CONFIG}
+    if table not in valid_tables:
+        raise ValueError(f"Invalid table for cleanup: {table}")
 
     total_deleted = 0
     while True:
@@ -36,6 +38,7 @@ def batched_delete(conn, table: str, col: str, cutoff: str) -> int:
                     SELECT id FROM {table}
                     WHERE {col} < ?
                     AND {col} IS NOT NULL
+                    {extra_cond}
                     LIMIT ?
                 )""",
             (cutoff, BATCH_SIZE)
@@ -47,11 +50,12 @@ def batched_delete(conn, table: str, col: str, cutoff: str) -> int:
     return total_deleted
 
 
-def batched_delete_all(conn, table: str) -> int:
+def batched_delete_all(conn, table: str, extra_cond: str = "") -> int:
     """Delete rows from `table` in batches of BATCH_SIZE until empty.
     Returns total deleted.
     """
-    if not any(t == table for t, _ in TABLE_CONFIG):
+    valid_tables = {t[0] for t in TABLE_CONFIG}
+    if table not in valid_tables:
         raise ValueError(f"Invalid table for cleanup: {table}")
 
     total_deleted = 0
@@ -60,6 +64,7 @@ def batched_delete_all(conn, table: str) -> int:
             f"""DELETE FROM {table}
                 WHERE id IN (
                     SELECT id FROM {table}
+                    WHERE 1=1 {extra_cond}
                     LIMIT ?
                 )""",
             (BATCH_SIZE,)
@@ -82,8 +87,10 @@ def run_wipe() -> dict:
     deleted = {}
 
     try:
-        for table, _ in TABLE_CONFIG:
-            count = batched_delete_all(conn, table)
+        for t_config in TABLE_CONFIG:
+            table = t_config[0]
+            extra_cond = t_config[2]
+            count = batched_delete_all(conn, table, extra_cond)
             deleted[table] = count
             logger.info(f"  {table}: {count} rows deleted")
 
@@ -119,8 +126,11 @@ def run_cleanup() -> dict:
         logger.info(f"Cleanup started: cutoff={cutoff} ({retention_days}d retention)")
 
         # Step 2: batched deletes
-        for table, col in TABLE_CONFIG:
-            count = batched_delete(conn, table, col, cutoff)
+        for t_config in TABLE_CONFIG:
+            table = t_config[0]
+            col = t_config[1]
+            extra_cond = t_config[2]
+            count = batched_delete(conn, table, col, cutoff, extra_cond)
             deleted[table] = count
             logger.info(f"  {table}: {count} rows deleted")
 
