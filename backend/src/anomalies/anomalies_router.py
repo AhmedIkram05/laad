@@ -2,7 +2,7 @@
 
 Endpoints:
     GET   /anomalies                    — paginated, filterable anomaly list (supports grouping)
-    PATCH /anomalies/{id}/resolve       — mark anomaly inactive (admin only)
+    PATCH /anomalies/{id}/resolve       — mark anomaly inactive
     PATCH /anomalies/{id}/star          — toggle starred
 """
 from __future__ import annotations
@@ -249,7 +249,7 @@ def resolveAnomaly(
     currentUser: dict = Depends(get_current_user),
     conn=Depends(get_db_connection)
 ):
-    """Admin only. Marks an anomaly as resolved (is_active = 0) or unresolved."""
+    """Marks an anomaly as resolved (is_active = 0) or unresolved."""
     row = conn.execute(
         "SELECT id, is_active FROM anomalies WHERE id = ?", (anomalyId,)
     ).fetchone()
