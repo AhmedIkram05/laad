@@ -1,4 +1,10 @@
-/* Import Components */
+/*
+ * Starred Page
+ * --------------------
+ * Displays all anomalies in the "Starred" state in a list.
+ */
+
+/* Internal Imports */
 import AnomalyListPage from "../components/AnomalyListPage";
 
 const starredFilter = (a) => !!a.is_starred;

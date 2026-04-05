@@ -1,4 +1,13 @@
+/*
+ * ProtectedRoute Component
+ * --------------------
+ * Handles routing and access during authentication process.
+ */
+
+/* External Libraries */
 import { Navigate, Outlet } from "react-router-dom";
+
+// Internal Imports
 import { useAuth } from "../auth/AuthProvider";
 
 function ProtectedRoute() {

@@ -1,9 +1,15 @@
-/* Import Libraries */
+/*
+ * Login Page
+ * --------------------
+ * Handles user logins.
+ */
+
+/* External Libraries */
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState } from "react";
-import { useAuth } from "../auth/AuthProvider";
 
-/* Import Styles */
+/* Internal Imports */
+import { useAuth } from "../auth/AuthProvider";
 import "./Login.css";
 
 const API_BASE_URL = "http://localhost:8000";

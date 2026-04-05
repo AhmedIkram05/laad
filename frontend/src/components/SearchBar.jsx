@@ -1,9 +1,14 @@
-/* Import Icons */
+/*
+ * SearchBar Component
+ * --------------------
+ * A search bar to apply filtering to anomaly lists.
+ */
+
+/* External Libraries */
 import { GoSearch, GoFilter } from "react-icons/go";
 
-/* Import Styles */
+/* Internal Imports */
 import './SearchBar.css';
-
 
 function SearchBar({ search, setSearch, filterBy, setFilterBy }) {
 
@@ -12,7 +17,6 @@ function SearchBar({ search, setSearch, filterBy, setFilterBy }) {
     { label: "Title", value: "title" },
     { label: "ATM ID", value: "atm_id" }
   ];
-
 
   return (
     <div className="barContainer">
@@ -44,6 +48,5 @@ function SearchBar({ search, setSearch, filterBy, setFilterBy }) {
       </div>
   );
 }
-
 
 export default SearchBar;

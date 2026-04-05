@@ -1,7 +1,13 @@
-/* Import Libraries */
+/*
+ * StarIcon Component
+ * --------------------
+ * A star icon for toggling appearance while switching between "Starred" states.
+ */
+
+/* External Libraries */
 import { GoStar, GoStarFill } from "react-icons/go";
 
-/* Import Styles */
+/* Internal Imports */
 import "./StarIcon.css";
 
 function StarIcon({ id, isStarred, toggleStar }) {

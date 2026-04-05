@@ -1,6 +1,11 @@
-/* Import Components */
-import AnomalyListPage from "../components/AnomalyListPage";
+/*
+ * Dashboard Page
+ * --------------------
+ * Displays all anomalies in a list.
+ */
 
+/* Internal Imports */
+import AnomalyListPage from "../components/AnomalyListPage";
 
 function Dashboard() {
   return (
@@ -9,6 +14,5 @@ function Dashboard() {
 
   );
 }
-
 
 export default Dashboard;

@@ -1,12 +1,15 @@
-/* Import Libraries */
+/*
+ * Main Layout
+ * --------------------
+ * A layout applied to all main pages.
+ */
+
+/* External Libraries */
 import { Outlet } from "react-router-dom";
 
-/* Import Components */
+/* Internal Components */
 import SideNavbar from "../components/SideNavbar";
-
-/* Import Styles */
 import './MainLayout.css'
-
 
 function MainLayout() {
   return (
@@ -23,6 +26,5 @@ function MainLayout() {
 
   );
 }
-
 
 export default MainLayout;

@@ -1,4 +1,13 @@
+/*
+ * AdminSettings Page
+ * --------------------
+ * Configures settings only accessible by admin users.
+ */
+
+/* External Libraries */
 import { useState, useEffect } from "react";
+
+/* Internal Imports */
 import { useAuth } from "../auth/AuthProvider";
 import BackButton from "../components/BackButton";
 import "./Login.css";

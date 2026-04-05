@@ -1,4 +1,10 @@
-/* Import Components */
+/*
+ * Completed Page
+ * --------------------
+ * Displays all active anomalies (in the "Completed" state) in a list.
+ */
+
+/* Internal Imports */
 import AnomalyListPage from "../components/AnomalyListPage";
 
 const completedFilter = (a) => a.is_active === 0;

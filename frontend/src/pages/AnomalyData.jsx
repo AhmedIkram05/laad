@@ -1,16 +1,20 @@
-/* Import Libraries */
+/*
+ * AnomalyData Page
+ * --------------------
+ * Displays analysis data for a singular anomaly.
+ */
+
+/* External Libraries */
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { GoStar, GoCheckCircle } from "react-icons/go";
 
-/* Import Components + Styles */
+/* Internal Imports */
+import { fetchAnomalies, fetchDetailedAnalysis, toggleComplete, toggleStar } from "../api/api";
 import BackButton from "../components/BackButton";
 import "./AnomalyData.css";
 
-/* Other Imports */
-import { fetchAnomalies, fetchDetailedAnalysis, toggleComplete, toggleStar } from "../api/api";
-
-
+// Reusable Section Component
 function SectionBox({ title, children, rightSlot }) {
     return (
         <section className="anomaly-section-box">
@@ -23,7 +27,7 @@ function SectionBox({ title, children, rightSlot }) {
     );
 }
 
-
+// Button Component
 function ActionButton({ label, primary = false, completed = false, icon, onClick }) {
     return (
         <button
@@ -38,7 +42,7 @@ function ActionButton({ label, primary = false, completed = false, icon, onClick
     );
 }
 
-
+// Formats an Event Time into an Easily Readable Date and Time
 function formatEventTime(range) {
   if (!range) return "Unknown";
 
@@ -54,13 +58,13 @@ function formatEventTime(range) {
   return `${date}, ${time}`;
 }
 
-
 function AnomalyData() {
     const { anomaly_type } = useParams();
     const [data, setData] = useState(null);
     const [isCompleted, setIsCompleted] = useState(true);
     const [isStarred, setIsStarred] = useState(false);
 
+    // Toggles the "Completed" State of the Anomaly
     const handleComplete = async () => {
         if (!data) return;
         try {
@@ -71,6 +75,7 @@ function AnomalyData() {
         }
     };
 
+    // Toggles the "Starred" State of the Anomaly
     const handleStar = async () => {
         if (!data) return;
         try {
@@ -81,6 +86,7 @@ function AnomalyData() {
         }
     };
 
+    // Fetches the Analysis Data from the API
     useEffect(() => {
         const load = async () => {
             try {
@@ -115,7 +121,6 @@ function AnomalyData() {
     }, [anomaly_type]);
 
     if (!data) return <p>Loading...</p>;
-
 
     return (
         <div className="anomaly-page">

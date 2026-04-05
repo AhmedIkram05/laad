@@ -1,10 +1,15 @@
-/* Import Libraries */
+/*
+ * BackButton Component
+ * --------------------
+ * A back button to return to previous page in navigation.
+ */
+
+/* External Libraries */
 import { useNavigate } from "react-router-dom";
 import { GoChevronLeft } from "react-icons/go";
 
-/* Import Styles */
+/* Internal Imports */
 import "./BackButton.css";
-
 
 function BackButton() {
   const navigate = useNavigate();

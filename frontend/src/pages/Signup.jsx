@@ -1,6 +1,14 @@
+/*
+ * Signup Page
+ * --------------------
+ * Handles creation of a new user.
+ */
+
+/* External Libraries */
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
+/* Internal Imports */
 import "./Login.css";
 
 const API_BASE_URL = "http://localhost:8000";

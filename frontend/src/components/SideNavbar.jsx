@@ -1,26 +1,29 @@
-/* Import Libraries */
+/*
+ * SideNavbar Component
+ * --------------------
+ * A side bar for navigation to main pages.
+ */
+
+/* External Libraries */
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-
-/* Import Icons */
 import { GoHome, GoStar, GoCheckCircle, GoSignOut } from "react-icons/go";
 import { FiSettings } from "react-icons/fi";
 
-/* Import Styles */
+/* Internal Imports */
 import './SideNavbar.css'
-
 
 function SideNavbar() {
   const navigate = useNavigate();
   const location = useLocation();
 
   const active = (path) => location.pathname === path;
-
   const { user, logout } = useAuth();
 
   return (
     <div className="navbarContainer">
     
+      {/* Main Buttons */}
       <div className="buttonContainer">
         <button className={`button ${active("/dashboard") ? "active" : ""}`} onClick={() => navigate("/dashboard")}>
           <span className="icon"><GoHome/></span><span className="text">Dashboard</span></button>
@@ -30,6 +33,7 @@ function SideNavbar() {
           <span className="icon"><GoCheckCircle/></span><span className="text">Completed</span></button>
       </div>
 
+      {/* Settings and Account Buttons */}
       <div className="settingsContainer">
         <div className="buttonContainer">
           {user && user.role === "admin" && (
@@ -45,6 +49,5 @@ function SideNavbar() {
     </div>
   );
 }
-
 
 export default SideNavbar;

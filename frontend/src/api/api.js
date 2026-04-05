@@ -1,7 +1,15 @@
+/*
+ * API Helper
+ * --------------------
+ * Connects to backend API and attaches authentication headers.
+ */
+
+// Generates Authorisation Headers Using JWT
 const getAuthHeaders = () => ({
     Authorization: `Bearer ${localStorage.getItem("jwt")}`,
 });
 
+// Helper Function for Making API Requests
 const request = async (endpoint, options = {}) => {
     const res = await fetch(endpoint, {
         headers: {
@@ -18,27 +26,18 @@ const request = async (endpoint, options = {}) => {
     return res.json();
 };
 
+// Fetches a list of anomalies filtered by Completed state
 export const fetchAnomalies = (is_active = 1) =>
     request(`/api/anomalies?is_active=${is_active}`);
 
+// Fetches analysis data for a specific anomaly
 export const fetchDetailedAnalysis = (anomaly_type) =>
     request(`/api/analysis/detailed?Anomaly=${anomaly_type}`);
 
-export const fetchAnomalyDetail = (id) =>
-    request(`/api/anomalies/${id}`);
-
-export const fetchATM = (atmId) =>
-    request(`/api/atms/${atmId}`);
-
-export const fetchTimeline = (atmId, from, to, offset = 0) =>
-    request(`/api/timeline?atm_id=${atmId}&from_date=${from}&to_date=${to}&limit=10&offset=${offset}`);
-
+// Toggles the "Starred" state of an anomaly
 export const toggleStar = (id) =>
-    request(`/api/anomalies/${id}/star`, {
-        method: "PATCH",
-    });
+    request(`/api/anomalies/${id}/star`, {method: "PATCH",});
 
+// Toggles the "Completed" state of an anomaly
 export const toggleComplete = (id) =>
-    request(`/api/anomalies/${id}/resolve`, {
-        method: "PATCH",
-    });
+    request(`/api/anomalies/${id}/resolve`, {method: "PATCH",});
