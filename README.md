@@ -1,6 +1,6 @@
 # Log Aggregation Analysis and Diagnostics Platform
 
-User Manual for Running and Testing our Log Aggregration Analysis and Diagnostics System, Built for NCR Atleos.
+Technical Manual for Running and Testing our Log Aggregration Analysis and Diagnostics System, Built for NCR Atleos.
 
 ## Prerequisites
 
