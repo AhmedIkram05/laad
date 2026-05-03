@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Analysis & Diagnostics Platform (LAAD)
 
-> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources, detects 7 anomaly types, ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with a fully local RAG-based diagnostic assistant.
+> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform - built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources, detects 7 anomaly types, ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with a fully local RAG-based diagnostic assistant.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
@@ -13,19 +13,23 @@
 
 ---
 
-## Screenshots
+## Demonstration
 
-### Main dashboard — anomalies ranked by weighted criticality score, severity badges, and ATM status indicators
+**[→ Project Report](https://github.com/AhmedIkram05/laad/docs/README.md/docs/Project%20Report.pdf)**
+
+---
+
+### Main dashboard - anomalies ranked by weighted criticality score, severity badges, and ATM status indicators
 ![Dashboard](docs/screenshots/dashboard.png)
 
-### Anomaly detail — root cause explanation, operational impact assessment, and recommended remediation action
+### Anomaly detail - root cause explanation, operational impact assessment, and recommended remediation action
 ![Detailed View](docs/screenshots/detailed-view.png)
 
-### Admin settings — configurable data retention period (1–365 days) and user management
+### Admin settings - configurable data retention period (1–365 days) and user management
 ![Admin Settings](docs/screenshots/admin-settings.png) 
 
-### RAG diagnostic assistant — natural language querying of ATM log history, served entirely locally
-![RAG Assistant](docs/screenshots/rag-assistant.png) 
+### RAG diagnostic assistant - natural language querying of ATM log history, served entirely locally
+![RAG Assistant](docs/screenshots/rag-assistant.png)
 
 ---
 
