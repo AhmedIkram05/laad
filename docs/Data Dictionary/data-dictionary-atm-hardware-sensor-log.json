@@ -1,0 +1,117 @@
+{
+  "source": "ATM Hardware Sensor Log",
+  "description": "Hardware health and sensor events from ATM peripheral components (cash dispenser, card reader, receipt printer, etc.).",
+  "format": "JSON",
+  "fields": [
+    {
+      "field": "timestamp",
+      "type": "ISO 8601 datetime",
+      "example": "2026-03-05T09:15:00.000Z",
+      "description": "UTC timestamp of the hardware event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "atm_id",
+      "type": "string",
+      "pattern": "ATM-[A-Z]{2}-[0-9]{4}",
+      "example": "ATM-GB-0042",
+      "description": "Synthetic ATM identifier matching the application log.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "correlation_id",
+      "type": "UUID v4",
+      "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "description": "Cross-channel correlation ID to link with application and Kafka events.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "component",
+      "type": "enum",
+      "values": [
+        "CASH_DISPENSER", "CARD_READER", "RECEIPT_PRINTER",
+        "KEYPAD", "SCREEN", "CAMERA", "UPS", "NETWORK_ADAPTER",
+        "DOOR_SENSOR", "TEMPERATURE_SENSOR"
+      ],
+      "example": "CASH_DISPENSER",
+      "description": "The physical hardware component reporting the event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "event_type",
+      "type": "enum",
+      "values": [
+        "STATUS_OK", "WARNING", "FAULT", "SELF_TEST_PASS", "SELF_TEST_FAIL",
+        "CASSETTE_LOW", "CASSETTE_EMPTY", "JAM_DETECTED", "JAM_CLEARED",
+        "DOOR_OPEN", "DOOR_CLOSED", "TEMPERATURE_HIGH", "TEMPERATURE_NORMAL",
+        "POWER_RESTORED", "POWER_FAILURE"
+      ],
+      "example": "CASSETTE_LOW",
+      "description": "Type of hardware event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "severity",
+      "type": "enum",
+      "values": ["INFO", "WARNING", "CRITICAL"],
+      "example": "WARNING",
+      "description": "Severity level of the hardware event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "message",
+      "type": "string",
+      "max_length": 256,
+      "example": "Cash cassette level below 10% threshold. Remaining: 48 notes.",
+      "description": "Human-readable description of the hardware event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "metric_name",
+      "type": "string",
+      "example": "cassette_note_count",
+      "description": "Name of the hardware metric being reported, if applicable.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "metric_value",
+      "type": "number",
+      "example": 48,
+      "description": "Numeric value of the hardware metric.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "metric_unit",
+      "type": "string",
+      "example": "notes",
+      "description": "Unit of measurement for the metric value (e.g., notes, celsius, volts).",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "threshold_value",
+      "type": "number",
+      "example": 50,
+      "description": "The threshold value that triggered a WARNING or CRITICAL event. Null if not applicable.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "firmware_version",
+      "type": "string",
+      "example": "FW-2.1.4",
+      "description": "Firmware version of the hardware component.",
+      "required": false,
+      "nullable": true
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+  "source": "GCP Cloud Metrics",
+  "description": "Simulated Google Cloud Platform infrastructure metrics for the VM instances and containers hosting the Terminal Handler application.",
+  "format": "JSON",
+  "collection_interval": "60s",
+  "fields": [
+    {
+      "field": "timestamp",
+      "type": "ISO 8601 datetime",
+      "example": "2026-03-05T09:15:00.000Z",
+      "description": "UTC timestamp of the cloud metric sample.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "project_id",
+      "type": "string",
+      "example": "synth-banking-sim-001",
+      "description": "Synthetic GCP project identifier.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "resource_type",
+      "type": "enum",
+      "values": ["gce_instance", "gke_container", "cloud_sql_instance"],
+      "example": "gke_container",
+      "description": "Type of GCP resource being monitored.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "resource_id",
+      "type": "string",
+      "example": "terminal-handler-pod-7d9f-xk2lp",
+      "description": "Synthetic resource identifier (pod name, instance name, etc.).",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "zone",
+      "type": "string",
+      "example": "europe-west2-b",
+      "description": "GCP zone (synthetic, uses real zone naming convention).",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "metric_name",
+      "type": "string",
+      "example": "container/cpu/usage_time",
+      "description": "GCP metric type path.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "metric_value",
+      "type": "number",
+      "example": 0.35,
+      "description": "Numeric value of the metric sample.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "metric_unit",
+      "type": "string",
+      "example": "s{CPU}",
+      "description": "Unit of measurement as per GCP Metrics notation.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "cpu_usage_percent",
+      "type": "number",
+      "unit": "percent",
+      "example": 35.0,
+      "description": "Container or VM CPU utilisation percentage.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "memory_usage_bytes",
+      "type": "integer",
+      "unit": "bytes",
+      "example": 536870912,
+      "description": "Memory currently consumed by the container or instance.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "memory_limit_bytes",
+      "type": "integer",
+      "unit": "bytes",
+      "example": 2147483648,
+      "description": "Memory limit assigned to the container.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "network_ingress_bytes",
+      "type": "integer",
+      "unit": "bytes",
+      "example": 204800,
+      "description": "Network bytes received in the measurement interval.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "network_egress_bytes",
+      "type": "integer",
+      "unit": "bytes",
+      "example": 102400,
+      "description": "Network bytes sent in the measurement interval.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "restart_count",
+      "type": "integer",
+      "example": 0,
+      "description": "Number of container restarts. Non-zero values indicate instability.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "labels",
+      "type": "object",
+      "example": { "app": "terminal-handler", "env": "prod-sim", "version": "2.7.0" },
+      "description": "GCP resource labels for filtering and grouping.",
+      "required": false,
+      "nullable": true
+    }
+  ],
+  "example_metric_names": [
+    "container/cpu/usage_time",
+    "container/memory/used_bytes",
+    "container/memory/limit_bytes",
+    "container/network/received_bytes_count",
+    "container/network/sent_bytes_count",
+    "container/restart_count",
+    "cloudsql/database/cpu/usage_time",
+    "cloudsql/database/memory/usage",
+    "cloudsql/database/disk/read_ops_count",
+    "cloudsql/database/disk/write_ops_count",
+    "cloudsql/database/postgresql/num_backends"
+  ]
+}

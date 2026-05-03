@@ -1,0 +1,144 @@
+{
+  "source": "Kafka ATM Metrics Event Stream",
+  "description": "Kafka messages published by the Terminal Handler containing real-time operational metrics for each ATM under management.",
+  "format": "JSON (Kafka message value; key = atm_id)",
+  "kafka_topic": "atm-metrics",
+  "fields": [
+    {
+      "field": "timestamp",
+      "type": "ISO 8601 datetime",
+      "example": "2026-03-05T09:14:34.000Z",
+      "description": "UTC timestamp when the metric snapshot was published.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "event_id",
+      "type": "UUID v4",
+      "example": "c56a4180-65aa-42ec-a945-5fd21dec0538",
+      "description": "Unique identifier for this Kafka message/event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "correlation_id",
+      "type": "UUID v4",
+      "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "description": "Cross-channel correlation ID linking this event to ATM application and Terminal Handler logs.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "atm_id",
+      "type": "string",
+      "pattern": "ATM-[A-Z]{2}-[0-9]{4}",
+      "example": "ATM-GB-0042",
+      "description": "Unique synthetic ATM identifier. Also used as the Kafka message key.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "atm_status",
+      "type": "enum",
+      "values": ["Online", "Offline", "In Service", "In Supervisor", "Out of Service"],
+      "example": "Online",
+      "description": "Current operational status of the ATM.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "transaction_rate_tps",
+      "type": "number",
+      "unit": "transactions per second",
+      "example": 1.4,
+      "minimum": 0.0,
+      "description": "Current transaction throughput in transactions per second.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "response_time_ms",
+      "type": "integer",
+      "unit": "milliseconds",
+      "example": 312,
+      "minimum": 0,
+      "description": "Average response time for transactions in the current measurement window.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "transaction_volume",
+      "type": "integer",
+      "example": 847,
+      "description": "Cumulative transaction count since last ATM restart or counter reset.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "transaction_success_rate",
+      "type": "number",
+      "unit": "percentage",
+      "example": 98.6,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "description": "Percentage of transactions that completed successfully in the current window.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "transaction_failure_reason",
+      "type": "enum",
+      "values": [
+        "NONE",
+        "NETWORK_TIMEOUT",
+        "HOST_UNAVAILABLE",
+        "CARD_DECLINED",
+        "INSUFFICIENT_FUNDS",
+        "INVALID_PIN",
+        "CASH_DISPENSE_ERROR",
+        "CARD_JAM",
+        "SESSION_TIMEOUT",
+        "MALFORMED_REQUEST",
+        "UNKNOWN_ERROR"
+      ],
+      "example": "NETWORK_TIMEOUT",
+      "description": "Most recent or most frequent transaction failure reason. NONE if no failures.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "failure_count",
+      "type": "integer",
+      "example": 3,
+      "minimum": 0,
+      "description": "Number of failed transactions in the current measurement window.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "window_duration_seconds",
+      "type": "integer",
+      "unit": "seconds",
+      "example": 60,
+      "description": "Duration of the measurement window over which metrics were aggregated.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "kafka_partition",
+      "type": "integer",
+      "example": 2,
+      "description": "Kafka partition the message was written to (for synthetic data generation reference).",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "kafka_offset",
+      "type": "integer",
+      "example": 100453,
+      "description": "Kafka offset of the message (for synthetic data generation reference).",
+      "required": false,
+      "nullable": true
+    }
+  ]
+}
