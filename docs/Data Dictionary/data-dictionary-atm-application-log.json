@@ -1,0 +1,157 @@
+{
+  "source": "ATM Application Log",
+  "description": "Structured log events emitted by the C# ATM client application running on Windows.",
+  "format": "JSON / structured text",
+  "fields": [
+    {
+      "field": "timestamp",
+      "type": "ISO 8601 datetime",
+      "example": "2026-03-05T09:14:33.221Z",
+      "description": "UTC timestamp of when the log event was generated. Must be monotonically increasing.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "log_level",
+      "type": "enum",
+      "values": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"],
+      "example": "ERROR",
+      "description": "Severity level of the log entry.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "atm_id",
+      "type": "string",
+      "pattern": "ATM-[A-Z]{2}-[0-9]{4}",
+      "example": "ATM-GB-0042",
+      "description": "Unique synthetic identifier for the ATM terminal. No real identifiers.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "location_code",
+      "type": "string",
+      "pattern": "LOC-[0-9]{4}",
+      "example": "LOC-0117",
+      "description": "Synthetic location code for the ATM site.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "session_id",
+      "type": "UUID v4",
+      "example": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "description": "Unique identifier for the current user session. Null if no session active.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "correlation_id",
+      "type": "UUID v4",
+      "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "description": "Cross-channel correlation identifier. Shared with Terminal Handler and Kafka events for the same transaction.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "transaction_id",
+      "type": "UUID v4",
+      "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "description": "Unique identifier for the ATM transaction. Null for non-transaction events.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "event_type",
+      "type": "enum",
+      "values": [
+        "STARTUP", "SHUTDOWN", "CARD_INSERTED", "CARD_EJECTED", "PIN_ENTERED",
+        "TRANSACTION_START", "TRANSACTION_END", "CASH_DISPENSED", "RECEIPT_PRINTED",
+        "NETWORK_CONNECT", "NETWORK_DISCONNECT", "HARDWARE_FAULT", "SUPERVISOR_MODE_ENTER",
+        "SUPERVISOR_MODE_EXIT", "JOURNAL_WRITE", "TIMEOUT", "MALFORMED_REQUEST", "UNKNOWN"
+      ],
+      "example": "TRANSACTION_END",
+      "description": "Categorised event type for the log entry.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "message",
+      "type": "string",
+      "max_length": 512,
+      "example": "Transaction completed successfully. Amount dispensed: 200.00",
+      "description": "Human-readable log message. May be malformed in anomalous scenarios.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "component",
+      "type": "string",
+      "example": "CashDispenser",
+      "description": "Software component or module that generated the log.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "thread_id",
+      "type": "integer",
+      "example": 14,
+      "description": "OS thread ID that produced the log event.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "response_time_ms",
+      "type": "integer",
+      "unit": "milliseconds",
+      "example": 312,
+      "description": "Time taken for the operation to complete. Null for non-timed events.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "error_code",
+      "type": "string",
+      "pattern": "ERR-[0-9]{4}",
+      "example": "ERR-0032",
+      "description": "Application-defined error code. Null if no error.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "error_detail",
+      "type": "string",
+      "max_length": 1024,
+      "example": "SocketException: Connection timed out after 30000ms",
+      "description": "Stack trace or additional error detail. Null if no error.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "atm_status",
+      "type": "enum",
+      "values": ["Online", "Offline", "In Service", "In Supervisor", "Out of Service"],
+      "example": "Online",
+      "description": "Current operational status of the ATM at the time of the event.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "os_version",
+      "type": "string",
+      "example": "Windows 10 LTSB 2016",
+      "description": "Operating system version string of the ATM host.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "app_version",
+      "type": "string",
+      "example": "3.4.1-build.209",
+      "description": "Version of the ATM client application.",
+      "required": true,
+      "nullable": false
+    }
+  ]
+}

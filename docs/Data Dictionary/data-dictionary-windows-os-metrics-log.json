@@ -1,0 +1,159 @@
+{
+  "source": "Windows OS Metrics Log",
+  "description": "Operating system level metrics collected from the Windows host machine running the ATM C# client application.",
+  "format": "JSON",
+  "collection_interval": "60s",
+  "fields": [
+    {
+      "field": "timestamp",
+      "type": "ISO 8601 datetime",
+      "example": "2026-03-05T09:14:00.000Z",
+      "description": "UTC timestamp of the metric collection.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "atm_id",
+      "type": "string",
+      "pattern": "ATM-[A-Z]{2}-[0-9]{4}",
+      "example": "ATM-GB-0042",
+      "description": "Synthetic ATM identifier for cross-source correlation.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "hostname",
+      "type": "string",
+      "example": "ATM-HOST-0042",
+      "description": "Synthetic hostname of the ATM Windows machine.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "os_version",
+      "type": "string",
+      "example": "Windows 10 LTSB 2016 Build 14393",
+      "description": "OS version string.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "cpu_usage_percent",
+      "type": "number",
+      "unit": "percent",
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "example": 34.7,
+      "description": "Total CPU utilisation as a percentage.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "memory_used_mb",
+      "type": "number",
+      "unit": "megabytes",
+      "example": 1843.2,
+      "description": "Physical memory (RAM) currently in use.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "memory_total_mb",
+      "type": "number",
+      "unit": "megabytes",
+      "example": 4096.0,
+      "description": "Total physical memory installed.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "memory_usage_percent",
+      "type": "number",
+      "unit": "percent",
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "example": 44.99,
+      "description": "Derived: (memory_used_mb / memory_total_mb) * 100.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "disk_read_bytes_per_sec",
+      "type": "number",
+      "unit": "bytes/second",
+      "example": 204800,
+      "description": "Disk read throughput.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "disk_write_bytes_per_sec",
+      "type": "number",
+      "unit": "bytes/second",
+      "example": 51200,
+      "description": "Disk write throughput.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "disk_free_gb",
+      "type": "number",
+      "unit": "gigabytes",
+      "example": 18.4,
+      "description": "Available disk space on the primary volume.",
+      "required": true,
+      "nullable": false
+    },
+    {
+      "field": "network_bytes_sent_per_sec",
+      "type": "number",
+      "unit": "bytes/second",
+      "example": 12288,
+      "description": "Network interface outbound throughput.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "network_bytes_recv_per_sec",
+      "type": "number",
+      "unit": "bytes/second",
+      "example": 8192,
+      "description": "Network interface inbound throughput.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "network_errors",
+      "type": "integer",
+      "example": 0,
+      "description": "Count of network interface errors since last collection.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "process_count",
+      "type": "integer",
+      "example": 72,
+      "description": "Total number of active OS processes.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "system_uptime_seconds",
+      "type": "integer",
+      "unit": "seconds",
+      "example": 864000,
+      "description": "Time since last OS boot.",
+      "required": false,
+      "nullable": true
+    },
+    {
+      "field": "event_log_errors_last_min",
+      "type": "integer",
+      "example": 0,
+      "description": "Count of ERROR-level Windows Event Log entries in the last minute.",
+      "required": false,
+      "nullable": true
+    }
+  ]
+}
