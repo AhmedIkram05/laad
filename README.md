@@ -20,15 +20,19 @@
 ---
 
 ### Main dashboard - anomalies ranked by weighted criticality score, severity badges, and ATM status indicators
+
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ### Anomaly detail - root cause explanation, operational impact assessment, and recommended remediation action
+
 ![Detailed View](docs/screenshots/detailed-view.png)
 
 ### Admin settings - configurable data retention period (1–365 days) and user management
-![Admin Settings](docs/screenshots/admin-settings.png) 
+
+![Admin Settings](docs/screenshots/admin-settings.png)
 
 ### RAG diagnostic assistant - natural language querying of ATM log history, served entirely locally
+
 ![RAG Assistant](docs/screenshots/rag-assistant.png)
 
 ---
