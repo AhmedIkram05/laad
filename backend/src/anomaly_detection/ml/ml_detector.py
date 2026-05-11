@@ -126,6 +126,15 @@ class MLAnomalyDetector:
         log.info("Saved anomaly %s (atm=%s, confidence=%.2f, source=%s)",
                  anomaly_type, atm_id, confidence, source)
 
+    def _fallback_to_rules(self) -> None:
+        """Run the standalone rule-based detector as a fallback path."""
+        from backend.src.anomaly_detection.anomaly_detector import AnomalyDetector
+
+        rd = AnomalyDetector()
+        data = rd.load_data()
+        anomalies = rd.detect_anomalies(data)
+        rd.save_anomalies(anomalies)
+
     def _detect_rules(self, rows: list[dict]) -> list[tuple[str, str | None, float]]:
         """Rule-based detection from payload _anomaly_tag signals in the window.
 
@@ -206,12 +215,8 @@ class MLAnomalyDetector:
                     log.info("ML: confidence %.2f < threshold or NORMAL — rules are primary", confidence)
         elif FALLBACK_ENABLED:
             log.info("ML models not loaded — running rule-based detection only")
-            from backend.src.anomaly_detection.anomaly_detector import AnomalyDetector
             try:
-                rd = AnomalyDetector()
-                data = rd.load_data()
-                anomalies = rd.detect_anomalies(data)
-                rd.save_anomalies(anomalies)
+                self._fallback_to_rules()
             except Exception as exc:
                 log.error("Rule-based fallback failed: %s", exc)
 
