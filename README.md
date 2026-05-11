@@ -52,7 +52,7 @@ flowchart TD
   S["7 Log Sources"]
   P["7 Custom Parsers"]
   I["Ingestion Pipeline"]
-  DB[("SQLite (7 tables)")]
+    DB[("PostgreSQL (JSONB + TIMESTAMPTZ)")]
   RB["Rule-Based Detector"]
   RK["Ranking Algorithm"]
   CL["APScheduler Cleanup"]
@@ -75,7 +75,7 @@ flowchart TD
 
 **Sources:** ATM application logs, hardware sensor metrics, Kafka event streams, Prometheus OS metrics, Windows OS metrics, GCP cloud metrics, and terminal handler logs.
 
-**Ingestion:** 7 custom parsers feed a unified ingestion pipeline with dead-letter routing to `ingestion_errors`, retry-with-backoff, WAL mode, and schema normalisation into shared events and metrics tables.
+**Ingestion:** 7 custom parsers feed a unified ingestion pipeline with dead-letter routing to `ingestion_errors`, retry-with-backoff, and schema normalisation into shared `events` and `metrics` tables. The project now targets PostgreSQL using JSONB payloads and TIMESTAMPTZ timestamps.
 
 **Detection:** A rule-based detector identifies A1-A7 anomaly types, then a ranking algorithm prioritises them using severity, anomaly type, time, and transaction weight. APScheduler handles retention cleanup while preserving unresolved records.
 
@@ -91,8 +91,8 @@ Rather than source-specific tables (one per log type), all normalised records la
 **Dead-letter routing — no silent data loss**
 Malformed records are routed to `ingestion_errors` rather than raising exceptions. Parsers use `.get()` with safe defaults throughout — a missing field in a Kafka stream never halts ingestion for that source. This was validated by deliberate malformed payload injection during testing, which revealed that strict dictionary access (`payload['field']`) crashed the entire pipeline for that source.
 
-**WAL journal mode + retry-with-backoff**
-SQLite allows only one writer at a time. With 7 ingestion sources running concurrently, lock collisions are guaranteed under load. WAL mode allows concurrent reads during writes. The `write_helper.py` batch writer implements exponential backoff on `sqlite3.OperationalError: database is locked` — stress tests with 50 concurrent write threads confirmed zero data loss. Without this, the system operates on an incomplete log dataset.
+**PostgreSQL + retry-with-backoff**
+The project now targets PostgreSQL. Batch writes use `psycopg2.extras.execute_values` for efficient bulk inserts and a connection pool for concurrency. The `write_helper.py` implements retry/backoff for transient Postgres errors (deadlocks, serialization failures). SQL uses `%s` parameter placeholders and JSONB/TIMESTAMPTZ types for compatibility.
 
 **Data retention preserving unresolved anomalies**
 A naïve age-based cleanup would silently delete active, unresolved anomalies — a critical hardware failure logged 32 days ago that hasn't been addressed would disappear from the dashboard. The cleanup routine filters on `is_completed = false`, preserving all unresolved alerts regardless of age. This implements NFR4 directly and was caught by `test_cleanup.py` before release.
@@ -331,11 +331,21 @@ git clone https://github.com/AhmedIkram05/laad.git
 cd laad
 ```
 
-### 2. Backend setup
+### 2. Backend setup (PostgreSQL)
+
+Start a PostgreSQL instance using Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+This starts a PostgreSQL 16 instance on `localhost:5432` with the schema pre-loaded. The database name, user, and password are read from the `.env` file.
+
+Create and activate a virtualenv and install dependencies:
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
@@ -378,9 +388,14 @@ Seeded automatically on first `python main.py` run:
 
 ### Running tests
 
+Tests run against a separate PostgreSQL test database. The pytest fixture forces its own `POSTGRES_*` settings so the test suite does not touch the production database. Start the isolated test DB with Docker:
+
 ```bash
-pytest          # all 48 tests from repo root
+docker compose -f docker-compose.test.yml up -d
+pytest -q
 ```
+
+The test database runs on `localhost:5433` by default with database name `atm_platform_test`, so it stays isolated from the production/local app database on `localhost:5432`.
 
 ---
 
@@ -389,7 +404,7 @@ pytest          # all 48 tests from repo root
 | Layer | Technology | Rationale |
 |---|---|---|
 | Backend framework | FastAPI | Automatic API docs, built-in dependency injection for RBAC guards, APScheduler integration |
-| Database | SQLite + WAL | No external server required; WAL mode enables concurrent reads; retry-with-backoff handles write locks |
+| Database | PostgreSQL (JSONB, TIMESTAMPTZ) | Production-grade DB with JSONB payloads, time zone aware timestamps, and standard SQL features (indexes, autovacuum managed by DBA) |
 | Ingestion scheduling | APScheduler | Background task management for data retention cleanup and periodic ingestion |
 | Frontend | React + Vite | Beginner-accessible with large community; Vite for fast dev server |
 | LLM integration | LangChain + ChromaDB + Ollama | Fully local — no external API calls, aligned with banking-grade privacy requirements |
