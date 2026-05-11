@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from psycopg2.extras import RealDictCursor
 
 from backend.src.auth.auth_router import get_current_user, get_db_connection
 
@@ -45,22 +46,22 @@ def listAnomalies(
     params: list = []
 
     if atm_id:
-        where_clauses.append("atm_id = ?")
+        where_clauses.append("atm_id = %s")
         params.append(atm_id)
     if severity:
-        where_clauses.append("severity = ?")
+        where_clauses.append("severity = %s")
         params.append(severity.upper())
     if is_active is not None:
-        where_clauses.append("is_active = ?")
+        where_clauses.append("is_active = %s")
         params.append(is_active)
     if anomaly_type:
-        where_clauses.append("anomaly_type = ?")
+        where_clauses.append("anomaly_type = %s")
         params.append(anomaly_type.upper())
     if from_date:
-        where_clauses.append("detected_at >= ?")
+        where_clauses.append("detected_at >= %s")
         params.append(from_date)
     if to_date:
-        where_clauses.append("detected_at <= ?")
+        where_clauses.append("detected_at <= %s")
         params.append(to_date)
 
     where_sql = " AND ".join(where_clauses)
@@ -69,10 +70,12 @@ def listAnomalies(
         gb = group_by.lower()
 
         if gb in ("atm", "by_atm", "group_by_atm"):
-            countRow = conn.execute(
-                f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY atm_id)",
-                params
-            ).fetchone()
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY atm_id)",
+                    params,
+                )
+                countRow = cur.fetchone()
             total = countRow[0] if countRow else 0
 
             query = f"""
@@ -105,17 +108,21 @@ def listAnomalies(
                     ) AS representative_id
                 FROM groups g
                 ORDER BY g.latest DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
             """
-            rows = conn.execute(query, params + [limit, offset]).fetchall()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(query, params + [limit, offset])
+                rows = cur.fetchall()
             return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
 
         # group_by=atm_anomaly — one row per ATM + anomaly_type combo
         if gb in ("atm_anomaly", "atm-anomaly", "atm_anom"):
-            countRow = conn.execute(
-                f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY atm_id, anomaly_type)",
-                params
-            ).fetchone()
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY atm_id, anomaly_type)",
+                    params,
+                )
+                countRow = cur.fetchone()
             total = countRow[0] if countRow else 0
 
             query = f"""
@@ -186,17 +193,21 @@ def listAnomalies(
                     ) AS is_starred
                 FROM groups g
                 ORDER BY g.latest_detected_at DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
             """
-            rows = conn.execute(query, params + [limit, offset]).fetchall()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(query, params + [limit, offset])
+                rows = cur.fetchall()
             return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
 
         # group_by=title_atm — one row per title + ATM combo
         if gb in ("title_atm", "title-atm", "by_title_atm", "title"):
-            countRow = conn.execute(
-                f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY title, atm_id)",
-                params
-            ).fetchone()
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY title, atm_id)",
+                    params,
+                )
+                countRow = cur.fetchone()
             total = countRow[0] if countRow else 0
 
             query = f"""
@@ -211,7 +222,7 @@ def listAnomalies(
                     GROUP BY title, atm_id
                 )
                 SELECT
-                    hex(g.title || '::' || g.atm_id) AS group_id,
+                    (g.title || '::' || g.atm_id) AS group_id,
                     g.title,
                     g.atm_id,
                     g.count,
@@ -227,19 +238,25 @@ def listAnomalies(
                     ) AS representative_id
                 FROM groups g
                 ORDER BY g.latest DESC
-                LIMIT ? OFFSET ?
+                LIMIT %s OFFSET %s
             """
-            rows = conn.execute(query, params + [limit, offset]).fetchall()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(query, params + [limit, offset])
+                rows = cur.fetchall()
             return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
 
     # Default — raw paginated anomalies, no grouping
-    countRow = conn.execute(
-        f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql})", params
-    ).fetchone()
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql})", params
+        )
+        countRow = cur.fetchone()
     total = countRow[0] if countRow else 0
 
-    query = f"SELECT * FROM anomalies WHERE {where_sql} ORDER BY detected_at DESC LIMIT ? OFFSET ?"
-    rows = conn.execute(query, params + [limit, offset]).fetchall()
+    query = f"SELECT * FROM anomalies WHERE {where_sql} ORDER BY detected_at DESC LIMIT %s OFFSET %s"
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, params + [limit, offset])
+        rows = cur.fetchall()
     return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
 
 
@@ -250,15 +267,15 @@ def resolveAnomaly(
     conn=Depends(get_db_connection)
 ):
     """Marks an anomaly as resolved (is_active = 0) or unresolved."""
-    row = conn.execute(
-        "SELECT id, is_active FROM anomalies WHERE id = ?", (anomalyId,)
-    ).fetchone()
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SELECT id, is_active FROM anomalies WHERE id = %s", (anomalyId,))
+        row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Anomaly not found")
     
     new_active = 0 if row["is_active"] else 1
-    conn.execute(
-        "UPDATE anomalies SET is_active = ? WHERE id = ?", (new_active, anomalyId))
+    with conn.cursor() as cur:
+        cur.execute("UPDATE anomalies SET is_active = %s WHERE id = %s", (new_active, anomalyId))
     conn.commit()
     logger.info(f"Anomaly {anomalyId} active status toggled to {new_active} by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_active": new_active, "message": "Anomaly status toggled"}
@@ -273,16 +290,17 @@ def toggleStar(
     """Toggles the starred state of an anomaly.
     Any logged-in user can star — no admin required.
     """
-    row = conn.execute(
-        "SELECT id, is_starred FROM anomalies WHERE id = ?", (anomalyId,)
-    ).fetchone()
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SELECT id, is_starred FROM anomalies WHERE id = %s", (anomalyId,))
+        row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Anomaly not found")
     newStarred = 0 if row["is_starred"] else 1
-    conn.execute(
-        "UPDATE anomalies SET is_starred = ? WHERE id = ?",
-        (newStarred, anomalyId)
-    )
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE anomalies SET is_starred = %s WHERE id = %s",
+            (newStarred, anomalyId),
+        )
     conn.commit()
     logger.info(
         f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")

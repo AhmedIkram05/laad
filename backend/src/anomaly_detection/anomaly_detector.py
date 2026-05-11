@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor, Json
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
@@ -16,30 +17,15 @@ class AnomalyDetector:
     `detect_anomalies`, and `save_anomalies`.
     """
     def __init__(self, db_path: str | None = None):
-        if db_path is None:
-            db_path = str(
-                Path(__file__).resolve().parents[2]
-                / "custom_synthetic_data_sources"
-                / "database"
-                / "database.db"
-            )
+        # Connection pool is used via backend.src.database.connection
         self.db_path = db_path
 
-    def _get_conn(self) -> sqlite3.Connection:
-        """Return an SQLite connection configured for this detector.
+    def _get_conn(self):
+        """Return a pooled PostgreSQL connection for this detector."""
+        # Use central pooled connection
+        from backend.src.database.connection import get_conn
 
-        Attempts to use the project's central `get_db` helper so PRAGMAs
-        (WAL, busy timeout, foreign keys) are applied. Falls back to a
-        plain sqlite3 connection if the helper is not available.
-        """
-        try:
-            # Use central helper if available to get PRAGMAs applied
-            from backend.src.database.connection import get_db
-
-            conn = get_db(self.db_path)
-        except Exception:
-            conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = get_conn()
         return conn
 
     def query(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
@@ -49,14 +35,15 @@ class AnomalyDetector:
         for each query.
         """
         conn = self._get_conn()
-        cur = conn.cursor()
         try:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
-            return [dict(r) for r in rows]
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+                return [dict(r) for r in rows]
         finally:
             try:
-                conn.close()
+                from backend.src.database.connection import release_conn
+                release_conn(conn)
             except Exception:
                 pass
 
@@ -699,52 +686,53 @@ class AnomalyDetector:
             return 0
 
         conn = self._get_conn()
-        cur = conn.cursor()
         saved = 0
         try:
-            for a in anomalies:
-                anomaly_type = a.get("anomaly_type")
-                atm_id = a.get("atm_id")
-                detected_at = a.get("detected_at") or datetime.now(timezone.utc).isoformat()
-                severity = a.get("severity") or "HIGH"
-                title = a.get("title") or ""
-                explanation = a.get("explanation") or json.dumps(a)
-                correlation_id = a.get("correlation_id")
-                transaction_id = a.get("transaction_id")
-                sources = a.get("sources_involved") or []
+            with conn.cursor() as cur:
+                for a in anomalies:
+                    anomaly_type = a.get("anomaly_type")
+                    atm_id = a.get("atm_id")
+                    detected_at = a.get("detected_at") or datetime.now(timezone.utc)
+                    severity = a.get("severity") or "HIGH"
+                    title = a.get("title") or ""
+                    explanation = a.get("explanation") or json.dumps(a)
+                    correlation_id = a.get("correlation_id")
+                    transaction_id = a.get("transaction_id")
+                    sources = a.get("sources_involved") or []
 
-                # dedupe: skip if an entry exists for same anomaly_type + atm_id
-                if atm_id is None:
-                    cur.execute("SELECT 1 FROM anomalies WHERE anomaly_type = ? AND atm_id IS NULL", (anomaly_type,))
-                else:
-                    cur.execute("SELECT 1 FROM anomalies WHERE anomaly_type = ? AND atm_id = ?", (anomaly_type, atm_id))
-                if cur.fetchone():
-                    continue
+                    # dedupe
+                    if atm_id is None:
+                        cur.execute("SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id IS NULL", (anomaly_type,))
+                    else:
+                        cur.execute("SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id = %s", (anomaly_type, atm_id))
+                    if cur.fetchone():
+                        continue
 
-                cur.execute(
-                    "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, correlation_id, transaction_id, model_confidence_score, severity, title, explanation, recommended_action, sources_involved, feedback_rating, is_active, is_starred) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        detected_at,
-                        anomaly_type,
-                        atm_id,
-                        correlation_id,
-                        transaction_id,
-                        None,
-                        severity,
-                        title,
-                        explanation,
-                        None,
-                        json.dumps(sources) if not isinstance(sources, str) else sources,
-                        None,
-                        1,
-                        0,
-                    ),
-                )
-                saved += 1
+                    cur.execute(
+                        "INSERT INTO anomalies (detected_at, anomaly_type, atm_id, correlation_id, transaction_id, model_confidence_score, severity, title, explanation, recommended_action, sources_involved, feedback_rating, is_active, is_starred) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        (
+                            detected_at,
+                            anomaly_type,
+                            atm_id,
+                            correlation_id,
+                            transaction_id,
+                            None,
+                            severity,
+                            title,
+                            explanation,
+                            None,
+                            Json(sources),
+                            None,
+                            1,
+                            0,
+                        ),
+                    )
+                    saved += 1
             conn.commit()
         finally:
             try:
-                conn.close()
+                from backend.src.database.connection import release_conn
+                release_conn(conn)
             except Exception:
                 pass
 
