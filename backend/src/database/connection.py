@@ -15,7 +15,7 @@ _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        _pool = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=10, **DB_CONFIG)
+        _pool = psycopg2.pool.ThreadedConnectionPool(minconn=5, maxconn=20, **DB_CONFIG)
     return _pool
 
 

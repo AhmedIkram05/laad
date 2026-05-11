@@ -23,16 +23,31 @@ logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
 
+_ml_detector = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manages scheduler startup and shutdown."""
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
+    scheduler.add_job(_run_ml_detection, "interval", seconds=10, id="ml_detector")
     scheduler.start()
     logger.info("Cleanup scheduler started (interval: 1h)")
+    logger.info("ML anomaly detector scheduler started (interval: 10s)")
     yield
     scheduler.shutdown()
-    logger.info("Cleanup scheduler stopped")
+    logger.info("Schedulers stopped")
+
+
+def _run_ml_detection():
+    global _ml_detector
+    try:
+        from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
+        if _ml_detector is None:
+            _ml_detector = MLAnomalyDetector()
+        _ml_detector.detect_and_save()
+    except Exception as exc:
+        logger.error("ML detection cycle failed: %s", exc, exc_info=True)
 
 
 app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)

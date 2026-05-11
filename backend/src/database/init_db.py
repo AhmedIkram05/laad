@@ -19,10 +19,7 @@ def _read_schema(schema_path: str = "schema.sql") -> str:
 
 
 def seed_atms(conn) -> None:
-    atms = [
-        ("ATM-GB-0001", "linux-5.19", "LOC-0001"),
-        ("ATM-GB-0002", "linux-5.19", "LOC-0002"),
-    ]
+    atms = [(f"ATM-GB-{str(i).zfill(4)}", "linux-5.19", f"LOC-{str(i).zfill(4)}") for i in range(1, 11)]
     with conn.cursor() as cur:
         cur.executemany(
             "INSERT INTO atms (atm_id, os_version, location_code) VALUES (%s, %s, %s) ON CONFLICT (atm_id) DO NOTHING",
@@ -90,8 +87,19 @@ def init_db(schema_path: str = "schema.sql", db_path=None, force: bool = False) 
 
         with conn.cursor() as cur:
             cur.execute(schema_sql)
+        with conn.cursor() as cur:
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'metrics' AND column_name = 'correlation_id'
+                    ) THEN
+                        ALTER TABLE metrics ADD COLUMN correlation_id TEXT;
+                    END IF;
+                END $$;
+            """)
         conn.commit()
-
         seed_atms(conn)
         seed_default_admin(conn)
         seed_retention_config(conn)
