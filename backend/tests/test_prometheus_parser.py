@@ -1,67 +1,34 @@
-import unittest
-import tempfile
-import os
-import sqlite3
-import os
-
+from backend.src.database.connection import get_conn, release_conn
 from backend.src.ingestion.parsers.prometheus import PrometheusParser
-from backend.tests.helpers import sample_path
+from backend.tests.helpers import reset_test_db, sample_path
 
 
-class TestPrometheusParser(unittest.TestCase):
-    def setUp(self):
-        fd, path = tempfile.mkstemp(prefix='test_db_', suffix='.sqlite')
-        os.close(fd)
-        self.db_path = path
-        with open('backend/src/database/schema.sql', 'r') as f:
-            schema = f.read()
-        conn = sqlite3.connect(self.db_path)
-        conn.executescript(schema)
-        conn.commit()
-        conn.close()
-        self.parser = PrometheusParser(db_path=self.db_path, batch_size=10)
+def test_prometheus_good_and_bad_rows():
+    reset_test_db()
+    parser = PrometheusParser(batch_size=10)
 
-    def tearDown(self):
-        try:
-            os.remove(self.db_path)
-        except Exception:
-            pass
+    with open(sample_path('prometheus_metrics.csv'), 'r', encoding='utf-8') as f:
+        lines = f.readlines()
 
-    def test_prometheus_good_and_bad_rows(self):
-        # Load a few lines from the sample CSV
-        with open(sample_path('prometheus_metrics.csv'), 'r') as f:
-            lines = f.readlines()
+    good_lines = [lines[1].strip(), lines[2].strip()]
+    for line in good_lines:
+        assert parser.process_line(line, source='PROMETHEUS') is True
 
-        # Feed two good lines
-        good_lines = [lines[1].strip(), lines[2].strip()]
-        for ln in good_lines:
-            ok = self.parser.process_line(ln, source='PROMETHEUS')
-            self.assertTrue(ok)
+    assert parser.process_line('not,a,valid,csv,line', source='PROMETHEUS') is False
 
-        # Feed a bad/malformed line that should be rejected
-        bad = 'not,a,valid,csv,line'
-        ok = self.parser.process_line(bad, source='PROMETHEUS')
-        self.assertFalse(ok)
+    malformed_numeric = '2026-03-05T09:15:00Z,http_requests_total,counter,890iembre,auth,pod-1,cid,,prod,desc'
+    assert parser.process_line(malformed_numeric, source='PROMETHEUS') is False
 
-        # Feed a malformed numeric value that should be rejected by the parser
-        malformed_numeric = '2026-03-05T09:15:00Z,http_requests_total,counter,890iembre,auth,pod-1,cid,,prod,desc'
-        ok = self.parser.process_line(malformed_numeric, source='PROMETHEUS')
-        self.assertFalse(ok)
+    parser.flush()
 
-        # Flush and verify metrics rows and ingestion_errors
-        self.parser.flush()
-        conn = sqlite3.connect(self.db_path)
-        cur = conn.cursor()
-        cur.execute('SELECT COUNT(*) FROM metrics')
-        metrics_count = cur.fetchone()[0]
-        cur.execute('SELECT COUNT(*) FROM ingestion_errors')
-        err_count = cur.fetchone()[0]
-        conn.close()
-
-        # only the two good lines should be accepted; malformed numeric rejected
-        self.assertEqual(metrics_count, len(good_lines))
-        self.assertGreaterEqual(err_count, 1)
-
-
-if __name__ == '__main__':
-    unittest.main()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SELECT COUNT(*) FROM metrics')
+            metrics_count = cur.fetchone()[0]
+            cur.execute('SELECT COUNT(*) FROM ingestion_errors')
+            error_count = cur.fetchone()[0]
+        assert metrics_count == len(good_lines)
+        assert error_count >= 1
+    finally:
+        release_conn(conn)

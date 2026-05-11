@@ -17,9 +17,11 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
-import sqlite3
 
-from backend.src.database.connection import get_db
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+from backend.src.database.connection import get_conn, release_conn
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +37,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # DB connection dependency
 # Guarantees conn.close() is always called, even if the endpoint throws.
 def get_db_connection() -> Generator:
-    conn = get_db()
+    conn = get_conn()
     try:
         yield conn
     finally:
-        conn.close()
+        release_conn(conn)
 
 
 # Token utilities
@@ -94,10 +96,12 @@ def login(
     conn=Depends(get_db_connection),
 ):
     """Standard username/password login. Returns a JWT."""
-    row = conn.execute(
-        "SELECT password_hash, role FROM users WHERE username = ?",
-        (form.username,),
-    ).fetchone()
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            "SELECT password_hash, role FROM users WHERE username = %s",
+            (form.username,),
+        )
+        row = cur.fetchone()
 
     if not row or not bcrypt.checkpw(form.password.encode(), row["password_hash"].encode()):
         raise HTTPException(
@@ -137,14 +141,15 @@ def register(request: RegisterRequest, conn=Depends(get_db_connection)):
     # Hash the password and insert the user
     password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
     try:
-        cur = conn.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            (request.username, password_hash, "user"),
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s) RETURNING id",
+                (request.username, password_hash, "user"),
+            )
+            user_id = cur.fetchone()[0]
         conn.commit()
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        conn.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="username already exists")
-
-    user_id = cur.lastrowid if cur is not None else None
     logger.info(f"New user created: '{request.username}' (id={user_id})")
     return {"message": "Account created successfully", "username": request.username, "id": user_id}

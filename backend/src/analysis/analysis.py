@@ -1,8 +1,20 @@
-import sqlite3
 from typing import List, Dict
 from datetime import datetime, timedelta, timezone
 import json
-from backend.src.database.connection import DB_PATH
+from psycopg2.extras import RealDictCursor
+from backend.src.database.connection import get_conn, release_conn
+
+
+def _to_datetime(value):
+    """Normalise DB timestamp values to datetime.
+
+    Supports psycopg2-returned datetime objects and legacy ISO string values.
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    raise TypeError(f"Unsupported datetime value: {type(value)!r}")
 
 def rank_algorithm(anomalies):
 
@@ -111,7 +123,7 @@ def get_reference_now(anomalies):
 
     for a in anomalies:
 
-        dt = datetime.fromisoformat(a["detected_at"])
+        dt = _to_datetime(a["detected_at"])
 
         if max_dt is None or dt > max_dt:
             max_dt = dt
@@ -125,7 +137,7 @@ def get_reference_now(anomalies):
 
 #create time weight(Instead of weighting time i think a conditional weight approach would make more sense)
 def get_age_score(detected_at, reference_time):
-    dt = datetime.fromisoformat(detected_at)
+    dt = _to_datetime(detected_at)
 
     '''
     get the current date and subtract it to get the hour difference (wait on second thought use a static date,
@@ -302,7 +314,7 @@ def A7(atm_id,  missing_field_count, malformed_metric, ooo):
 def time_window(endtime_arg,time_delta):
 
     # convert to numeric so i can subtract to get estimated start time
-    time_num = datetime.fromisoformat(endtime_arg)
+    time_num = _to_datetime(endtime_arg)
 
     start_time_num = time_num - timedelta(minutes = time_delta)
 
@@ -610,29 +622,16 @@ def build_detailed_table(anomalies):
 
 
 # create connection
-def _get_conn(DB_PATH):
+def query(sql: str, params: tuple = ()):  # -> List[Dict[str, Any]]
+    conn = get_conn()
     try:
-        # Use central helper if available to get PRAGMAs applied
-        from backend.src.database.connection import get_db
-
-        conn = get_db(DB_PATH)
-    except Exception:
-        conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# query db to get the table fields
-def query(DB_PATH, sql: str, params: tuple = ()):  # -> List[Dict[str, Any]]
-    conn = _get_conn(DB_PATH)
-    cur = conn.cursor()
-    try:
-        cur.execute(sql, params)
-        rows = cur.fetchall()
-        return [dict(r) for r in rows]
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
     finally:
         try:
-            conn.close()
+            release_conn(conn)
         except Exception:
             pass
 
@@ -640,7 +639,7 @@ def query(DB_PATH, sql: str, params: tuple = ()):  # -> List[Dict[str, Any]]
 # run analysis
 def main():
     sql_query = "SELECT * FROM anomalies"
-    anomalies = query(DB_PATH, sql_query)
+    anomalies = query(sql_query)
    
    
     ranked_anomaly= rank_algorithm(anomalies)

@@ -1,38 +1,55 @@
-import sqlite3
-from pathlib import Path
+from __future__ import annotations
 
-# Default database path — match generator output location
-# Uses the project's `custom_synthetic_data_sources/database/database.db`
-# Resolve package-relative so the folder is created under `backend/`, not
-# the process CWD (which can be the repo root when running tests or server).
-OUTPUT_DIR = Path(__file__).resolve().parents[2] / "custom_synthetic_data_sources"
-DB_PATH = str(OUTPUT_DIR.joinpath("database", "database.db"))
+import psycopg2
+import psycopg2.pool
+import psycopg2.extras
+from contextlib import contextmanager
+from typing import Optional
 
-def get_db(db_path: str | None = None):
-    """Return a configured SQLite connection.
+from backend.src.database.config import DB_CONFIG
 
-    This applies recommended PRAGMA settings for better concurrent writes
-    (WAL, busy timeout, sensible synchronous mode) and enables foreign keys.
-    """
-    # Ensure parent directory exists so sqlite can create the DB file
-    p = Path(db_path or DB_PATH)
-    parent = p.parent
+# Thread-safe connection pool (lazy initialisation)
+_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=10, **DB_CONFIG)
+    return _pool
+
+
+def get_conn() -> psycopg2.extensions.connection:
+    """Check out a raw connection from the pool. Caller must return it with release_conn()."""
+    return _get_pool().getconn()
+
+
+def release_conn(conn: psycopg2.extensions.connection) -> None:
+    # Ensure pooled connections are returned in a clean transaction state.
     try:
-        parent.mkdir(parents=True, exist_ok=True)
+        conn.rollback()
     except Exception:
-        # If we cannot create the directory, let sqlite raise a clear error
+        # If rollback fails (e.g. bad/closed connection), still return it and
+        # let the pool/client lifecycle handle replacement when needed.
         pass
-    # Allow the connection to be used from different worker threads.
-    # FastAPI's dependency helpers may enter/exit context managers on
-    # different threads (contextmanager_in_threadpool), which causes
-    # sqlite3 to raise a ProgrammingError unless this flag is set.
-    conn = sqlite3.connect(str(p), timeout=5.0, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    # Apply robust runtime settings for concurrency and performance
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
-    conn.execute("PRAGMA busy_timeout = 5000")
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA temp_store = MEMORY")
-    conn.execute("PRAGMA cache_size = -64000")
-    return conn
+    _get_pool().putconn(conn)
+
+
+@contextmanager
+def get_cursor(commit: bool = False):
+    """Context manager yielding a RealDictCursor.
+
+    Yields a cursor that returns rows as dicts. If `commit` is True the
+    connection will be committed after the block; exceptions will rollback.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            yield cur
+            if commit:
+                conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_conn(conn)

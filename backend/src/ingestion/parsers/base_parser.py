@@ -9,7 +9,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 import os
-import sqlite3
 import logging
 from typing import Optional, Dict, Any
 
@@ -86,29 +85,29 @@ class BaseParser(ABC):
             needs_update = True
             
         if needs_update:
-            self.ref_buffer.append((atm_id, os_version, location_code))
-            if len(self.ref_buffer) >= self.batch_size:
-                conn = None
-                try:
-                    from backend.src.database.connection import get_db
-                    conn = get_db(self.db_path)
-                    self._flush_ref_buffer(conn)
-                finally:
-                    if conn:
-                        try:
-                            conn.close()
-                        except Exception:
-                            pass
+                self.ref_buffer.append((atm_id, os_version, location_code))
+                if len(self.ref_buffer) >= self.batch_size:
+                    conn = None
+                    try:
+                        from backend.src.database.connection import get_conn, release_conn
+                        conn = get_conn()
+                        self._flush_ref_buffer(conn)
+                    finally:
+                        if conn:
+                            try:
+                                release_conn(conn)
+                            except Exception:
+                                pass
 
     def _flush_ref_buffer(self, conn) -> None:
         if not self.ref_buffer:
             return
         sql = '''
             INSERT INTO atms (atm_id, os_version, location_code)
-            VALUES (?, ?, ?)
-            ON CONFLICT(atm_id) DO UPDATE SET 
-                os_version = COALESCE(excluded.os_version, atms.os_version),
-                location_code = COALESCE(excluded.location_code, atms.location_code)
+            VALUES %s
+            ON CONFLICT (atm_id) DO UPDATE SET
+                os_version = COALESCE(EXCLUDED.os_version, atms.os_version),
+                location_code = COALESCE(EXCLUDED.location_code, atms.location_code)
         '''
         try:
             from backend.src.ingestion.write_helper import write_batch
@@ -162,20 +161,20 @@ class BaseParser(ABC):
         This never raises; failures are logged only.
         """
         try:
-            from backend.src.database.connection import get_db
+            from backend.src.database.connection import get_conn, release_conn
 
-            conn = get_db(self.db_path)
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO ingestion_errors (timestamp, source, error_detail, raw_input) VALUES (?, ?, ?, ?)",
-                (datetime.now(timezone.utc).isoformat(), source, error_detail, raw_input),
-            )
+            conn = get_conn()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO ingestion_errors (timestamp, source, error_detail, raw_input) VALUES (%s, %s, %s, %s)",
+                    (datetime.now(timezone.utc), source, error_detail, raw_input),
+                )
             conn.commit()
         except Exception:
             logger.exception("Unable to write ingestion_errors row")
         finally:
             try:
-                conn.close()
+                release_conn(conn)
             except Exception:
                 pass
 
@@ -192,13 +191,13 @@ class EventDataParser(BaseParser):
         if not self._buffer:
             return
         try:
-            from backend.src.database.connection import get_db
+            from backend.src.database.connection import get_conn, release_conn
             from backend.src.ingestion.write_helper import write_batch
 
-            conn = get_db(self.db_path)
+            conn = get_conn()
             sql = (
                 "INSERT INTO events (timestamp, source, atm_id, correlation_id, transaction_id,"
-                " event_type, severity, message, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " event_type, severity, message, payload) VALUES %s"
             )
             params = [(
                 row.get('timestamp'),
@@ -224,7 +223,7 @@ class EventDataParser(BaseParser):
             if 'conn' in locals() and conn:
                 self._flush_ref_buffer(conn)
                 try:
-                    conn.close()
+                    release_conn(conn)
                 except Exception:
                     pass
             self._buffer.clear()
@@ -241,13 +240,13 @@ class MetricDataParser(BaseParser):
         if not self._buffer:
             return
         try:
-            from backend.src.database.connection import get_db
+            from backend.src.database.connection import get_conn, release_conn
             from backend.src.ingestion.write_helper import write_batch
 
-            conn = get_db(self.db_path)
+            conn = get_conn()
             sql = (
                 "INSERT INTO metrics (timestamp, source, entity_id, metric_name, metric_value, payload)"
-                " VALUES (?, ?, ?, ?, ?, ?)"
+                " VALUES %s"
             )
             params = [(
                 row.get('timestamp'),
@@ -269,7 +268,7 @@ class MetricDataParser(BaseParser):
             if 'conn' in locals() and conn:
                 self._flush_ref_buffer(conn)
                 try:
-                    conn.close()
+                    release_conn(conn)
                 except Exception:
                     pass
             self._buffer.clear()

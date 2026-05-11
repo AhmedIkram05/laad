@@ -20,7 +20,6 @@ if __package__ is None:
 import argparse
 import os
 import subprocess
-import sqlite3
 import sys
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -74,25 +73,22 @@ def validate_file_sample(file_path: str, parser_cls, db_path: str, sample_lines:
         return False
 
 def final_counts(db_path: str):
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    def one(q):
-        try:
-            cur.execute(q)
-            return cur.fetchone()[0]
-        except Exception:
-            return None
-    events = one("SELECT COUNT(*) FROM events")
-    metrics = one("SELECT COUNT(*) FROM metrics")
-    errors = one("SELECT COUNT(*) FROM ingestion_errors")
-    anomalies = one("SELECT COUNT(*) FROM anomalies")
-    # Force WAL checkpoint to merge -wal and -shm files back into database.db
-    # TRUNCATE mode also attempts to delete the -wal and -shm files on success.
+    from backend.src.database.connection import get_conn, release_conn
+    conn = get_conn()
     try:
-        cur.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    except Exception:
-        pass
-    conn.close()
+        with conn.cursor() as cur:
+            def one(q):
+                try:
+                    cur.execute(q)
+                    return cur.fetchone()[0]
+                except Exception:
+                    return None
+            events = one("SELECT COUNT(*) FROM events")
+            metrics = one("SELECT COUNT(*) FROM metrics")
+            errors = one("SELECT COUNT(*) FROM ingestion_errors")
+            anomalies = one("SELECT COUNT(*) FROM anomalies")
+    finally:
+        release_conn(conn)
     print("\n=== DB Summary ===")
     print(f"events: {events}")
     print(f"metrics: {metrics}")
