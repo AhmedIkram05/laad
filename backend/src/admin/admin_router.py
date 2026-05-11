@@ -93,6 +93,7 @@ def admin_create_user(request: AdminCreateUserRequest, conn=Depends(get_db_conne
             user_id = cur.fetchone()[0]
         conn.commit()
     except psycopg2.IntegrityError:
+        conn.rollback()
         raise HTTPException(status_code=409, detail="username already exists")
     logger.info(f"Admin '{current_user.get('sub')}' created user '{request.username}' role={request.role}")
     return {"id": user_id, "username": request.username, "role": request.role}

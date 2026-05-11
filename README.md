@@ -341,6 +341,22 @@ docker compose up -d
 
 This starts a PostgreSQL 16 instance on `localhost:5432` with the schema pre-loaded. The database name, user, and password are read from the `.env` file.
 
+Note: PostgreSQL only runs scripts in `/docker-entrypoint-initdb.d` the first time the data directory is initialised. Because this project uses a named Docker volume, subsequent `docker compose up -d` runs reuse the existing data and do not re-run init scripts.
+
+If you need to re-initialise from scratch (including schema bootstrap scripts), remove volumes first:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+If PostgreSQL is already running and you only need to ensure schema/seeds are present, run the backend initialisation step directly:
+
+```bash
+# Run from the backend directory
+python main.py
+```
+
 Create and activate a virtualenv and install dependencies:
 
 ```bash

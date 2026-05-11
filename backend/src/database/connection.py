@@ -25,6 +25,13 @@ def get_conn() -> psycopg2.extensions.connection:
 
 
 def release_conn(conn: psycopg2.extensions.connection) -> None:
+    # Ensure pooled connections are returned in a clean transaction state.
+    try:
+        conn.rollback()
+    except Exception:
+        # If rollback fails (e.g. bad/closed connection), still return it and
+        # let the pool/client lifecycle handle replacement when needed.
+        pass
     _get_pool().putconn(conn)
 
 

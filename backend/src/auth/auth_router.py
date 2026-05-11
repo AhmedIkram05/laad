@@ -149,6 +149,7 @@ def register(request: RegisterRequest, conn=Depends(get_db_connection)):
             user_id = cur.fetchone()[0]
         conn.commit()
     except psycopg2.IntegrityError:
+        conn.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="username already exists")
     logger.info(f"New user created: '{request.username}' (id={user_id})")
     return {"message": "Account created successfully", "username": request.username, "id": user_id}
