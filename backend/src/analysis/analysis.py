@@ -428,7 +428,7 @@ def build_detailed_table(anomalies):
 
             #no gc start in explanation so we have to skip that metric
 
-            high_cpu = True if exp.get("frac_increase") >= 0.5 else high_cpu
+            high_cpu = True if (exp.get("frac_increase") or 0) >= 0.5 else high_cpu
             oom_seen = True
 
             explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen) 

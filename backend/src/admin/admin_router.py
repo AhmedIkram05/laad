@@ -1,10 +1,11 @@
-"""Admin router — retention config and manual cleanup trigger."""
+"""Admin router — retention config, manual cleanup trigger, and ML retraining."""
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import psycopg2
 
@@ -97,3 +98,31 @@ def admin_create_user(request: AdminCreateUserRequest, conn=Depends(get_db_conne
         raise HTTPException(status_code=409, detail="username already exists")
     logger.info(f"Admin '{current_user.get('sub')}' created user '{request.username}' role={request.role}")
     return {"id": user_id, "username": request.username, "role": request.role}
+
+
+class TrainingResponse(BaseModel):
+    status: str
+    message: str
+    windows_loaded: int | None = None
+
+
+@router.post("/training", dependencies=[Depends(require_admin)], response_model=TrainingResponse)
+def trigger_training(background_tasks: BackgroundTasks):
+    """Admin only. Triggers ML model retraining in the background.
+
+    Trains Isolation Forest + XGBoost on the last 60 minutes of data from
+    v_unified_analysis, then saves artifacts to backend/ml/artifacts/.
+    """
+    def _run_training():
+        try:
+            import xgboost as xgb
+            from backend.ml.train import train as run_train
+            run_train()
+        except Exception as exc:
+            logger.error("Training failed: %s", exc)
+
+    background_tasks.add_task(_run_training)
+    return TrainingResponse(
+        status="started",
+        message="ML training started in background. Check MLflow at http://localhost:5000 when complete."
+    )
