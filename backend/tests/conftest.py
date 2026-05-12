@@ -2,7 +2,11 @@ import os
 import pytest
 from unittest.mock import patch
 
-os.environ["POSTGRES_HOST"] = os.getenv("TEST_POSTGRES_HOST", "localhost")
+test_host = os.getenv("TEST_POSTGRES_HOST")
+if test_host is None:
+    in_docker = os.path.exists("/.dockerenv")
+    test_host = "host.docker.internal" if in_docker else "localhost"
+os.environ["POSTGRES_HOST"] = test_host
 os.environ["POSTGRES_PORT"] = os.getenv("TEST_POSTGRES_PORT", "5433")
 os.environ["POSTGRES_DB"] = os.getenv("TEST_POSTGRES_DB", "atm_platform_test")
 os.environ["POSTGRES_USER"] = os.getenv("TEST_POSTGRES_USER", "atm_user")

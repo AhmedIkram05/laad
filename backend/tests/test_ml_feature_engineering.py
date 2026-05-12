@@ -34,7 +34,13 @@ class TestExtractFeatures:
                  "raw_payload": {"_anomaly_tag": "A1", "atm_status": "Offline"}}]
         feat = extract_features(rows)
         assert feat.shape == (len(FEATURE_NAMES),)
-        assert feat[23] == 1.0, "has_network_disconnect should be 1"
+        idx_ndc = FEATURE_NAMES.index("network_disconnect_count")
+        idx_tag = FEATURE_NAMES.index("anomaly_tag_count")
+        idx_has_nd = FEATURE_NAMES.index("has_network_disconnect")
+        idx_has_nd2 = FEATURE_NAMES.index("has_network_disconnect")
+        assert feat[idx_ndc] == 1.0, f"network_disconnect_count should be 1, got {feat[idx_ndc]}"
+        assert feat[idx_tag] == 1.0, f"anomaly_tag_count should be 1, got {feat[idx_tag]}"
+        assert feat[idx_has_nd] == 1.0, f"has_network_disconnect should be 1, got {feat[idx_has_nd]}"
 
     def test_jvm_memory_metric_increases_rate(self):
         now = 1700000000.0
@@ -61,7 +67,7 @@ class TestExtractFeatures:
                  "metric_name": "windows_os_snapshot", "metric_value": 75.5,
                  "event_type": None, "severity": None, "raw_payload": {}}]
         feat = extract_features(rows)
-        assert feat[7] == 75.5, "os_mem_mean should be 75.5"
+        assert feat[7] == 75.5, f"os_mem_mean should be 75.5, got {feat[7]}"
 
     def test_error_counts_per_source(self):
         rows = [
@@ -76,36 +82,48 @@ class TestExtractFeatures:
              "raw_payload": {}},
         ]
         feat = extract_features(rows)
-        assert feat[14] == 2.0, "atm_app_error_count should be 2"
-        assert feat[15] == 1.0, "terminal_handler_fatal_count should be 1"
+        idx_err = FEATURE_NAMES.index("atm_app_error_count")
+        idx_fatal = FEATURE_NAMES.index("terminal_handler_fatal_count")
+        idx_oom = FEATURE_NAMES.index("terminal_handler_oom_count")
+        idx_has_oom = FEATURE_NAMES.index("has_oom_event")
+        assert feat[idx_err] == 2.0, f"atm_app_error_count should be 2, got {feat[idx_err]}"
+        assert feat[idx_fatal] == 1.0, f"terminal_handler_fatal_count should be 1, got {feat[idx_fatal]}"
+        assert feat[idx_oom] == 1.0, f"terminal_handler_oom_count should be 1, got {feat[idx_oom]}"
+        assert feat[idx_has_oom] == 1.0, f"has_oom_event should be 1, got {feat[idx_has_oom]}"
 
     def test_cassette_empty_count(self):
         rows = [{"source": "HARDWARE", "atm_id": "ATM-GB-0001", "metric_name": None,
                  "metric_value": None, "event_type": "CASSETTE_EMPTY", "severity": "CRITICAL",
                  "raw_payload": {}}]
         feat = extract_features(rows)
-        assert feat[17] == 1.0, "hardware_cassette_empty_count should be 1"
+        idx = FEATURE_NAMES.index("hardware_cassette_empty_count")
+        assert feat[idx] == 1.0, f"hardware_cassette_empty_count should be 1, got {feat[idx]}"
 
     def test_kafka_offline_detected_from_payload(self):
         rows = [{"source": "KAFKA", "atm_id": "ATM-GB-0001", "metric_name": None,
                  "metric_value": None, "event_type": "STATUS", "severity": "INFO",
                  "raw_payload": {"atm_status": "Offline"}}]
         feat = extract_features(rows)
-        assert feat[19] == 1.0, "kafka_offline_count should be 1"
+        idx = FEATURE_NAMES.index("kafka_offline_count")
+        assert feat[idx] == 1.0, f"kafka_offline_count should be 1, got {feat[idx]}"
 
     def test_out_of_order_a7_detected(self):
         rows = [{"source": "KAFKA", "atm_id": "ATM-GB-0001", "metric_name": None,
                  "metric_value": None, "event_type": "METRIC", "severity": "INFO",
                  "raw_payload": {"_anomaly_tag": "A7_OUT_OF_ORDER", "offset": -1}}]
         feat = extract_features(rows)
-        assert feat[25] == 1.0, "kafka_out_of_order should be 1"
+        idx = FEATURE_NAMES.index("kafka_out_of_order")
+        assert feat[idx] == 1.0, f"kafka_out_of_order should be 1, got {feat[idx]}"
+        idx_tag = FEATURE_NAMES.index("anomaly_tag_count")
+        assert feat[idx_tag] == 1.0, f"anomaly_tag_count should be 1, got {feat[idx_tag]}"
 
     def test_has_oom_event(self):
         rows = [{"source": "TERMINAL_HANDLER", "atm_id": "ATM-GB-0001", "metric_name": None,
                  "metric_value": None, "event_type": "OOM_ERROR", "severity": "FATAL",
                  "raw_payload": {}}]
         feat = extract_features(rows)
-        assert feat[22] == 1.0, "has_oom_event should be 1"
+        idx = FEATURE_NAMES.index("has_oom_event")
+        assert feat[idx] == 1.0, f"has_oom_event should be 1, got {feat[idx]}"
 
     def test_unknown_payload_ignored_gracefully(self):
         rows = [{"source": "UNKNOWN", "atm_id": None, "metric_name": None,
@@ -170,5 +188,5 @@ class TestFeatureNames:
             f"FEATURE_NAMES has {len(FEATURE_NAMES)} entries but extract_features returned {len(feat)} values"
 
     def test_all_features_named(self):
-        assert len(FEATURE_NAMES) == 26, f"Expected 26 features, got {len(FEATURE_NAMES)}"
+        assert len(FEATURE_NAMES) == 47, f"Expected 47 features, got {len(FEATURE_NAMES)}"
         assert all(isinstance(f, str) for f in FEATURE_NAMES), "All FEATURE_NAMES must be strings"
