@@ -15,13 +15,39 @@ _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        _pool = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=10, **DB_CONFIG)
+        # Increased from maxconn=20 to 50 to handle concurrent loads from:
+        # - Multiple API client requests (typically 4-8 concurrent)
+        # - Generator (1 per second)
+        # - ML detector (1 per 10 seconds)
+        # - Background cleanup tasks
+        _pool = psycopg2.pool.ThreadedConnectionPool(minconn=5, maxconn=50, **DB_CONFIG)
     return _pool
 
 
 def get_conn() -> psycopg2.extensions.connection:
-    """Check out a raw connection from the pool. Caller must return it with release_conn()."""
-    return _get_pool().getconn()
+    """Check out a raw connection from the pool with retry logic.
+    
+    Implements exponential backoff to handle temporary pool exhaustion.
+    
+    Raises:
+        psycopg2.pool.PoolError: If pool exhausted after retries.
+    """
+    import time
+    pool = _get_pool()
+    max_attempts = 3
+    retry_delay = 0.1  # Start with 100ms
+    
+    for attempt in range(max_attempts):
+        try:
+            return pool.getconn()
+        except psycopg2.pool.PoolError:
+            if attempt < max_attempts - 1:
+                # Exponential backoff: 0.1s, 0.2s before final attempt
+                time.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                # Final attempt failed, raise
+                raise
 
 
 def release_conn(conn: psycopg2.extensions.connection) -> None:

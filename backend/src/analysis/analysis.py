@@ -336,7 +336,12 @@ def build_detailed_table(anomalies):
         A_code = a['anomaly_type']
         atm_id = a.get('atm_id')
         raw = a.get("explanation")
-        exp = json.loads(raw)
+        
+        # Safely parse explanation JSON with fallback to empty dict
+        try:
+            exp = json.loads(raw) if raw else {}
+        except (json.JSONDecodeError, TypeError):
+            exp = {}
 
         if A_code == "A1":
 
@@ -352,10 +357,10 @@ def build_detailed_table(anomalies):
             error_seen, max_timeout, kafka_offline, terminal_timeout = (False, 0, False, False) 
 
             # use explanation to get keys 
-            error_seen = exp.get('error_code_correct')
+            error_seen = exp.get('error_code_correct', False)
             max_timeout = 30000 if exp.get('timeout') else max_timeout
-            kafka_offline = exp.get("kafka_offline")
-            terminal_timeout = exp.get("terminal_timeout")
+            kafka_offline = exp.get("kafka_offline", False)
+            terminal_timeout = exp.get("terminal_timeout", False)
 
             explanation, operation_impact, recommendation = A1(atm_id, error_seen, max_timeout, kafka_offline, terminal_timeout) 
 
@@ -386,11 +391,11 @@ def build_detailed_table(anomalies):
             low_count, empty_count, out_of_service, dispense_error, zero_tps = (0, 0, False, False, False) 
             
             # use explanation to get keys 
-            low_count = exp.get('low')
-            empty_count = exp.get('empty') 
-            out_of_service = exp.get("kafka_oos")
-            dispense_error = exp.get("kafka_dispense_error")
-            zero_tps = exp.get("kafka_trtps_zero")
+            low_count = exp.get('low', 0)
+            empty_count = exp.get('empty', 0) 
+            out_of_service = exp.get("kafka_oos", False)
+            dispense_error = exp.get("kafka_dispense_error", False)
+            zero_tps = exp.get("kafka_trtps_zero", False)
 
             explanation, operation_impact, recommendation = A2(atm_id, low_count, empty_count, out_of_service, dispense_error, zero_tps) 
 
@@ -420,7 +425,7 @@ def build_detailed_table(anomalies):
 
             # checklist
             mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen = (0, 0, 0, 0, False, False) 
-            points = exp.get("points")
+            points = exp.get("points", [])
             
             #gets first and last point
             mem_start = points[0] if points else mem_start
@@ -428,7 +433,7 @@ def build_detailed_table(anomalies):
 
             #no gc start in explanation so we have to skip that metric
 
-            high_cpu = True if exp.get("frac_increase") >= 0.5 else high_cpu
+            high_cpu = True if (exp.get("frac_increase") or 0) >= 0.5 else high_cpu
             oom_seen = True
 
             explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen) 
@@ -467,8 +472,8 @@ def build_detailed_table(anomalies):
                 if count > max_restart:
                     max_restart = count
             
-            fatal_count = exp.get('total_fatals')
-            startup_count = exp.get('total_startups')
+            fatal_count = exp.get('total_fatals', 0)
+            startup_count = exp.get('total_startups', 0)
 
             explanation, operation_impact, recommendation = A4(max_restart, fatal_count, startup_count) 
 
@@ -562,7 +567,7 @@ def build_detailed_table(anomalies):
                     mem_max = s
             
             timeout = exp.get("timeout", {})
-            error = timeout.get("error_detail")
+            error = timeout.get("error_detail", "")
             if error == "ThreadAbortException: memory pressure":        
                 timeout_seen = True        
 

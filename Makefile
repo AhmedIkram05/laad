@@ -1,58 +1,46 @@
-.PHONY: help db-up db-down db-logs test-db-up test-db-down test-db-logs test pytest clean
+.PHONY: help all rebuild clean logs
 
 help:
-	@echo "LAAD Docker & Development Commands"
+	@echo "LAAD Makefile — Essential commands"
 	@echo ""
-	@echo "Database (Production):"
-	@echo "  make db-up          Start PostgreSQL production database (port 5432)"
-	@echo "  make db-down        Stop PostgreSQL production database"
-	@echo "  make db-logs        View production database logs"
+	@echo "  make all         Start all services (postgres, backend, generator, test-db, mlflow)"
+	@echo "  make rebuild     Clean rebuild (stop, remove volumes, rebuild images, start all)"
+	@echo "  make clean       Stop all containers and remove volumes"
+	@echo "  make logs        Follow all service logs"
 	@echo ""
-	@echo "Database (Test):"
-	@echo "  make test-db-up     Start isolated test database (port 5433)"
-	@echo "  make test-db-down   Stop isolated test database"
-	@echo "  make test-db-logs   View test database logs"
+	@echo "Services run on:"
+	@echo "  Backend API:     http://localhost:8000"
+	@echo "  PostgreSQL:      localhost:5432"
+	@echo "  Test DB:         localhost:5433"
+	@echo "  MLflow UI:       http://localhost:5000"
 	@echo ""
-	@echo "Testing:"
-	@echo "  make pytest         Run full pytest suite against test database"
-	@echo "  make test           Alias for pytest"
-	@echo ""
-	@echo "Cleanup:"
-	@echo "  make clean          Stop all containers and remove volumes"
 
-# Production database
-db-up:
-	docker compose up -d
-	@echo "✓ Production database started on localhost:5432"
+# ── Primary Commands ──────────────────────────────────────────────────────────
 
-db-down:
-	docker compose down
-	@echo "✓ Production database stopped"
-
-db-logs:
-	docker compose logs -f postgres
-
-# Test database
-test-db-up:
+all:
+	docker compose up -d --build postgres backend generator
 	docker compose -f docker-compose.test.yml up -d
-	@echo "✓ Test database started on localhost:5433"
+	docker compose --profile ml up -d
+	@echo ""
+	@echo "✓ All services started!"
+	@echo "  Backend API:     http://localhost:8000"
+	@echo "  PostgreSQL:      localhost:5432"
+	@echo "  Test DB:         localhost:5433"
+	@echo "  MLflow UI:       http://localhost:5000"
+	@echo ""
 
-test-db-down:
-	docker compose -f docker-compose.test.yml down
-	@echo "✓ Test database stopped"
+rebuild: clean all
+	@echo "✓ Rebuild complete!"
 
-test-db-logs:
-	docker compose -f docker-compose.test.yml logs -f postgres_test
-
-# Testing
-pytest: test-db-up
-	@echo "Running pytest..."
-	pytest -q
-
-test: pytest
-
-# Cleanup
 clean:
 	docker compose down -v
+	docker compose --profile generator down -v
+	docker compose --profile ml down -v
 	docker compose -f docker-compose.test.yml down -v
-	@echo "✓ All containers and volumes removed"
+	@echo "✓ All services stopped and volumes removed"
+
+logs:
+	docker compose logs -f
+	docker compose --profile ml down -v
+	docker compose -f docker-compose.test.yml down -v
+	@echo "All containers and volumes removed"

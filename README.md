@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Analysis & Diagnostics Platform (LAAD)
 
-> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform - built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources, detects 7 anomaly types, ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with a fully local RAG-based diagnostic assistant.
+> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources, detects 7 anomaly types, ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with a fully local RAG-based diagnostic assistant.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
@@ -19,19 +19,19 @@
 
 ---
 
-### Main dashboard - anomalies ranked by weighted criticality score, severity badges, and ATM status indicators
+### Main dashboard — anomalies ranked by weighted criticality score, severity badges, and ATM status indicators
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
-### Anomaly detail - root cause explanation, operational impact assessment, and recommended remediation action
+### Anomaly detail — root cause explanation, operational impact assessment, and recommended remediation action
 
 ![Detailed View](docs/screenshots/detailed-view.png)
 
-### Admin settings - configurable data retention period (1–365 days) and user management
+### Admin settings — configurable data retention period (1–365 days) and user management
 
 ![Admin Settings](docs/screenshots/admin-settings.png)
 
-### RAG diagnostic assistant - natural language querying of ATM log history, served entirely locally
+### RAG diagnostic assistant — natural language querying of ATM log history, served entirely locally
 
 ![RAG Assistant](docs/screenshots/rag-assistant.png)
 
@@ -75,39 +75,49 @@ flowchart TD
 
 **Sources:** ATM application logs, hardware sensor metrics, Kafka event streams, Prometheus OS metrics, Windows OS metrics, GCP cloud metrics, and terminal handler logs.
 
-**Ingestion:** 7 custom parsers feed a unified ingestion pipeline with dead-letter routing to `ingestion_errors`, retry-with-backoff, and schema normalisation into shared `events` and `metrics` tables. The project now targets PostgreSQL using JSONB payloads and TIMESTAMPTZ timestamps.
+**Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it backfills historical data, then enters a live loop. A `ThreadedConnectionPool` (minconn=5, maxconn=20) handles concurrent writes with retry/backoff. All records normalise into shared `events` and `metrics` tables.
 
-**Detection:** A rule-based detector identifies A1-A7 anomaly types, then a ranking algorithm prioritises them using severity, anomaly type, time, and transaction weight. APScheduler handles retention cleanup while preserving unresolved records.
+**Detection:** A rule-based detector (`backend/src/anomaly_detection/ml/ml_detector.py`) identifies A1–A7 anomaly types by reading `_anomaly_tag` fields in the unified view. Detection runs every 10 seconds via APScheduler. A ranking algorithm prioritises issues using severity, anomaly type, time, and transaction weight.
 
-**Serving layer:** FastAPI exposes `analysis`, `anomalies`, `admin`, and `auth` routes, and the React + Vite dashboard provides dashboard, detail, starred, completed, and admin views.
+**Serving layer:** FastAPI exposes `/auth`, `/anomalies`, `/analysis/detailed`, and `/admin` routes, served by the React + Vite dashboard.
 
-**Extension:** A fully local, air-gapped RAG diagnostic assistant runs with LangChain, ChromaDB, and Ollama (`llama3.1:8b`).
+**Extension:** A fully local RAG diagnostic assistant runs with LangChain, ChromaDB, and Ollama (`llama3.1:8b`).
+
+---
 
 ## Design Decisions
 
 **Unified events + metrics schema (lean data lake)**
-Rather than source-specific tables (one per log type), all normalised records land in two unified tables: `events` and `metrics`. This means the detection engine queries one consistent schema regardless of source, and adding a new log source requires only a new parser — not schema changes or detector modifications. This directly implements NFR7 (extensibility without core pipeline modification).
+Rather than source-specific tables, all normalised records land in two unified tables: `events` and `metrics`. Detection queries one consistent schema regardless of source. Adding a new log source requires only a new parser — not schema changes or detector modifications. This directly implements NFR7 (extensibility without core pipeline modification).
 
 **Dead-letter routing — no silent data loss**
-Malformed records are routed to `ingestion_errors` rather than raising exceptions. Parsers use `.get()` with safe defaults throughout — a missing field in a Kafka stream never halts ingestion for that source. This was validated by deliberate malformed payload injection during testing, which revealed that strict dictionary access (`payload['field']`) crashed the entire pipeline for that source.
+Malformed records are routed to `ingestion_errors` rather than raising exceptions. Parsers use `.get()` with safe defaults throughout — a missing field in a Kafka stream never halts ingestion for that source.
 
-**PostgreSQL + retry-with-backoff**
-The project now targets PostgreSQL. Batch writes use `psycopg2.extras.execute_values` for efficient bulk inserts and a connection pool for concurrency. The `write_helper.py` implements retry/backoff for transient Postgres errors (deadlocks, serialization failures). SQL uses `%s` parameter placeholders and JSONB/TIMESTAMPTZ types for compatibility.
+**PostgreSQL + ThreadedConnectionPool + retry-with-backoff**
+Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool` (minconn=5, maxconn=20). The `write_helper.py` implements retry/backoff for transient errors (deadlocks, serialization failures, pool exhaustion). SQL uses `%s` parameter placeholders throughout.
 
 **Data retention preserving unresolved anomalies**
-A naïve age-based cleanup would silently delete active, unresolved anomalies — a critical hardware failure logged 32 days ago that hasn't been addressed would disappear from the dashboard. The cleanup routine filters on `is_completed = false`, preserving all unresolved alerts regardless of age. This implements NFR4 directly and was caught by `test_cleanup.py` before release.
+Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically.
 
-**Rule-based detection over ML**
-ML models require training data, validation, and ongoing maintenance — inappropriate for a 3-week delivery timeline with synthetic log data. A rule-based engine produces predictable, auditable results and allows the client (NCR Atleos) to inspect and modify detection logic directly. The 7 anomaly types (A1–A7) are each encapsulated in their own function, making individual rules testable in isolation.
-
-**Weighted criticality ranking algorithm**
-Anomalies are not displayed in arrival order. A weighted scoring function combines: anomaly type (operational impact weight), severity (CRITICAL > WARNING), time received (older unresolved issues weighted higher), and transaction awareness (active transaction failures prioritised). This required iterative calibration — naive time weighting caused old low-severity anomalies to dominate the dashboard, resolved by conditional rather than linear time scoring.
-
-**RBAC at the dependency injection layer**
-JWT privilege escalation was caught during testing: the admin retention endpoint (`PUT /admin/retention`) was validating token presence but not the role claim. A standard user with a valid token could reduce the retention window to purge the database. The `require_admin` guard was added at the FastAPI dependency injection layer — applied once, enforced on every route that depends on it, with no per-endpoint duplication.
+**Rule-based detection as primary, ML-ready architecture**
+Rule-based detection is primary for predictability and auditability. The ML detector (`ml_detector.py`) attempts to load sklearn artifacts from `ml/artifacts/` on startup. If models are absent, it falls back to pure rule-based detection. The `require_admin` RBAC guard is applied at FastAPI dependency injection — enforced once, propagated to every guarded route.
 
 **Air-gapped RAG architecture**
-The RAG diagnostic assistant (LangChain, ChromaDB, Ollama) runs entirely locally — no log data leaves the network. This is a deliberate design constraint aligned with banking-grade data privacy requirements: ATM operational logs contain transaction identifiers and system credentials that must not be transmitted to external APIs. Semantic chunking (LangChain's SemanticChunker) with nomic-embed-text embeddings feeds ChromaDB, with llama3.1:8b serving inference via Ollama. Evaluated with an LLM-as-judge pipeline scoring relevance, faithfulness, and answer completeness.
+No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-text` embeddings feeds ChromaDB, with `llama3.1:8b` via Ollama. Evaluated with an LLM-as-judge pipeline scoring relevance, faithfulness, and answer completeness.
+
+---
+
+## Anomaly Types (A1–A7)
+
+| ID | Type | Description | Detection Logic | Severity |
+|---|---|---|---|---|
+| A1 | Network Timeout Cascade | ATM offline due to network failure | ATM_APP `NETWORK_DISCONNECT` + Kafka `Offline` + Terminal Handler `NETWORK_ERROR` | CRITICAL |
+| A2 | Cash Cassette Empty | ATM out of service — cash cassettes exhausted | HARDWARE `CASSETTE_EMPTY` + Kafka `OutOfService` | CRITICAL |
+| A3 | JVM Memory Leak | Heap usage increasing over 90 min | Prometheus `jvm_memory_used_bytes` monotonically rising | MAJOR |
+| A4 | Container Restart Loop | Pod instability from repeated restarts | GCP `restart_count > 0` + Terminal Handler `STARTUP` × 2 | MAJOR |
+| A5 | High Response Time Spike | Transaction latency and success rate degradation | Kafka `response_time_ms > 3000ms` + `success_rate < 90%` | MAJOR |
+| A6 | OS Memory Pressure | OS resource exhaustion causing application timeouts | OS `memory_usage_percent >= 90` + ATM_APP `TIMEOUT` | MAJOR |
+| A7 | Out-of-Order Kafka | Malformed or missing fields in event stream | Kafka `offset = -1` or `_anomaly_tag = A7_OUT_OF_ORDER` | HIGH |
 
 ---
 
@@ -138,7 +148,7 @@ The RAG diagnostic assistant (LangChain, ChromaDB, Ollama) runs entirely locally
 | NFR1 | Role-based access control (user / admin) | JWT + `require_admin` dependency guard |
 | NFR2 | Handle malformed records without crashing | Dead-letter routing to `ingestion_errors` |
 | NFR3 | Concurrent ingestion without data loss | WAL + retry-with-backoff in `write_helper.py` |
-| NFR4 | Preserve unresolved anomalies regardless of retention | `is_completed = false` filter in cleanup |
+| NFR4 | Preserve unresolved anomalies regardless of retention | `is_active = 1` filter in cleanup |
 | NFR5 | Usable by both technical and non-technical users | Confirmed by user evaluation (3 participants) |
 | NFR6 | Well-commented, version-controlled, maintainable code | Full source on GitHub with modular structure |
 | NFR7 | Extensible — new log types without core pipeline changes | Unified schema + parser-per-source pattern |
@@ -150,65 +160,82 @@ The RAG diagnostic assistant (LangChain, ChromaDB, Ollama) runs entirely locally
 ```mermaid
 erDiagram
     ATMS {
-        string atm_id PK
-        string location
-        string status
-        string model
+        text atm_id PK
+        text os_version
+        text location_code
     }
 
     EVENTS {
-        string atm_id FK
-        string source
-        string event_type
-        int severity
-        datetime timestamp
-        text raw_data
+        bigint id PK
+        timestamptz timestamp
+        text source
+        text atm_id FK
+        text correlation_id
+        text transaction_id
+        text event_type
+        text severity
+        text message
+        jsonb payload
     }
 
     METRICS {
-        string atm_id FK
-        string metric_name
-        float metric_value
-        datetime timestamp
+        bigint id PK
+        timestamptz timestamp
+        text source
+        text entity_id
+        text metric_name
+        double precision metric_value
+        jsonb payload
     }
 
     ANOMALIES {
-        string id PK
-        string anomaly_type
-        int severity
-        string atm_id FK
-        bool is_completed
-        bool is_starred
-        float score
-    }
-
-    RECOMMENDATIONS {
-        string anomaly_id FK
-        text root_cause
-        text operational_impact
+        bigint id PK
+        timestamptz detected_at
+        text anomaly_type
+        text atm_id FK
+        text correlation_id
+        text transaction_id
+        double precision model_confidence_score
+        text severity
+        text title
+        text explanation
         text recommended_action
-    }
-
-    FEEDBACK {
-        string anomaly_id FK
-        string user_id
-        int rating
-        text comment
+        jsonb sources_involved
+        text feedback_rating
+        int is_active
+        int is_starred
     }
 
     INGESTION_ERRORS {
-        string source
-        text raw_record
-        text error_message
-        datetime timestamp
+        bigint id PK
+        timestamptz timestamp
+        text source
+        text error_detail
+        text raw_input
+    }
+
+    USERS {
+        bigint id PK
+        text username UK
+        text password_hash
+        text role
+        timestamptz created_at
+    }
+
+    RETENTION_CONFIG {
+        int id PK
+        int retention_days
+        timestamptz updated_at
     }
 
     ATMS ||--o{ EVENTS : has
     ATMS ||--o{ METRICS : has
     ATMS ||--o{ ANOMALIES : has
-    ANOMALIES ||--|| RECOMMENDATIONS : has
-    ANOMALIES ||--o{ FEEDBACK : receives
 ```
+
+> **Note:** `recommended_action`, `explanation`, and `feedback_rating` are embedded directly in the `anomalies` table (lean data lake pattern). `recommendations` and `feedback` tables from the original plan were consolidated to reduce query complexity.
+
+**Key views:** `v_events_flat`, `v_metrics_flat`, and `v_unified_analysis` abstract JSONB payloads into flat columnar format for the detection engine and frontend.
 
 ---
 
@@ -218,101 +245,94 @@ erDiagram
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/auth/login` | None | Validate credentials, issue JWT |
+| POST | `/auth/login` | None | Validate credentials (OAuth2PasswordRequestForm), issue JWT (8h expiry) |
 | GET | `/auth/me` | JWT | Return current user profile |
-| POST | `/auth/register` | JWT | Register new user account |
+| POST | `/auth/register` | None | Register new user account |
 
 ### Anomalies — `/api/anomalies`
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| GET | `/anomalies` | JWT | Paginated, filterable anomaly list (supports `group_by`) |
-| PUT | `/anomalies/{id}/resolve` | JWT | Toggle resolved/unresolved |
-| PUT | `/anomalies/{id}/star` | JWT | Toggle starred/unstarred |
+| GET | `/anomalies` | JWT | Paginated, filterable list. Supports `group_by`: `atm`, `atm_anomaly`, `title_atm` |
+| PATCH | `/{anomalyId}/resolve` | JWT | Toggle active/inactive |
+| PATCH | `/{anomalyId}/star` | JWT | Toggle starred/unstarred |
 
 ### Analysis — `/api/analysis`
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| GET | `/detailed` | JWT | Full ranked anomaly list with root cause, impact, and recommended action attached |
+| GET | `/analysis/detailed` | JWT | Ranked anomaly list with `root_cause`, `operations`, `recommended_action`. Optional `Anomaly` query param |
 
 ### Admin — `/api/admin`
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| GET/PUT | `/admin/retention` | Admin JWT | Get or set data retention period (1–365 days) |
-| DELETE | `/admin/cleanup/wipe` | Admin JWT | Wipe all tables and run VACUUM |
-| POST | `/admin/users` | Admin JWT | Create new user (including other admins) |
+| GET | `/admin/retention` | Admin JWT | Get current retention period |
+| PUT | `/admin/retention` | Admin JWT | Set retention period (1–365 days) |
+| POST | `/admin/cleanup/run` | Admin JWT | Manually trigger retention cleanup |
 
 ---
 
 ## Testing
 
-48 passing tests across 5 tiers:
+97+ passing tests across 6 tiers:
 
 ```bash
-pytest          # runs all 48 tests
+make test-db-up   # start isolated test DB on port 5433
+pytest -q          # run all tests
 ```
 
-| Tier | Modules | What's covered |
-|---|---|---|
-| **Unit — parsers** | `test_atm_app_parser.py`, `test_hardware_sensor_parser.py`, `test_kafka_parser.py`, `test_prometheus_parser.py`, `test_windows_os_parser.py`, `test_gcp_cloud_metrics_parser.py`, `test_terminal_handler.py` | Field mapping to unified schema, log level normalisation, UTC ISO 8601 timestamp conversion |
-| **Unit — database** | `test_db_schema.py`, `test_db_connection_pragmas.py` | Table structure, indexes, FK constraints, WAL mode, busy_timeout, FK enforcement |
-| **Unit — utilities** | `test_write_helper_retry.py`, `test_cleanup.py` | Retry-with-backoff resilience, retention cleanup preserving unresolved anomalies |
-| **Integration** | `test_ingestion_integration.py`, `test_anomalies_endpoints.py`, `test_analysis_endpoints.py`, `test_admin_retention_endpoints.py` | End-to-end ingestion pipeline, API endpoints against in-memory test DB |
-| **Concurrency & stress** | `test_concurrent_writes.py`, `stress/test_write_helper_locking_collision.py` | 50 concurrent write threads, lock collision recovery, zero data loss under load |
-| **Security & auth** | `test_auth_endpoints.py`, `test_auth_security.py` | Login flow, JWT generation, invalid claims, privilege escalation, malformed payloads |
-| **Data generation** | `test_generator_scenarios.py` | Synthetic generator produces statistically consistent anomaly distributions (A1–A7), correct cross-source correlation via `correlation_id`, threaded `transaction_id` values |
+| Tier | Coverage |
+|---|---|
+| Unit — parsers | Field mapping, log level normalisation, UTC timestamp conversion for all 7 sources |
+| Unit — database | Table structure, indexes, FK constraints, WAL, JSONB |
+| Unit — utilities | Retry/backoff resilience, retention cleanup |
+| Unit — generators | `_anomaly_tag` presence, correlation ID per cascade, durations, SQL parameterisation |
+| Integration | End-to-end ingestion, API responses, data writes, `_anomaly_tag` round-trip |
+| Concurrency & stress | 50 concurrent write threads, lock collision recovery |
+| Security & auth | Login, JWT, `require_admin` guard, privilege escalation |
+| Anomaly detector | Rule-based detection across A1–A7 with correct source assignment |
 
 ### Critical defects caught by the test suite
 
 | Defect | Test | Resolution |
 |---|---|---|
 | Silent data loss under concurrent load | `stress/test_write_helper_locking_collision.py` | Exponential backoff added to `write_helper.py` |
-| Unresolved anomalies deleted by cleanup | `test_cleanup.py` | Cleanup filtered to `is_completed = true` only |
+| Unresolved anomalies deleted by cleanup | `test_cleanup.py` | Cleanup filtered to `is_active = 1` only |
 | JWT privilege escalation (admin endpoint accessible by standard users) | `test_auth_security.py` | `require_admin` dependency guard added |
 | Parser crashes on schema drift (strict dict access) | `test_kafka_metrics_parser.py`, `test_prometheus_parser.py` | All parsers migrated to `.get()` with safe defaults |
-| `anomaly_code` / `anomaly_type` field mismatch (frontend broke silently) | `test_anomalies_endpoints.py` | Field name corrected in API response |
+| Integration test always passed — no real assertions | `test_live_generator_integration.py` | Changed to `count_after > count_before` before/after pattern |
+| Connection pool exhausted under ML detector load | (runtime) | Pool bumped to `maxconn=20`, `minconn=5` |
+| Analysis endpoint 500 on `None` comparison | (runtime) | Added `or 0` guard on `frac_increase` in `analysis.py` |
 
 ---
 
 ## User Personas
 
-Three primary personas informed design decisions throughout:
-
 **Steven Smith — Manager (non-technical)**
-New to the role, no technical background. Needs high-level visual summaries, plain-language anomaly explanations, and clear operational impact — not raw log data. Drove the decision to surface recommended actions prominently on the detail view.
+New to the role, no technical background. Needs high-level visual summaries, plain-language anomaly explanations, and clear operational impact. Drove the decision to surface recommended actions prominently on the detail view.
 
 **Lionel Torvos — Data Analyst**
-Experienced with large datasets and data pipelines. Needs structured, consistent log formats and cross-source correlation. Drove the unified schema design — logs from all 7 sources normalised before reaching the analyst.
+Experienced with large datasets. Needs structured, consistent log formats and cross-source correlation. Drove the unified schema design.
 
 **John Davis — Software Engineer**
-Familiar with logging systems. Needs root cause summaries, automated anomaly flagging, and trend reports — not manual log scanning. Drove the detailed analysis generation (root cause + operational impact + recommended action per anomaly type).
+Familiar with logging systems. Needs root cause summaries, automated anomaly flagging, and trend reports. Drove the detailed analysis generation (root cause + operational impact + recommended action per anomaly type).
 
 ---
 
 ## User Evaluation
 
-Conducted in-person with 3 participants (2 CS students, 1 Business student). Key findings:
+Conducted in-person with 3 participants (2 CS students, 1 Business student).
 
 | Finding | Action taken |
 |---|---|
-| Filtering feature not noticed by any participant | Redesigned filter placement — more visible on dashboard |
-| No back button — users relied on browser navigation | Back buttons added throughout |
+| Filtering feature not noticed | Redesigned filter placement — more visible on dashboard |
+| No back button | Back buttons added throughout |
 | No way to unmark a completed anomaly | Uncheck/unmark completed functionality added |
 | Anomaly ranking should incorporate time received | Time weight added to ranking algorithm |
 | Logo deemed unnecessary | Logo removed |
-| Password policies absent | Not implemented (out of scope given timeline) |
 
-All 3 participants rated the **recommended action** feature as most useful. All 3 found navigation intuitive. All 3 were able to complete tasks without confusion.
-
----
-
-## Currently Extending
-
-- **Event-driven ingestion** — migrating from file-based batch ingestion to Kafka/Redis Streams with async worker horizontal scaling
-- **Real-time observability** — Prometheus/Grafana monitoring layer
-- **RAG diagnostic assistant** — semantic chunking via LangChain's SemanticChunker, nomic-embed-text embeddings, ChromaDB vector store, llama3.1:8b inference via Ollama. Evaluated with LLM-as-judge pipeline (relevance, faithfulness, answer completeness)
+All 3 participants rated the **recommended action** feature as most useful. All 3 found navigation intuitive. All 3 completed tasks without confusion.
 
 ---
 
@@ -320,70 +340,35 @@ All 3 participants rated the **recommended action** feature as most useful. All 
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Node.js v16+ and npm
-- pip
+- Docker + Docker Compose
 
-### 1. Clone
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/AhmedIkram05/laad.git
 cd laad
+cp .env.example .env   # edit POSTGRES_* values as needed
 ```
 
-### 2. Backend setup (PostgreSQL)
-
-Start a PostgreSQL instance using Docker Compose:
+### 2. Start all backend services
 
 ```bash
-docker compose up -d
+make all      # Start everything: postgres, backend, generator, test-db, mlflow
 ```
 
-This starts a PostgreSQL 16 instance on `localhost:5432` with the schema pre-loaded. The database name, user, and password are read from the `.env` file.
+Services run on:
 
-Note: PostgreSQL only runs scripts in `/docker-entrypoint-initdb.d` the first time the data directory is initialised. Because this project uses a named Docker volume, subsequent `docker compose up -d` runs reuse the existing data and do not re-run init scripts.
+- **Backend API:** `http://localhost:8000` (API docs at `/docs`)
+- **Frontend:** `http://localhost:5173` (starts separately in terminal only, see step 3)
+- **PostgreSQL:** `localhost:5432`
+- **Test Database:** `localhost:5433`
+- **MLflow UI:** `http://localhost:5000`
 
-If you need to re-initialise from scratch (including schema bootstrap scripts), remove volumes first:
+The generator backfills 60 minutes of historical data on first boot, then enters live mode with probabilistic anomaly injection.
 
-```bash
-docker compose down -v
-docker compose up -d
-```
-
-If PostgreSQL is already running and you only need to ensure schema/seeds are present, run the backend initialisation step directly:
-
-```bash
-# Run from the backend directory
-python main.py
-```
-
-Create and activate a virtualenv and install dependencies:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-```
-
-### 3. Run the pipeline
-
-Initialises the database, generates 24h of synthetic log data across all 7 sources, and ingests everything:
-
-```bash
-# Run from the backend directory
-python main.py
-```
-
-### 4. Start the API server
-
-```bash
-# Run from the repo root (after pipeline has populated the database)
-uvicorn backend.src.api.server:app --reload --port 8000
-```
-
-API docs available at `http://localhost:8000/docs`
-
-### 5. Frontend setup
+### 3. Start the frontend
 
 ```bash
 cd frontend
@@ -391,40 +376,45 @@ npm install
 npm run dev
 ```
 
-Frontend runs at `http://localhost:5173`. Requires the backend API running at `http://localhost:8000`.
+Frontend at `http://localhost:5173`
 
-### Default admin account
-
-Seeded automatically on first `python main.py` run:
+### 4. Default credentials
 
 | Field | Value |
-|---|---|
+| --- | --- |
 | Username | `admin` |
 | Password | `admin` |
 
-### Running tests
+Seeded automatically by `init_db()` on first run.
 
-Tests run against a separate PostgreSQL test database. The pytest fixture forces its own `POSTGRES_*` settings so the test suite does not touch the production database. Start the isolated test DB with Docker:
+### Other Makefile commands
 
 ```bash
-docker compose -f docker-compose.test.yml up -d
-pytest -q
+make rebuild  # Clean rebuild: stop all, remove volumes, rebuild images, start all
+make logs     # Follow logs from all services in real-time
+make clean    # Stop all containers and remove volumes (database data erased)
 ```
 
-The test database runs on `localhost:5433` by default with database name `atm_platform_test`, so it stays isolated from the production/local app database on `localhost:5432`.
+### Reset from scratch
+
+```bash
+make rebuild
+```
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Rationale |
+| Layer | Technology | Notes |
 |---|---|---|
-| Backend framework | FastAPI | Automatic API docs, built-in dependency injection for RBAC guards, APScheduler integration |
-| Database | PostgreSQL (JSONB, TIMESTAMPTZ) | Production-grade DB with JSONB payloads, time zone aware timestamps, and standard SQL features (indexes, autovacuum managed by DBA) |
-| Ingestion scheduling | APScheduler | Background task management for data retention cleanup and periodic ingestion |
-| Frontend | React + Vite | Beginner-accessible with large community; Vite for fast dev server |
-| LLM integration | LangChain + ChromaDB + Ollama | Fully local — no external API calls, aligned with banking-grade privacy requirements |
-| Testing | Pytest | 48 tests across 5 tiers; FastAPI TestClient for in-memory endpoint testing |
+| Backend framework | FastAPI | Lifespan context manager, dependency injection for RBAC |
+| Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool`, `execute_values` batch inserts |
+| Scheduler | APScheduler | Cleanup every 1h, ML detector every 10s |
+| Continuous generator | Python + psycopg2 | Backfill + live loop, SIGTERM/SIGINT handling, exponential backoff |
+| Anomaly detection | Rule-based (`ml_detector.py`) | ML-artifact-ready with graceful fallback |
+| Frontend | React + Vite | Dashboard, anomaly detail, admin views |
+| RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker |
+| Testing | Pytest | Isolated test DB on port 5433 via `docker-compose.test.yml` |
 
 ---
 
@@ -432,7 +422,7 @@ The test database runs on `localhost:5433` by default with database name `atm_pl
 
 | Role | Member |
 |---|---|
-| Backend & Data Engineering Lead, DB, Ingestion Pipeline, Auth, API, Testing | **Ahmed Ikram** |
+| Backend & Data Engineering Lead, DB, Ingestion Pipeline, Auth, API, Testing, Continuous Generator, ML Detector | **Ahmed Ikram** |
 | Anomaly Detection Logic | Martin Kelly |
 | Ranking Algorithm & Analysis Router | Emmanuel Dairo, Addie Tweed |
 | Frontend UI | Sarah Kelly (lead), Sam Watts, Ahmed Ikram |

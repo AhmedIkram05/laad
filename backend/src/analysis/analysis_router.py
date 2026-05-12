@@ -20,8 +20,12 @@ def get_detailed_analysis():
     try:
         data = run_analysis()
         return {
-            "data": data
+            "data": data or []
         }
     except Exception as e:
         logger.error(f"Analysis endpoint failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        # Return empty data on error instead of 500
+        return {
+            "data": [],
+            "error": str(e)
+        }
