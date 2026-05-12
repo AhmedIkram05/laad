@@ -73,46 +73,60 @@ def _query_window() -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def _is_active(anomaly_type: str, atm_id: str | None) -> bool:
-    """Skip if same type+atm_id already has an active anomaly."""
-    with get_cursor() as cur:
-        if atm_id is None:
-            cur.execute(
-                "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id IS NULL AND is_active = 1",
-                (anomaly_type,)
-            )
-        else:
-            cur.execute(
-                "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id = %s AND is_active = 1",
-                (anomaly_type, atm_id)
-            )
-        return cur.fetchone() is not None
-
-
-def _save_anomaly(anomaly_type: str, atm_id: str | None, confidence: float) -> bool:
-    """Insert an anomaly. Returns True if saved, False if skipped (duplicate or inactive)."""
-    if _is_active(anomaly_type, atm_id):
-        return False
+def _save_anomalies_batch(detections: list[tuple[str, str | None, float]]) -> int:
+    """Batch-save anomalies in a single transaction. Returns count saved.
+    
+    Args:
+        detections: List of (anomaly_type, atm_id, confidence) tuples.
+    
+    Returns:
+        Number of anomalies actually inserted (skips duplicates).
+    """
+    if not detections:
+        return 0
+    
+    saved = 0
     with get_cursor(commit=True) as cur:
-        cur.execute(
-            """
-            INSERT INTO anomalies
-                (detected_at, anomaly_type, atm_id, model_confidence_score,
-                 severity, title, explanation, is_active, is_starred)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 1, 0)
-            """,
-            (
-                datetime.now(timezone.utc),
-                anomaly_type,
-                atm_id,
-                confidence,
-                SEVERITY_MAP.get(anomaly_type, "HIGH"),
-                TITLE_MAP.get(anomaly_type, f"Anomaly {anomaly_type} detected."),
-                json.dumps({"source": "RULES", "window_seconds": WINDOW_SECONDS}),
+        for anomaly_type, atm_id, confidence in detections:
+            # Check if this anomaly type+atm_id is already active
+            if atm_id is None:
+                cur.execute(
+                    "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id IS NULL AND is_active = 1",
+                    (anomaly_type,)
+                )
+            else:
+                cur.execute(
+                    "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id = %s AND is_active = 1",
+                    (anomaly_type, atm_id)
+                )
+            
+            if cur.fetchone() is not None:
+                continue  # Skip duplicate
+            
+            # Insert new anomaly
+            cur.execute(
+                """
+                INSERT INTO anomalies
+                    (detected_at, anomaly_type, atm_id, model_confidence_score,
+                     severity, title, explanation, is_active, is_starred)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 1, 0)
+                """,
+                (
+                    datetime.now(timezone.utc),
+                    anomaly_type,
+                    atm_id,
+                    confidence,
+                    SEVERITY_MAP.get(anomaly_type, "HIGH"),
+                    TITLE_MAP.get(anomaly_type, f"Anomaly {anomaly_type} detected."),
+                    json.dumps({"source": "RULES", "window_seconds": WINDOW_SECONDS}),
+                )
             )
-        )
-    log.info("RULES: Saved anomaly %s (atm=%s, confidence=%.2f)", anomaly_type, atm_id, confidence)
-    return True
+            saved += 1
+            log.debug("RULES: Saved anomaly %s (atm=%s, confidence=%.2f)", anomaly_type, atm_id, confidence)
+    
+    if saved:
+        log.info("RULES: Saved %d anomaly/anomalies in batch", saved)
+    return saved
 
 
 def _detect_a1_network_cascade(rows: list[dict]) -> list[tuple[str, str | None, float]]:
@@ -131,7 +145,7 @@ def _detect_a1_network_cascade(rows: list[dict]) -> list[tuple[str, str | None, 
         )
         has_offline = any(
             ((r.get("atm_status") or "").lower() in ("offline",) or
-            (_parse_payload(r.get("raw_payload", {})).get("atm_status") or "").lower() in ("offline",)
+             (_parse_payload(r.get("raw_payload", {})).get("atm_status") or "").lower() in ("offline",))
             for r in atm_rows
         )
         has_timeout = any(
@@ -167,8 +181,8 @@ def _detect_a2_cassette_cascade(rows: list[dict]) -> list[tuple[str, str | None,
         has_low    = "CASSETTE_LOW"    in event_types
         has_empty  = "CASSETTE_EMPTY"  in event_types
         has_oos    = any(
-            ((r.get("atm_status") or "").lower() in ("out of service", "outservice")
-            or (_parse_payload(r.get("raw_payload", {})).get("atm_status") or "").lower() in ("out of service", "outservice")
+            ((r.get("atm_status") or "").lower() in ("out of service", "outservice") or
+             (_parse_payload(r.get("raw_payload", {})).get("atm_status") or "").lower() in ("out of service", "outservice"))
             for r in atm_rows
         )
         if has_empty and has_oos:
@@ -252,8 +266,8 @@ def _detect_a5_response_spike(rows: list[dict]) -> list[tuple[str, str | None, f
         payloads = [_parse_payload(r.get("raw_payload", {})) for r in atm_rows]
 
         rt_values = []
-        for p in payloads:
-            rt = p.get("response_time_ms") or r.get("response_time_ms")
+        for r in atm_rows:
+            rt = r.get("response_time_ms") or _parse_payload(r.get("raw_payload", {})).get("response_time_ms")
             if rt is not None:
                 try:
                     rt_values.append(float(rt))
@@ -261,8 +275,9 @@ def _detect_a5_response_spike(rows: list[dict]) -> list[tuple[str, str | None, f
                     pass
 
         sr_values = []
-        for p in payloads:
-            sr = (p.get("transaction_success_rate") or p.get("success_rate"))
+        for r in atm_rows:
+            sr = (_parse_payload(r.get("raw_payload", {})).get("transaction_success_rate") or
+                  _parse_payload(r.get("raw_payload", {})).get("success_rate"))
             if sr is not None:
                 try:
                     sr_values.append(float(sr))
@@ -319,9 +334,9 @@ def _detect_a7_out_of_order(rows: list[dict]) -> list[tuple[str, str | None, flo
 
     null_status_kafka = [
         r for r in kafka_rows
-        if not (_parse_payload(r.get("raw_payload", {})).get("atm_status")
-        and not r.get("atm_status")
-        and r.get("source") == "KAFKA"
+        if (not _parse_payload(r.get("raw_payload", {})).get("atm_status") and
+            not r.get("atm_status") and
+            r.get("source") == "KAFKA")
     ]
     if len(null_status_kafka) >= 3:
         atm_ids = [r.get("atm_id") for r in null_status_kafka if r.get("atm_id")]
@@ -340,6 +355,8 @@ def detect_rules(rows: list[dict] | None = None) -> int:
         A1 (network cascade) → A2 (cassette cascade) → A3 (jvm leak)
         → A4 (container restart) → A5 (response spike)
         → A6 (os memory) → A7 (out-of-order)
+    
+    Batches all detections and saves in a single transaction to avoid pool exhaustion.
     """
     if rows is None:
         rows = _query_window()
@@ -348,39 +365,18 @@ def detect_rules(rows: list[dict] | None = None) -> int:
         log.debug("Not enough data in window (%d rows) — skipping rules.", len(rows))
         return 0
 
-    saved = 0
+    # Collect all detections first
+    all_detections: list[tuple[str, str | None, float]] = []
+    all_detections.extend(_detect_a1_network_cascade(rows))
+    all_detections.extend(_detect_a2_cassette_cascade(rows))
+    all_detections.extend(_detect_a3_jvm_leak(rows))
+    all_detections.extend(_detect_a4_container_restart(rows))
+    all_detections.extend(_detect_a5_response_spike(rows))
+    all_detections.extend(_detect_a6_os_memory_pressure(rows))
+    all_detections.extend(_detect_a7_out_of_order(rows))
 
-    for atype, atm_id, confidence in _detect_a1_network_cascade(rows):
-        if _save_anomaly(atype, atm_id, confidence):
-            saved += 1
-
-    for atype, atm_id, confidence in _detect_a2_cassette_cascade(rows):
-        if _save_anomaly(atype, atm_id, confidence):
-            saved += 1
-
-    for atype, atm_id, confidence in _detect_a3_jvm_leak(rows):
-        if _save_anomaly(atype, atm_id, confidence):
-            saved += 1
-
-    for atype, atm_id, confidence in _detect_a4_container_restart(rows):
-        if _save_anomaly(atype, atm_id, confidence):
-            saved += 1
-
-    for atype, atm_id, confidence in _detect_a5_response_spike(rows):
-        if _save_anomaly(atype, atm_id, confidence):
-            saved += 1
-
-    for atype, atm_id, confidence in _detect_a6_os_memory_pressure(rows):
-        if _save_anomaly(atype, atm_id, confidence):
-            saved += 1
-
-    for atype, atm_id, confidence in _detect_a7_out_of_order(rows):
-        if _save_anomaly(atype, atm_id, confidence):
-            saved += 1
-
-    if saved:
-        log.info("RULES: Detected %d anomaly/aggregies in this cycle", saved)
-    return saved
+    # Save all in one batch transaction
+    return _save_anomalies_batch(all_detections)
 
 
 if __name__ == "__main__":

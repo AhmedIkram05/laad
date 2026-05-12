@@ -10,6 +10,10 @@ the dashboard always shows anomalies, even when ML confidence is low.
 
 Falls back entirely to rule-based if model artifacts are missing.
 
+Configuration (env vars):
+    ML_RULES_DETECTION_ENABLED    : Enable rule-based detection (default: true)
+    ML_FALLBACK_ENABLED           : Enable legacy fallback (default: true)
+
 Usage:
     python -m backend.src.anomaly_detection.ml.ml_detector
 """
@@ -17,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -28,10 +33,11 @@ from backend.src.anomaly_detection.ml.feature_engineering import extract_feature
 
 log = logging.getLogger(__name__)
 
-ARTIFACT_DIR         = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS       = 300
-CONFIDENCE_THRESHOLD = 0.60
-FALLBACK_ENABLED     = True
+ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
+WINDOW_SECONDS            = 300
+CONFIDENCE_THRESHOLD      = 0.60
+RULES_DETECTION_ENABLED   = os.getenv("ML_RULES_DETECTION_ENABLED", "true").lower() in ("true", "1", "yes")
+FALLBACK_ENABLED          = os.getenv("ML_FALLBACK_ENABLED", "true").lower() in ("true", "1", "yes")
 
 SEVERITY_MAP = {
     "A1": "CRITICAL", "A2": "CRITICAL", "A3": "MAJOR",
@@ -54,6 +60,12 @@ class MLAnomalyDetector:
         self._clf:    object | None = None
         self._le:     object | None = None
         self._loaded = self._load_models()
+        
+        # Log configuration on init
+        log.info(
+            "MLAnomalyDetector initialized: rules_enabled=%s, fallback_enabled=%s, models_loaded=%s",
+            RULES_DETECTION_ENABLED, FALLBACK_ENABLED, self._loaded
+        )
 
     def _load_models(self) -> bool:
         """Attempt to load model artifacts. Returns True on success."""
@@ -183,12 +195,15 @@ class MLAnomalyDetector:
 
         saved = 0
 
-        # Rule-based detection — always runs
-        rule_anomalies = self._detect_rules(rows)
-        for atype, atm_id, confidence in rule_anomalies:
-            if not self._is_active(atype, atm_id):
-                self._save_anomaly(atype, atm_id, confidence, source="RULES")
-                saved += 1
+        # Rule-based detection — runs if enabled
+        if RULES_DETECTION_ENABLED:
+            rule_anomalies = self._detect_rules(rows)
+            for atype, atm_id, confidence in rule_anomalies:
+                if not self._is_active(atype, atm_id):
+                    self._save_anomaly(atype, atm_id, confidence, source="RULES")
+                    saved += 1
+        else:
+            log.debug("Rule-based detection disabled via ML_RULES_DETECTION_ENABLED=false")
 
         # ML detection — only if models are loaded
         if self._loaded:
@@ -214,7 +229,7 @@ class MLAnomalyDetector:
                 elif label == "NORMAL" or confidence < CONFIDENCE_THRESHOLD:
                     log.info("ML: confidence %.2f < threshold or NORMAL — rules are primary", confidence)
         elif FALLBACK_ENABLED:
-            log.info("ML models not loaded — running rule-based detection only")
+            log.info("ML models not loaded — running legacy fallback detection")
             try:
                 self._fallback_to_rules()
             except Exception as exc:
