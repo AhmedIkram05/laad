@@ -30,6 +30,11 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-change-in-production}
       - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - TEST_POSTGRES_HOST=postgres_test
+      - TEST_POSTGRES_PORT=5432
+      - TEST_POSTGRES_DB=atm_platform_test
+      - TEST_POSTGRES_USER=atm_user
+      - TEST_POSTGRES_PASSWORD=your_password_here
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,6 +45,8 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
+    volumes:
+      - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
 
   generator:
     build: .
@@ -78,6 +85,48 @@ services:
       - mlflow_artifacts:/mlflow/artifacts
     restart: unless-stopped
 
+  postgres_test:
+    image: postgres:16-alpine
+    profiles:
+      - test
+    environment:
+      POSTGRES_DB: ${TEST_POSTGRES_DB:-atm_platform_test}
+      POSTGRES_USER: ${TEST_POSTGRES_USER:-atm_user}
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:-your_password_here}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./backend/src/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  pytest:
+    build: .
+    profiles:
+      - test
+    command: >
+      sh -c "sleep 5 &&
+      python -m pytest backend/tests/ -v --ignore=backend/tests/test_atm_app_parser.py
+      --ignore=backend/tests/test_gcp_cloud_metrics_parser.py
+      --ignore=backend/tests/test_hardware_sensor_parser.py
+      --ignore=backend/tests/test_kafka_metrics_parser.py
+      --ignore=backend/tests/test_ingestion_integration.py
+      --tb=short"
+    environment:
+      - POSTGRES_HOST=postgres_test
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${TEST_POSTGRES_DB:-atm_platform_test}
+      - POSTGRES_USER=${TEST_POSTGRES_USER:-atm_user}
+      - POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD:-your_password_here}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ML_HEURISTICS_ENABLED=true
+      - ML_RULES_DETECTION_ENABLED=true
+    depends_on:
+      - postgres_test
+    volumes:
+      - ./backend:/app/backend
+      - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
+
 volumes:
   postgres_data:
   mlflow_artifacts:
+  postgres_test_data:
