@@ -23,19 +23,8 @@ class BaseParser(ABC):
     or raise an exception for malformed input.
     """
 
-    def __init__(self, db_path: Optional[str] = None, batch_size: int = 500):
-        if db_path:
-            self.db_path = db_path
-        else:
-            env_db = os.getenv('DB_PATH')
-            if env_db:
-                self.db_path = env_db
-            else:
-                try:
-                    from backend.src.database.connection import DB_PATH as DEFAULT_DB_PATH
-                    self.db_path = DEFAULT_DB_PATH
-                except Exception:
-                    self.db_path = 'database/database.db'
+    def __init__(self, db_path: str | None = None, batch_size: int = 500):
+        self.db_path = db_path or os.getenv("DB_PATH") or ""
         self.batch_size = int(batch_size)
         self._buffer: list[Dict[str, Any]] = []
 

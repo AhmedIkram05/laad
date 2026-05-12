@@ -272,7 +272,7 @@ def resolveAnomaly(
         row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Anomaly not found")
-    
+
     new_active = 0 if row["is_active"] else 1
     with conn.cursor() as cur:
         cur.execute("UPDATE anomalies SET is_active = %s WHERE id = %s", (new_active, anomalyId))
@@ -305,3 +305,52 @@ def toggleStar(
     logger.info(
         f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_starred": newStarred}
+
+
+@router.patch("/{anomalyId}/feedback")
+def setFeedback(
+    anomalyId: int,
+    body: FeedbackRequest,
+    currentUser: dict = Depends(get_current_user),
+    conn=Depends(get_db_connection),
+):
+    """Record feedback (LIKE=confirm, DISLIKE=false positive) on an anomaly.
+
+    DISLIKE marks the anomaly as a false positive and increments the
+    false_positive_count for this anomaly.
+    """
+    rating = body.rating.upper()
+    if rating not in ("LIKE", "DISLIKE"):
+        raise HTTPException(status_code=400, detail="Rating must be LIKE or DISLIKE")
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            "SELECT id, anomaly_type, atm_id, false_positive_count FROM anomalies WHERE id = %s",
+            (anomalyId,)
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Anomaly not found")
+
+    fp_inc = 1 if rating == "DISLIKE" else 0
+    fp_count = (row["false_positive_count"] or 0) + fp_inc
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE anomalies SET feedback_rating = %s, false_positive_count = %s WHERE id = %s",
+            (rating, fp_count, anomalyId),
+        )
+    conn.commit()
+
+    if rating == "DISLIKE":
+        logger.info(
+            "False positive reported for anomaly %s (type=%s, atm=%s). "
+            "FP count for this (type, atm) pair incremented to %d",
+            anomalyId, row["anomaly_type"], row["atm_id"], fp_count
+        )
+
+    return {
+        "id": anomalyId,
+        "feedback_rating": rating,
+        "false_positive_count": fp_count,
+    }

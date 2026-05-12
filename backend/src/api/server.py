@@ -10,7 +10,7 @@ import time
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -19,66 +19,113 @@ from backend.src.admin.admin_router import router as adminRouter
 from backend.src.anomalies.anomalies_router import router as anomaliesRouter
 from backend.src.auth.auth_router import router as authRouter
 from backend.src.analysis.analysis_router import router as analysisRouter
+from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
+from backend.src.database.connection import get_conn, release_conn
 from backend.src.database.init_db import init_db
+from backend.src.anomaly_detection.ml.train import ARTIFACT_DIR
 
 logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
 
-_ml_detector = None
+_ml_detector: MLAnomalyDetector | None = None
 _db_initialized = False
 
 
-def _ensure_db_initialized():
-    """Ensure database is seeded. Called on startup and first request."""
+def _ensure_db_initialized() -> None:
+    """Ensure database schema and seed data exist. Called on startup."""
     global _db_initialized
     if _db_initialized:
         return
-    
+
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"[INIT_DB] Attempt {attempt}/{max_retries}: Seeding database...")
             init_db()
             _db_initialized = True
-            logger.info("✓ Database seeded successfully")
-            print("[INIT_DB] ✓ Database seeded successfully")
+            logger.info("Database initialised and seeded successfully")
             return
         except Exception as e:
-            error_msg = f"Failed to seed database (attempt {attempt}/{max_retries}): {str(e)}"
-            print(f"[INIT_DB] {error_msg}")
-            logger.exception(error_msg)
+            logger.error("Database initialisation failed (attempt %d/%d): %s", attempt, max_retries, e)
             if attempt < max_retries:
                 time.sleep(2)
+            else:
+                raise
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manages scheduler startup and shutdown."""
-    # Seed database on startup
-    print("[LIFESPAN] Starting up... initializing database")
+    logger.info("Starting up — initialising database")
     _ensure_db_initialized()
-    
+    _check_and_retrain_on_startup()
+
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     scheduler.add_job(_run_ml_detection, "interval", seconds=10, id="ml_detector")
+    scheduler.add_job(_auto_retrain, "interval", hours=24, id="auto_retrain")
     scheduler.start()
-    logger.info("✓ Cleanup scheduler started (interval: 1h)")
-    logger.info("✓ ML anomaly detector scheduler started (interval: 10s)")
-    print("[LIFESPAN] Startup complete")
+    logger.info("Schedulers started: cleanup (1h), ml_detector (10s), auto_retrain (24h)")
     yield
     scheduler.shutdown()
     logger.info("Schedulers stopped")
 
 
-def _run_ml_detection():
+def _check_and_retrain_on_startup() -> None:
+    """Retrain models on startup if they are stale (> 24 hours old) or absent."""
+    model_file = ARTIFACT_DIR / "xgb_classifier.joblib"
+    if not model_file.exists():
+        logger.info("No model artifacts found — training on startup")
+        _do_retrain()
+        return
+    age_hours = (time.time() - model_file.stat().st_mtime) / 3600
+    if age_hours > 24:
+        logger.info("Model artifacts are %.1f hours old — retraining on startup", age_hours)
+        _do_retrain()
+    else:
+        logger.info("Model artifacts are %.1f hours old — using existing models", age_hours)
+
+
+def _do_retrain() -> None:
+    """Run the training pipeline and reload models."""
     global _ml_detector
     try:
-        from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
+        import importlib
+        from backend.src.anomaly_detection.ml import train
+        importlib.reload(train)
+        train.train()
+        logger.info("Startup retrain complete")
+    except Exception as exc:
+        logger.error("Startup retrain failed: %s", exc, exc_info=True)
+    finally:
+        if _ml_detector is not None:
+            _ml_detector._loaded = _ml_detector._load_models()
+            logger.info("ML detector reloaded models after retrain")
+
+
+def _run_ml_detection() -> None:
+    global _ml_detector
+    try:
         if _ml_detector is None:
             _ml_detector = MLAnomalyDetector()
         _ml_detector.detect_and_save()
     except Exception as exc:
         logger.error("ML detection cycle failed: %s", exc, exc_info=True)
+
+
+def _auto_retrain() -> None:
+    """Retrain ML models if they are stale (> 24 hours old).
+
+    Fires every 24h via scheduler. Guards against retraining if the model
+    was already retrained recently (e.g., on startup).
+    """
+    model_file = ARTIFACT_DIR / "xgb_classifier.joblib"
+    if model_file.exists():
+        age_hours = (time.time() - model_file.stat().st_mtime) / 3600
+        if age_hours <= 24:
+            logger.info("Auto-retrain skipped — models are %.1f hours old", age_hours)
+            return
+    logger.info("Auto-retrain triggered — models are stale")
+    _do_retrain()
 
 
 app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
@@ -92,19 +139,39 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+def health_check() -> dict:
+    """Liveness probe for container orchestration."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def readiness_check() -> dict:
+    """Readiness probe — checks DB connectivity."""
+    try:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            return {"status": "ready", "database": "connected"}
+        finally:
+            release_conn(conn)
+    except Exception as e:
+        logger.warning("Readiness check failed: %s", e)
+        raise HTTPException(status_code=503, detail="Database not ready") from e
+
+
 @app.exception_handler(Exception)
-async def globalExceptionHandler(request: Request, exc: Exception):
-    """Catches unhandled exceptions and returns clean JSON instead of
-    leaking raw stack traces to the frontend.
-    """
-    logger.error(f"Unhandled exception on {request.url}: {exc}", exc_info=True)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catches unhandled exceptions and returns clean JSON."""
+    logger.error("Unhandled exception on %s: %s", request.url, exc, exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "An internal server error occurred"}
+        content={"detail": "An internal server error occurred"},
     )
 
 
-# Routers — one line per domain
+# Routers
 app.include_router(authRouter)
 app.include_router(adminRouter)
 app.include_router(anomaliesRouter)

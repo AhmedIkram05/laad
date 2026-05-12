@@ -362,7 +362,7 @@ def build_detailed_table(anomalies):
             kafka_offline = exp.get("kafka_offline", False)
             terminal_timeout = exp.get("terminal_timeout", False)
 
-            explanation, operation_impact, recommendation = A1(atm_id, error_seen, max_timeout, kafka_offline, terminal_timeout) 
+            explanation, operation_impact, recommendation = A1(atm_id, error_seen, max_timeout, kafka_offline, terminal_timeout)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -374,8 +374,12 @@ def build_detailed_table(anomalies):
                 "Title": a['title'],
                 "root_cause": explanation,
                 "operations": operation_impact,
-                "Recommended_Action": recommendation
-            })        
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
 
         elif A_code == "A2":
             
@@ -397,7 +401,7 @@ def build_detailed_table(anomalies):
             dispense_error = exp.get("kafka_dispense_error", False)
             zero_tps = exp.get("kafka_trtps_zero", False)
 
-            explanation, operation_impact, recommendation = A2(atm_id, low_count, empty_count, out_of_service, dispense_error, zero_tps) 
+            explanation, operation_impact, recommendation = A2(atm_id, low_count, empty_count, out_of_service, dispense_error, zero_tps)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -409,8 +413,12 @@ def build_detailed_table(anomalies):
                 "Title": a['title'],
                 "root_cause": explanation,
                 "operations": operation_impact,
-                "Recommended_Action": recommendation
-            })        
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
 
         elif A_code == "A3":
 
@@ -436,7 +444,7 @@ def build_detailed_table(anomalies):
             high_cpu = True if (exp.get("frac_increase") or 0) >= 0.5 else high_cpu
             oom_seen = True
 
-            explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen) 
+            explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -448,8 +456,12 @@ def build_detailed_table(anomalies):
                 "Title": a['title'],
                 "root_cause": explanation,
                 "operations": operation_impact,
-                "Recommended_Action": recommendation
-            })        
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
 
 
         elif A_code == "A4":
@@ -475,7 +487,7 @@ def build_detailed_table(anomalies):
             fatal_count = exp.get('total_fatals', 0)
             startup_count = exp.get('total_startups', 0)
 
-            explanation, operation_impact, recommendation = A4(max_restart, fatal_count, startup_count) 
+            explanation, operation_impact, recommendation = A4(max_restart, fatal_count, startup_count)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -487,8 +499,12 @@ def build_detailed_table(anomalies):
                 "Title": a['title'],
                 "root_cause": explanation,
                 "operations": operation_impact,
-                "Recommended_Action": recommendation
-            })        
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
 
         elif A_code == "A5":
 
@@ -529,7 +545,7 @@ def build_detailed_table(anomalies):
                 timeout_seen = True
   
             
-            explanation, operation_impact, recommendation = A5(atm_id, max_rt5, min_success, max_failures, timeout_seen) 
+            explanation, operation_impact, recommendation = A5(atm_id, max_rt5, min_success, max_failures, timeout_seen)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -541,8 +557,12 @@ def build_detailed_table(anomalies):
                 "Title": a['title'],
                 "root_cause": explanation,
                 "operations": operation_impact,
-                "Recommended_Action": recommendation
-            })        
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
         
         elif A_code == "A6":
 
@@ -571,7 +591,7 @@ def build_detailed_table(anomalies):
             if error == "ThreadAbortException: memory pressure":        
                 timeout_seen = True        
 
-            explanation, operation_impact, recommendation = A6(atm_id, mem_start, mem_max, cpu_max, net_error_max, timeout_seen) 
+            explanation, operation_impact, recommendation = A6(atm_id, mem_start, mem_max, cpu_max, net_error_max, timeout_seen)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -583,8 +603,12 @@ def build_detailed_table(anomalies):
                 "Title": a['title'],
                 "root_cause": explanation,
                 "operations": operation_impact,
-                "Recommended_Action": recommendation
-            })        
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
 
 
         elif A_code == "A7":
@@ -608,7 +632,7 @@ def build_detailed_table(anomalies):
                 missing_field_count += 1
                 ooo = True
             
-            explanation, operation_impact, recommendation = A7(atm_id,  missing_field_count, malformed_metric, ooo) 
+            explanation, operation_impact, recommendation = A7(atm_id,  missing_field_count, malformed_metric, ooo)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -620,8 +644,12 @@ def build_detailed_table(anomalies):
                 "Title": a['title'],
                 "root_cause": explanation,
                 "operations": operation_impact,
-                "Recommended_Action": recommendation
-            })        
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
 
     return detailed_rows
 

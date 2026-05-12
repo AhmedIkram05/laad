@@ -53,7 +53,10 @@ flowchart TD
   P["7 Custom Parsers"]
   I["Ingestion Pipeline"]
     DB[("PostgreSQL (JSONB + TIMESTAMPTZ)")]
-  RB["Rule-Based Detector"]
+  HEUR["HEURISTIC Layer"]
+  RULES["RULES Layer"]
+  ML["ML Layer"]
+  BASELINE["BASELINE Layer"]
   RK["Ranking Algorithm"]
   CL["APScheduler Cleanup"]
   API["FastAPI REST API"]
@@ -61,15 +64,25 @@ flowchart TD
   RAG["Local RAG Assistant"]
 
   S --> P --> I --> DB
-  DB --> RB --> RK --> API --> UI --> RAG
+  DB --> HEUR
+  DB --> RULES
+  DB --> ML
+  DB --> BASELINE
+  HEUR --> RK
+  RULES --> RK
+  ML --> RK
+  BASELINE --> RK
+  RK --> API --> UI --> RAG
   DB --> CL
 
   classDef core fill:#1f2937,stroke:#6b7280,color:#ffffff;
   classDef db fill:#0f766e,stroke:#14b8a6,color:#ffffff;
+  classDef det fill:#7c3aed,stroke:#a78bfa,color:#ffffff;
   classDef ext fill:#374151,stroke:#9ca3af,color:#ffffff;
 
-  class S,P,I,RB,RK,CL,API,UI core;
+  class S,P,I,RK,CL,API,UI core;
   class DB db;
+  class HEUR,RULES,ML,BASELINE det;
   class RAG ext;
 ```
 
@@ -77,7 +90,7 @@ flowchart TD
 
 **Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it backfills historical data, then enters a live loop. A `ThreadedConnectionPool` (minconn=5, maxconn=20) handles concurrent writes with retry/backoff. All records normalise into shared `events` and `metrics` tables.
 
-**Detection:** A rule-based detector (`backend/src/anomaly_detection/ml/ml_detector.py`) identifies A1–A7 anomaly types by reading `_anomaly_tag` fields in the unified view. Detection runs every 10 seconds via APScheduler. A ranking algorithm prioritises issues using severity, anomaly type, time, and transaction weight.
+**Detection:** A 4-layer detection engine identifies A1–A7 anomaly types. HEURISTIC (primary, multi-signal correlation) and RULES (secondary, tag-reader) layers fire on the current 300-second window every 10 seconds with entity-aware ATM attribution. ML (Isolation Forest + XGBoost, 47 features, trained on 360-minute windows with class balancing) and BASELINE (rolling 20-window Z-score, novel pattern detection) activate when trained models are loaded. Detection auto-retrains once per UTC day and falls back to a wider 600-second window on low-traffic periods. All inference cycles are logged to MLflow. Retrain with `docker compose exec backend python -m backend.src.anomaly_detection.ml.train`.
 
 **Serving layer:** FastAPI exposes `/auth`, `/anomalies`, `/analysis/detailed`, and `/admin` routes, served by the React + Vite dashboard.
 
@@ -99,8 +112,8 @@ Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool
 **Data retention preserving unresolved anomalies**
 Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically.
 
-**Rule-based detection as primary, ML-ready architecture**
-Rule-based detection is primary for predictability and auditability. The ML detector (`ml_detector.py`) attempts to load sklearn artifacts from `ml/artifacts/` on startup. If models are absent, it falls back to pure rule-based detection. The `require_admin` RBAC guard is applied at FastAPI dependency injection — enforced once, propagated to every guarded route.
+**4-layer anomaly detection — reactive + proactive**
+HEURISTIC (primary) and RULES (secondary) layers fire on the current 300-second window every 10 seconds. ML (Isolation Forest + XGBoost, 47 features) and BASELINE (rolling Z-score, >3σ threshold) activate when trained models are loaded, providing proactive detection of novel patterns. The `explanation` JSONB field embeds `"source": "HEURISTIC"|"RULES"|"ML"|"BASELINE"` for frontend display. Deduplication prevents duplicate anomalies for the same `(anomaly_type, atm_id)` pair. All inference cycles are logged to MLflow for observability.
 
 **Air-gapped RAG architecture**
 No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-text` embeddings feeds ChromaDB, with `llama3.1:8b` via Ollama. Evaluated with an LLM-as-judge pipeline scoring relevance, faithfulness, and answer completeness.
@@ -136,7 +149,7 @@ No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-
 | FR7 | Display which ATMs are non-functional or have warnings | ✅ Met |
 | FR8 | Generate probable root cause for detected anomalies | ✅ Met |
 | FR9 | Identify anomalous patterns across different channels | ✅ Met |
-| FR10 | Use patterns to predict potential future anomalies | 🟡 Partial |
+| FR10 | Use patterns to predict potential future anomalies | ✅ Met |
 | FR11 | Display recommended next actions for anomalies | ✅ Met |
 | FR12 | Allow filtering by specific ATM-IDs | ✅ Met |
 | FR13 | Configurable data retention period | ✅ Met |
@@ -275,11 +288,10 @@ erDiagram
 
 ## Testing
 
-97+ passing tests across 6 tiers:
+150+ passing tests across 7 tiers:
 
 ```bash
-make test-db-up   # start isolated test DB on port 5433
-pytest -q          # run all tests
+make pytest        # runs all tests in Docker with isolated test DB
 ```
 
 | Tier | Coverage |
@@ -364,7 +376,7 @@ Services run on:
 - **Frontend:** `http://localhost:5173` (starts separately in terminal only, see step 3)
 - **PostgreSQL:** `localhost:5432`
 - **Test Database:** `localhost:5433`
-- **MLflow UI:** `http://localhost:5000`
+- **MLflow UI:** `http://localhost:5001`
 
 The generator backfills 60 minutes of historical data on first boot, then enters live mode with probabilistic anomaly injection.
 
@@ -408,10 +420,12 @@ make rebuild
 | Layer | Technology | Notes |
 |---|---|---|
 | Backend framework | FastAPI | Lifespan context manager, dependency injection for RBAC |
-| Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool`, `execute_values` batch inserts |
+| Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool` (minconn=5, maxconn=20), `execute_values` batch inserts |
 | Scheduler | APScheduler | Cleanup every 1h, ML detector every 10s |
 | Continuous generator | Python + psycopg2 | Backfill + live loop, SIGTERM/SIGINT handling, exponential backoff |
-| Anomaly detection | Rule-based (`ml_detector.py`) | ML-artifact-ready with graceful fallback |
+| Anomaly detection | 4-layer hybrid (HEURISTIC + RULES + ML + BASELINE) | Isolation Forest + XGBoost, rolling Z-score baseline, entity-aware attribution, 47 features, 360-min windows, class balancing, auto-retrain daily, inference logged to MLflow |
+| MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model artifact storage |
+| Training pipeline | `train.py` | Sliding windows (300s), StratifiedKFold CV, artifact serialization to `ml/artifacts/` |
 | Frontend | React + Vite | Dashboard, anomaly detail, admin views |
 | RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker |
 | Testing | Pytest | Isolated test DB on port 5433 via `docker-compose.test.yml` |

@@ -8,9 +8,10 @@ import numpy as np
 import pytest
 
 from backend.src.anomaly_detection.ml.train import (
-    load_windows, train, ARTIFACT_DIR, WINDOW_SECONDS,
-    STEP_SECONDS, IF_CONTAMINATION, XGB_N_ESTIMATORS, MLFLOW_EXPERIMENT
+    load_windows, train, WINDOW_SECONDS, STEP_SECONDS,
+    IF_CONTAMINATION, XGB_N_ESTIMATORS, MLFLOW_EXPERIMENT, ARTIFACT_DIR
 )
+from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
 
 
 class TestLoadWindows:
@@ -89,7 +90,7 @@ class TestLoadWindows:
         assert len(features) > 0, "Should produce at least one window"
         for f in features:
             assert isinstance(f, np.ndarray)
-            assert len(f) == 26
+            assert len(f) == 47, f"Expected 47 features, got {len(f)}"
         assert len(labels) == len(features)
         assert any(l is not None for l in labels), "At least one window should have an anomaly label"
 
@@ -108,7 +109,7 @@ class TestTrain:
     def test_saves_all_three_artifacts(self, tmp_path):
         now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        fake_window = np.zeros(26, dtype=np.float32)
+        fake_window = np.zeros(FEATURE_COUNT, dtype=np.float32)
         rows = [
             dict(timestamp=now - timedelta(seconds=i * 10),
                  source="ATM_APP", atm_id="ATM-GB-0001",
@@ -133,8 +134,8 @@ class TestConstants:
     def test_window_seconds_is_300(self):
         assert WINDOW_SECONDS == 300
 
-    def test_step_seconds_is_60(self):
-        assert STEP_SECONDS == 60
+    def test_step_seconds_matches_window(self):
+        assert STEP_SECONDS == WINDOW_SECONDS == 300
 
     def test_if_contamination_is_010(self):
         assert IF_CONTAMINATION == 0.1
