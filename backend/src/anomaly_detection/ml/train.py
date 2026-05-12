@@ -1,15 +1,15 @@
 """Training pipeline for the ML anomaly detector.
 
 Steps:
-    1. Query v_unified_analysis from PostgreSQL, split into sliding windows
+    1. Query v_unified_analysis from PostgreSQL, split into NON-overlapping windows
     2. Extract features and labels per window
     3. Train Isolation Forest on normal windows only
-    4. Train XGBoost on all labelled windows (normal + anomaly types)
+    4. Train XGBoost on all labelled windows (normal + anomaly types) with class balancing
     5. Log parameters, metrics, and model artifacts to MLflow
     6. Save models to ml/artifacts/
 
 Usage:
-    python -m ml.train
+    python -m backend.src.anomaly_detection.ml.train
 """
 from __future__ import annotations
 
@@ -33,14 +33,14 @@ from sklearn.metrics import classification_report
 from collections import Counter
 
 from backend.src.database.connection import get_cursor
-from backend.src.anomaly_detection.ml.feature_engineering import extract_features, extract_label, FEATURE_NAMES
+from backend.src.anomaly_detection.ml.feature_engineering import extract_features, extract_label, FEATURE_NAMES, FEATURE_COUNT
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR    = Path(__file__).parent / "artifacts"
 WINDOW_SECONDS  = 300
-STEP_SECONDS    = 60
+STEP_SECONDS    = WINDOW_SECONDS
 IF_CONTAMINATION = 0.1
 XGB_N_ESTIMATORS = 100
 MLFLOW_EXPERIMENT = "atm-anomaly-detection"
@@ -49,7 +49,10 @@ _tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 
 
 def load_windows(minutes: int = 60) -> tuple[list[np.ndarray], list[str | None]]:
-    """Query recent DB rows and split into sliding windows.
+    """Query recent DB rows and split into NON-overlapping windows.
+
+    Uses step=WINDOW_SECONDS to avoid the same anomaly appearing in multiple windows,
+    which would inflate training metrics and cause overfitting.
 
     Args:
         minutes: how far back to query (default 60 min)
@@ -87,8 +90,10 @@ def load_windows(minutes: int = 60) -> tuple[list[np.ndarray], list[str | None]]
     while t + window_delta <= end:
         window_rows = [r for r in rows if t <= r["timestamp"] < t + window_delta]
         if len(window_rows) >= 5:
-            features.append(extract_features(window_rows))
-            labels.append(extract_label(window_rows))
+            feats = extract_features(window_rows)
+            if len(feats) == FEATURE_COUNT:
+                features.append(feats)
+                labels.append(extract_label(window_rows))
         t += step_delta
 
     return features, labels
@@ -104,12 +109,13 @@ def train() -> None:
         mlflow.log_params({
             "window_seconds":    WINDOW_SECONDS,
             "step_seconds":       STEP_SECONDS,
+            "overlapping":        False,
             "if_contamination":  IF_CONTAMINATION,
             "xgb_n_estimators":  XGB_N_ESTIMATORS,
-            "n_features":        len(FEATURE_NAMES),
+            "n_features":        FEATURE_COUNT,
         })
 
-        X_list, labels = load_windows(minutes=180)
+        X_list, labels = load_windows(minutes=360)
 
         if not X_list:
             log.error("No training data found. Ensure the generator has been running.")
@@ -117,7 +123,7 @@ def train() -> None:
 
         X_all = np.stack(X_list)
         label_counts = {l: labels.count(l) for l in set(labels)}
-        print(f"Loaded {len(X_all)} windows. Label distribution: {label_counts}")
+        print(f"Loaded {len(X_all)} non-overlapping windows. Label distribution: {label_counts}")
 
         normal_mask = np.array([l is None for l in labels])
         X_normal    = X_all[normal_mask]
@@ -150,12 +156,18 @@ def train() -> None:
         joblib.dump(iso_forest, ARTIFACT_DIR / "isolation_forest.joblib")
         mlflow.sklearn.log_model(iso_forest, "isolation_forest")
 
-        # Stage 2: XGBoost classifier on all labelled windows
         label_strings = [l if l is not None else "NORMAL" for l in labels]
         le = LabelEncoder()
         y  = le.fit_transform(label_strings)
 
-        print(f"Training XGBoost classifier on {len(X_all)} windows...")
+        class_counts = Counter(label_strings)
+        normal_count = class_counts.get("NORMAL", 1)
+        sample_weights = np.array([
+            normal_count / max(class_counts.get(lb, 1), 1)
+            for lb in label_strings
+        ])
+
+        print(f"Training XGBoost classifier on {len(X_all)} windows (class-balanced)...")
         clf = xgb.XGBClassifier(
             n_estimators=XGB_N_ESTIMATORS,
             max_depth=6,
@@ -166,9 +178,9 @@ def train() -> None:
             random_state=42,
             n_jobs=-1,
         )
-        clf.fit(X_all, y)
+        clf.fit(X_all, y, sample_weight=sample_weights)
 
-        cv_n_splits = min(5, min(Counter(labels).values()))
+        cv_n_splits = min(5, min(class_counts.values()))
         if cv_n_splits < 2:
             log.warning("Not enough samples per class for CV. Skipping cross-validation.")
             cv_scores = np.array([np.nan])
@@ -197,6 +209,12 @@ def train() -> None:
         with open(ARTIFACT_DIR / "feature_names.json", "w") as f:
             json.dump(FEATURE_NAMES, f)
         mlflow.log_artifact(str(ARTIFACT_DIR / "feature_names.json"))
+
+        feat_imp = pd.Series(clf.feature_importances_, index=FEATURE_NAMES).sort_values(ascending=False)
+        print("Top 10 features by importance:")
+        for feat, imp in feat_imp.head(10).items():
+            print(f"  {feat}: {imp:.4f}")
+            mlflow.log_metric(f"feat_importance_{feat}", float(imp))
 
         print(f"Training complete. Artifacts saved to {ARTIFACT_DIR}")
 
