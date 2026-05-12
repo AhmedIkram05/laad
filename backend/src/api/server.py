@@ -10,7 +10,7 @@ import time
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -19,61 +19,57 @@ from backend.src.admin.admin_router import router as adminRouter
 from backend.src.anomalies.anomalies_router import router as anomaliesRouter
 from backend.src.auth.auth_router import router as authRouter
 from backend.src.analysis.analysis_router import router as analysisRouter
+from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
+from backend.src.database.connection import get_conn, release_conn
 from backend.src.database.init_db import init_db
 
 logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
 
-_ml_detector = None
+_ml_detector: MLAnomalyDetector | None = None
 _db_initialized = False
 
 
-def _ensure_db_initialized():
-    """Ensure database is seeded. Called on startup and first request."""
+def _ensure_db_initialized() -> None:
+    """Ensure database schema and seed data exist. Called on startup."""
     global _db_initialized
     if _db_initialized:
         return
-    
+
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"[INIT_DB] Attempt {attempt}/{max_retries}: Seeding database...")
             init_db()
             _db_initialized = True
-            logger.info("✓ Database seeded successfully")
-            print("[INIT_DB] ✓ Database seeded successfully")
+            logger.info("Database initialised and seeded successfully")
             return
         except Exception as e:
-            error_msg = f"Failed to seed database (attempt {attempt}/{max_retries}): {str(e)}"
-            print(f"[INIT_DB] {error_msg}")
-            logger.exception(error_msg)
+            logger.error("Database initialisation failed (attempt %d/%d): %s", attempt, max_retries, e)
             if attempt < max_retries:
                 time.sleep(2)
+            else:
+                raise
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manages scheduler startup and shutdown."""
-    # Seed database on startup
-    print("[LIFESPAN] Starting up... initializing database")
+    logger.info("Starting up — initialising database")
     _ensure_db_initialized()
-    
+
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     scheduler.add_job(_run_ml_detection, "interval", seconds=10, id="ml_detector")
     scheduler.start()
-    logger.info("✓ Cleanup scheduler started (interval: 1h)")
-    logger.info("✓ ML anomaly detector scheduler started (interval: 10s)")
-    print("[LIFESPAN] Startup complete")
+    logger.info("Schedulers started: cleanup (1h), ml_detector (10s)")
     yield
     scheduler.shutdown()
     logger.info("Schedulers stopped")
 
 
-def _run_ml_detection():
+def _run_ml_detection() -> None:
     global _ml_detector
     try:
-        from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
         if _ml_detector is None:
             _ml_detector = MLAnomalyDetector()
         _ml_detector.detect_and_save()
@@ -92,19 +88,39 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+def health_check() -> dict:
+    """Liveness probe for container orchestration."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def readiness_check() -> dict:
+    """Readiness probe — checks DB connectivity."""
+    try:
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            return {"status": "ready", "database": "connected"}
+        finally:
+            release_conn(conn)
+    except Exception as e:
+        logger.warning("Readiness check failed: %s", e)
+        raise HTTPException(status_code=503, detail="Database not ready") from e
+
+
 @app.exception_handler(Exception)
-async def globalExceptionHandler(request: Request, exc: Exception):
-    """Catches unhandled exceptions and returns clean JSON instead of
-    leaking raw stack traces to the frontend.
-    """
-    logger.error(f"Unhandled exception on {request.url}: {exc}", exc_info=True)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catches unhandled exceptions and returns clean JSON."""
+    logger.error("Unhandled exception on %s: %s", request.url, exc, exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "An internal server error occurred"}
+        content={"detail": "An internal server error occurred"},
     )
 
 
-# Routers — one line per domain
+# Routers
 app.include_router(authRouter)
 app.include_router(adminRouter)
 app.include_router(anomaliesRouter)

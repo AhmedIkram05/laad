@@ -111,12 +111,11 @@ def trigger_training(background_tasks: BackgroundTasks):
     """Admin only. Triggers ML model retraining in the background.
 
     Trains Isolation Forest + XGBoost on the last 60 minutes of data from
-    v_unified_analysis, then saves artifacts to backend/ml/artifacts/.
+    v_unified_analysis, then saves artifacts to ml/artifacts/.
     """
     def _run_training():
         try:
-            import xgboost as xgb
-            from backend.ml.train import train as run_train
+            from backend.src.anomaly_detection.ml.train import train as run_train
             run_train()
         except Exception as exc:
             logger.error("Training failed: %s", exc)
@@ -124,5 +123,5 @@ def trigger_training(background_tasks: BackgroundTasks):
     background_tasks.add_task(_run_training)
     return TrainingResponse(
         status="started",
-        message="ML training started in background. Check MLflow at http://localhost:5000 when complete."
+        message="ML training started in background. Check MLflow at http://localhost:5001 when complete."
     )

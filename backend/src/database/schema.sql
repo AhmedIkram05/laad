@@ -81,10 +81,14 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_events_correlation ON events(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_events_atm_time ON events(atm_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_transaction ON events(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_events_source ON events(source);
 CREATE INDEX IF NOT EXISTS idx_metrics_entity_time ON metrics(entity_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_metrics_name_time ON metrics(metric_name, timestamp);
+CREATE INDEX IF NOT EXISTS idx_metrics_source ON metrics(source);
 CREATE INDEX IF NOT EXISTS idx_anomalies_atm ON anomalies(atm_id);
 CREATE INDEX IF NOT EXISTS idx_anomalies_active_time ON anomalies(is_active, detected_at);
+CREATE INDEX IF NOT EXISTS idx_anomalies_correlation ON anomalies(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_anomalies_type_time ON anomalies(anomaly_type, detected_at);
 
 -- Views
 DROP VIEW IF EXISTS v_unified_analysis;
