@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS anomalies (
     recommended_action TEXT,
     sources_involved JSONB,
     feedback_rating TEXT,
+    false_positive_count INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
     is_starred INTEGER DEFAULT 0
 );

@@ -22,6 +22,7 @@ from backend.src.analysis.analysis_router import router as analysisRouter
 from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.database.connection import get_conn, release_conn
 from backend.src.database.init_db import init_db
+from backend.src.anomaly_detection.ml.train import ARTIFACT_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +58,48 @@ async def lifespan(app: FastAPI):
     """Manages scheduler startup and shutdown."""
     logger.info("Starting up — initialising database")
     _ensure_db_initialized()
+    _check_and_retrain_on_startup()
 
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     scheduler.add_job(_run_ml_detection, "interval", seconds=10, id="ml_detector")
+    scheduler.add_job(_auto_retrain, "interval", hours=24, id="auto_retrain")
     scheduler.start()
-    logger.info("Schedulers started: cleanup (1h), ml_detector (10s)")
+    logger.info("Schedulers started: cleanup (1h), ml_detector (10s), auto_retrain (24h)")
     yield
     scheduler.shutdown()
     logger.info("Schedulers stopped")
+
+
+def _check_and_retrain_on_startup() -> None:
+    """Retrain models on startup if they are stale (> 24 hours old) or absent."""
+    model_file = ARTIFACT_DIR / "xgb_classifier.joblib"
+    if not model_file.exists():
+        logger.info("No model artifacts found — training on startup")
+        _do_retrain()
+        return
+    age_hours = (time.time() - model_file.stat().st_mtime) / 3600
+    if age_hours > 24:
+        logger.info("Model artifacts are %.1f hours old — retraining on startup", age_hours)
+        _do_retrain()
+    else:
+        logger.info("Model artifacts are %.1f hours old — using existing models", age_hours)
+
+
+def _do_retrain() -> None:
+    """Run the training pipeline and reload models."""
+    global _ml_detector
+    try:
+        import importlib
+        from backend.src.anomaly_detection.ml import train
+        importlib.reload(train)
+        train.train()
+        logger.info("Startup retrain complete")
+    except Exception as exc:
+        logger.error("Startup retrain failed: %s", exc, exc_info=True)
+    finally:
+        if _ml_detector is not None:
+            _ml_detector._loaded = _ml_detector._load_models()
+            logger.info("ML detector reloaded models after retrain")
 
 
 def _run_ml_detection() -> None:
@@ -75,6 +110,22 @@ def _run_ml_detection() -> None:
         _ml_detector.detect_and_save()
     except Exception as exc:
         logger.error("ML detection cycle failed: %s", exc, exc_info=True)
+
+
+def _auto_retrain() -> None:
+    """Retrain ML models if they are stale (> 24 hours old).
+
+    Fires every 24h via scheduler. Guards against retraining if the model
+    was already retrained recently (e.g., on startup).
+    """
+    model_file = ARTIFACT_DIR / "xgb_classifier.joblib"
+    if model_file.exists():
+        age_hours = (time.time() - model_file.stat().st_mtime) / 3600
+        if age_hours <= 24:
+            logger.info("Auto-retrain skipped — models are %.1f hours old", age_hours)
+            return
+    logger.info("Auto-retrain triggered — models are stale")
+    _do_retrain()
 
 
 app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
