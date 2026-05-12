@@ -6,6 +6,7 @@ Run with:
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -18,22 +19,52 @@ from backend.src.admin.admin_router import router as adminRouter
 from backend.src.anomalies.anomalies_router import router as anomaliesRouter
 from backend.src.auth.auth_router import router as authRouter
 from backend.src.analysis.analysis_router import router as analysisRouter
+from backend.src.database.init_db import init_db
 
 logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
 
 _ml_detector = None
+_db_initialized = False
+
+
+def _ensure_db_initialized():
+    """Ensure database is seeded. Called on startup and first request."""
+    global _db_initialized
+    if _db_initialized:
+        return
+    
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"[INIT_DB] Attempt {attempt}/{max_retries}: Seeding database...")
+            init_db()
+            _db_initialized = True
+            logger.info("✓ Database seeded successfully")
+            print("[INIT_DB] ✓ Database seeded successfully")
+            return
+        except Exception as e:
+            error_msg = f"Failed to seed database (attempt {attempt}/{max_retries}): {str(e)}"
+            print(f"[INIT_DB] {error_msg}")
+            logger.exception(error_msg)
+            if attempt < max_retries:
+                time.sleep(2)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manages scheduler startup and shutdown."""
+    # Seed database on startup
+    print("[LIFESPAN] Starting up... initializing database")
+    _ensure_db_initialized()
+    
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
     scheduler.add_job(_run_ml_detection, "interval", seconds=10, id="ml_detector")
     scheduler.start()
-    logger.info("Cleanup scheduler started (interval: 1h)")
-    logger.info("ML anomaly detector scheduler started (interval: 10s)")
+    logger.info("✓ Cleanup scheduler started (interval: 1h)")
+    logger.info("✓ ML anomaly detector scheduler started (interval: 10s)")
+    print("[LIFESPAN] Startup complete")
     yield
     scheduler.shutdown()
     logger.info("Schedulers stopped")

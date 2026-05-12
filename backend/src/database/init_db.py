@@ -25,6 +25,11 @@ def seed_atms(conn) -> None:
             "INSERT INTO atms (atm_id, os_version, location_code) VALUES (%s, %s, %s) ON CONFLICT (atm_id) DO NOTHING",
             atms,
         )
+        affected = cur.rowcount
+        if affected > 0:
+            logger.info(f"Seeded {affected} ATM(s): ATM-GB-0001 through ATM-GB-0010")
+        else:
+            logger.info("ATMs already exist, skipping")
 
 
 def seed_default_admin(conn) -> None:
@@ -38,6 +43,11 @@ def seed_default_admin(conn) -> None:
             """,
             ("admin", password_hash, "admin", datetime.now(timezone.utc)),
         )
+        affected = cur.rowcount
+        if affected > 0:
+            logger.info("Seeded default admin user: admin (role=admin)")
+        else:
+            logger.info("Admin user already exists, skipping")
 
 
 def seed_retention_config(conn) -> None:
@@ -52,6 +62,7 @@ def seed_retention_config(conn) -> None:
             """,
             (7, datetime.now(timezone.utc)),
         )
+        logger.info("Seeded retention config: 7 days")
 
 
 def init_db(schema_path: str = "schema.sql", db_path=None, force: bool = False) -> bool:
