@@ -364,7 +364,7 @@ Services run on:
 - **Frontend:** `http://localhost:5173` (starts separately in terminal only, see step 3)
 - **PostgreSQL:** `localhost:5432`
 - **Test Database:** `localhost:5433`
-- **MLflow UI:** `http://localhost:5000`
+- **MLflow UI:** `http://localhost:5001`
 
 The generator backfills 60 minutes of historical data on first boot, then enters live mode with probabilistic anomaly injection.
 
@@ -408,10 +408,12 @@ make rebuild
 | Layer | Technology | Notes |
 |---|---|---|
 | Backend framework | FastAPI | Lifespan context manager, dependency injection for RBAC |
-| Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool`, `execute_values` batch inserts |
+| Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool` (minconn=5, maxconn=20), `execute_values` batch inserts |
 | Scheduler | APScheduler | Cleanup every 1h, ML detector every 10s |
 | Continuous generator | Python + psycopg2 | Backfill + live loop, SIGTERM/SIGINT handling, exponential backoff |
-| Anomaly detection | Rule-based (`ml_detector.py`) | ML-artifact-ready with graceful fallback |
+| Anomaly detection | Rule-based + ML hybrid (`ml_detector.py`) | Isolation Forest + XGBoost, graceful fallback, inference logged to MLflow |
+| MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model artifact storage |
+| Training pipeline | `train.py` | Sliding windows (300s), StratifiedKFold CV, artifact serialization to `ml/artifacts/` |
 | Frontend | React + Vite | Dashboard, anomaly detail, admin views |
 | RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker |
 | Testing | Pytest | Isolated test DB on port 5433 via `docker-compose.test.yml` |

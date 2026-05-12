@@ -3,16 +3,16 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-atm_platform}
-      POSTGRES_USER: ${POSTGRES_USER:-atm_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_password_here}
+      POSTGRES_DB: ${POSTGRES_DB:-laad_db}
+      POSTGRES_USER: ${POSTGRES_USER:-laad_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atm_user} -d ${POSTGRES_DB:-atm_platform}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-laad_user} -d ${POSTGRES_DB:-laad_db}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,10 +25,11 @@ services:
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB:-atm_platform}
-      - POSTGRES_USER=${POSTGRES_USER:-atm_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-change-in-production}
+      - POSTGRES_DB=${POSTGRES_DB:-laad_db}
+      - POSTGRES_USER=${POSTGRES_USER:-laad_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?required}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?required}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,13 +53,31 @@ services:
       - GENERATOR_SEED=${GENERATOR_SEED}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB:-atm_platform}
-      - POSTGRES_USER=${POSTGRES_USER:-atm_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
+      - POSTGRES_DB=${POSTGRES_DB:-laad_db}
+      - POSTGRES_USER=${POSTGRES_USER:-laad_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?required}
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.1.1
+    profiles:
+      - ml
+    ports:
+      - "5001:5000"
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/artifacts/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
+      --host 0.0.0.0
+      --port 5000
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  mlflow_artifacts:

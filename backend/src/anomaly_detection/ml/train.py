@@ -30,6 +30,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.metrics import classification_report
+from collections import Counter
 
 from backend.src.database.connection import get_cursor
 from backend.src.anomaly_detection.ml.feature_engineering import extract_features, extract_label, FEATURE_NAMES
@@ -43,6 +44,8 @@ STEP_SECONDS    = 60
 IF_CONTAMINATION = 0.1
 XGB_N_ESTIMATORS = 100
 MLFLOW_EXPERIMENT = "atm-anomaly-detection"
+
+_tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 
 
 def load_windows(minutes: int = 60) -> tuple[list[np.ndarray], list[str | None]]:
@@ -95,6 +98,7 @@ def train() -> None:
     """Run the full training pipeline."""
     ARTIFACT_DIR.mkdir(exist_ok=True)
 
+    mlflow.set_tracking_uri(_tracking_uri)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
     with mlflow.start_run(run_name="isolation_forest_xgboost"):
         mlflow.log_params({
@@ -164,18 +168,27 @@ def train() -> None:
         )
         clf.fit(X_all, y)
 
-        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        cv_scores = cross_val_score(clf, X_all, y, cv=cv, scoring="accuracy", n_jobs=-1)
-        mlflow.log_metric("xgb_cv_accuracy_mean", float(cv_scores.mean()))
-        mlflow.log_metric("xgb_cv_accuracy_std",  float(cv_scores.std()))
-        print(f"XGBoost CV accuracy: {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
+        cv_n_splits = min(5, min(Counter(labels).values()))
+        if cv_n_splits < 2:
+            log.warning("Not enough samples per class for CV. Skipping cross-validation.")
+            cv_scores = np.array([np.nan])
+        else:
+            cv = StratifiedKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
+            cv_scores = cross_val_score(clf, X_all, y, cv=cv, scoring="accuracy", n_jobs=-1)
+
+        cv_mean = float(cv_scores.mean()) if not np.isnan(cv_scores.mean()) else 0.0
+        cv_std = float(cv_scores.std()) if not np.isnan(cv_scores.std()) else 0.0
+        mlflow.log_metric("xgb_cv_accuracy_mean", cv_mean)
+        mlflow.log_metric("xgb_cv_accuracy_std",  cv_std)
+        print(f"XGBoost CV accuracy: {cv_mean:.3f} ± {cv_std:.3f}")
 
         y_pred = clf.predict(X_all)
-        report = classification_report(y, y_pred, target_names=le.classes_, output_dict=True)
+        report = classification_report(y, y_pred, target_names=le.classes_, output_dict=True, zero_division=0)
         for cls, metrics in report.items():
             if isinstance(metrics, dict):
                 for metric, val in metrics.items():
-                    mlflow.log_metric(f"xgb_{cls}_{metric}".replace(" ", "_"), val)
+                    if not np.isnan(float(val)):
+                        mlflow.log_metric(f"xgb_{cls}_{metric}".replace(" ", "_"), float(val))
 
         joblib.dump(clf, ARTIFACT_DIR / "xgb_classifier.joblib")
         joblib.dump(le,  ARTIFACT_DIR / "label_encoder.joblib")

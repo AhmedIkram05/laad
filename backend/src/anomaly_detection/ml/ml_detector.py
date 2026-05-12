@@ -10,9 +10,11 @@ the dashboard always shows anomalies, even when ML confidence is low.
 
 Falls back entirely to rule-based if model artifacts are missing.
 
+All inference cycles are logged to MLflow for observability.
+
 Configuration (env vars):
     ML_RULES_DETECTION_ENABLED    : Enable rule-based detection (default: true)
-    ML_FALLBACK_ENABLED           : Enable legacy fallback (default: true)
+    MLFLOW_TRACKING_URI            : MLflow server URI (default: http://mlflow:5000)
 
 Usage:
     python -m backend.src.anomaly_detection.ml.ml_detector
@@ -25,6 +27,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import mlflow
 import numpy as np
 import joblib
 
@@ -37,7 +40,8 @@ ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
 WINDOW_SECONDS            = 300
 CONFIDENCE_THRESHOLD      = 0.60
 RULES_DETECTION_ENABLED   = os.getenv("ML_RULES_DETECTION_ENABLED", "true").lower() in ("true", "1", "yes")
-FALLBACK_ENABLED          = os.getenv("ML_FALLBACK_ENABLED", "true").lower() in ("true", "1", "yes")
+MLFLOW_TRACKING_URI       = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+MLFLOW_EXPERIMENT         = "atm-anomaly-detection"
 
 SEVERITY_MAP = {
     "A1": "CRITICAL", "A2": "CRITICAL", "A3": "MAJOR",
@@ -60,11 +64,14 @@ class MLAnomalyDetector:
         self._clf:    object | None = None
         self._le:     object | None = None
         self._loaded = self._load_models()
-        
-        # Log configuration on init
+
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        mlflow.set_experiment(MLFLOW_EXPERIMENT)
+        mlflow.set_tag("service", "ml_detector")
         log.info(
-            "MLAnomalyDetector initialized: rules_enabled=%s, fallback_enabled=%s, models_loaded=%s",
-            RULES_DETECTION_ENABLED, FALLBACK_ENABLED, self._loaded
+            "MLAnomalyDetector initialized: rules_enabled=%s, "
+            "models_loaded=%s, mlflow_uri=%s",
+            RULES_DETECTION_ENABLED, self._loaded, MLFLOW_TRACKING_URI
         )
 
     def _load_models(self) -> bool:
@@ -138,15 +145,6 @@ class MLAnomalyDetector:
         log.info("Saved anomaly %s (atm=%s, confidence=%.2f, source=%s)",
                  anomaly_type, atm_id, confidence, source)
 
-    def _fallback_to_rules(self) -> None:
-        """Run the standalone rule-based detector as a fallback path."""
-        from backend.src.anomaly_detection.anomaly_detector import AnomalyDetector
-
-        rd = AnomalyDetector()
-        data = rd.load_data()
-        anomalies = rd.detect_anomalies(data)
-        rd.save_anomalies(anomalies)
-
     def _detect_rules(self, rows: list[dict]) -> list[tuple[str, str | None, float]]:
         """Rule-based detection from payload _anomaly_tag signals in the window.
 
@@ -195,49 +193,47 @@ class MLAnomalyDetector:
 
         saved = 0
 
-        # Rule-based detection — runs if enabled
-        if RULES_DETECTION_ENABLED:
-            rule_anomalies = self._detect_rules(rows)
-            for atype, atm_id, confidence in rule_anomalies:
-                if not self._is_active(atype, atm_id):
-                    self._save_anomaly(atype, atm_id, confidence, source="RULES")
-                    saved += 1
-        else:
-            log.debug("Rule-based detection disabled via ML_RULES_DETECTION_ENABLED=false")
+        with mlflow.start_run(run_name=f"inference_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}", nested=True):
+            mlflow.log_metric("rows_processed", len(rows))
+            mlflow.log_param("window_seconds", WINDOW_SECONDS)
+            mlflow.log_param("models_loaded", self._loaded)
 
-        # ML detection — only if models are loaded
-        if self._loaded:
-            features = extract_features(rows).reshape(1, -1)
 
-            # Stage 1: Isolation Forest
-            is_anomaly = self._iso.predict(features)[0] == -1
-            if is_anomaly:
-                proba     = self._clf.predict_proba(features)[0]
-                pred_idx  = int(np.argmax(proba))
-                confidence = float(proba[pred_idx])
-                label = self._le.inverse_transform([pred_idx])[0]
-
-                log.info("ML: IF anomaly, XGB prediction: %s (confidence=%.2f)",
-                         label, confidence)
-
-                if label != "NORMAL" and confidence >= CONFIDENCE_THRESHOLD:
-                    atm_ids = [r.get("atm_id") for r in rows if r.get("atm_id")]
-                    if atm_ids:
-                        atm_id = max(set(atm_ids), key=atm_ids.count)
-                    else:
-                        atm_id = None
-                    if not self._is_active(label, atm_id):
-                        self._save_anomaly(label, atm_id, confidence, source="ML")
+            # Rule-based detection — runs if enabled
+            if RULES_DETECTION_ENABLED:
+                rule_anomalies = self._detect_rules(rows)
+                for atype, atm_id, confidence in rule_anomalies:
+                    if not self._is_active(atype, atm_id):
+                        self._save_anomaly(atype, atm_id, confidence, source="RULES")
                         saved += 1
-                elif label == "NORMAL" or confidence < CONFIDENCE_THRESHOLD:
-                    log.info("ML: confidence %.2f < threshold or NORMAL — rules are primary", confidence)
-        elif FALLBACK_ENABLED:
-            log.info("ML models not loaded — running legacy fallback detection")
-            try:
-                self._fallback_to_rules()
-            except Exception as exc:
-                log.error("Rule-based fallback failed: %s", exc)
 
+            # ML detection — only if models are loaded
+            if self._loaded:
+                features = extract_features(rows).reshape(1, -1)
+                is_anomaly = self._iso.predict(features)[0] == -1
+                mlflow.log_metric("if_anomaly_flag", int(is_anomaly == -1))
+
+                if is_anomaly:
+                    proba     = self._clf.predict_proba(features)[0]
+                    pred_idx  = int(np.argmax(proba))
+                    confidence = float(proba[pred_idx])
+                    label = self._le.inverse_transform([pred_idx])[0]
+                    mlflow.log_metric("xgb_confidence", confidence)
+                    mlflow.log_param("xgb_predicted_label", label)
+
+                    log.info("ML: IF anomaly, XGB prediction: %s (confidence=%.2f)",
+                             label, confidence)
+
+                    if label != "NORMAL" and confidence >= CONFIDENCE_THRESHOLD:
+                        atm_ids = [r.get("atm_id") for r in rows if r.get("atm_id")]
+                        atm_id = max(set(atm_ids), key=atm_ids.count) if atm_ids else None
+                        if not self._is_active(label, atm_id):
+                            self._save_anomaly(label, atm_id, confidence, source="ML")
+                            saved += 1
+
+            mlflow.log_metric("anomalies_saved", saved)
+
+        log.info("Inference cycle complete: %d rows, %d anomalies saved", len(rows), saved)
         return saved
 
 
