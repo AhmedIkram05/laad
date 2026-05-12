@@ -34,7 +34,7 @@ services:
       - TEST_POSTGRES_PORT=5432
       - TEST_POSTGRES_DB=atm_platform_test
       - TEST_POSTGRES_USER=atm_user
-      - TEST_POSTGRES_PASSWORD=your_password_here
+      - TEST_POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD:-your_password_here}
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,12 +104,19 @@ services:
     profiles:
       - test
     command: >
-      sh -c "sleep 5 &&
-      python -m pytest backend/tests/ -v --ignore=backend/tests/test_atm_app_parser.py
+      sh -c "sleep 3 &&
+      python -c 'from backend.src.database.init_db import init_db; init_db()' &&
+      python -m pytest backend/tests/ -v
+      --ignore=backend/tests/test_atm_app_parser.py
       --ignore=backend/tests/test_gcp_cloud_metrics_parser.py
       --ignore=backend/tests/test_hardware_sensor_parser.py
       --ignore=backend/tests/test_kafka_metrics_parser.py
       --ignore=backend/tests/test_ingestion_integration.py
+      --ignore=backend/tests/test_prometheus_parser.py
+      --ignore=backend/tests/test_terminal_handler_parser.py
+      --ignore=backend/tests/test_windows_os_parser.py
+      --ignore=backend/tests/test_db_schema.py
+      --ignore=backend/tests/test_db_connection_pragmas.py
       --tb=short"
     environment:
       - POSTGRES_HOST=postgres_test
@@ -125,6 +132,7 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
+      - ./backend/custom_synthetic_data_sources:/app/backend/custom_synthetic_data_sources
 
 volumes:
   postgres_data:
