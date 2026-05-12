@@ -352,33 +352,23 @@ cd laad
 cp .env.example .env   # edit POSTGRES_* values as needed
 ```
 
-### 2. Start infrastructure
+### 2. Start all backend services
 
 ```bash
-make start        # PostgreSQL + backend + generator (all containers)
+make all      # Start everything: postgres, backend, generator, test-db, mlflow
 ```
 
-To start just the database and API without the generator:
+Services run on:
 
-```bash
-make up           # PostgreSQL + backend only
-make generator-up # Start the generator separately
-```
+- **Backend API:** `http://localhost:8000` (API docs at `/docs`)
+- **Frontend:** `http://localhost:5173` (starts separately in terminal only, see step 3)
+- **PostgreSQL:** `localhost:5432`
+- **Test Database:** `localhost:5433`
+- **MLflow UI:** `http://localhost:5000`
 
 The generator backfills 60 minutes of historical data on first boot, then enters live mode with probabilistic anomaly injection.
 
-### 3. Start the API server
-
-```bash
-cd laad
-python -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt
-uvicorn backend.src.api.server:app --reload --port 8000
-```
-
-API docs at `http://localhost:8000/docs`
-
-### 4. Start the frontend
+### 3. Start the frontend
 
 ```bash
 cd frontend
@@ -388,20 +378,27 @@ npm run dev
 
 Frontend at `http://localhost:5173`
 
-### Default credentials
+### 4. Default credentials
 
 | Field | Value |
-|---|---|
+| --- | --- |
 | Username | `admin` |
 | Password | `admin` |
 
 Seeded automatically by `init_db()` on first run.
 
+### Other Makefile commands
+
+```bash
+make rebuild  # Clean rebuild: stop all, remove volumes, rebuild images, start all
+make logs     # Follow logs from all services in real-time
+make clean    # Stop all containers and remove volumes (database data erased)
+```
+
 ### Reset from scratch
 
 ```bash
-make clean         # destroys all containers and volumes
-make start         # fresh schema + seed data
+make rebuild
 ```
 
 ---
