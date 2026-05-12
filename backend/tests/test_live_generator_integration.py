@@ -8,13 +8,18 @@ def test_generator_integration():
     from datetime import datetime, timezone
     t = datetime.now(timezone.utc)
     anomaly_last = {}
-    
-    # This requires a running DB
+
     try:
-        emit_tick(t, anomaly_last)
         with get_cursor() as cur:
             cur.execute("SELECT COUNT(*) as count FROM events")
-            count = cur.fetchone()["count"]
-            assert count >= 0
+            count_before = cur.fetchone()["count"]
+
+        emit_tick(t, anomaly_last)
+
+        with get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) as count FROM events")
+            count_after = cur.fetchone()["count"]
+
+        assert count_after > count_before, f"Expected rows to be inserted, but count_before={count_before}, count_after={count_after}"
     except Exception as e:
         pytest.fail(f"Integration test failed due to DB connection: {e}")

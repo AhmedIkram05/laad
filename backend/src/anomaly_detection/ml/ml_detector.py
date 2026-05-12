@@ -222,7 +222,10 @@ class MLAnomalyDetector:
 
                 if label != "NORMAL" and confidence >= CONFIDENCE_THRESHOLD:
                     atm_ids = [r.get("atm_id") for r in rows if r.get("atm_id")]
-                    atm_id  = max(set(atm_ids), key=atm_ids.count) if atm_ids else None
+                    if atm_ids:
+                        atm_id = max(set(atm_ids), key=atm_ids.count)
+                    else:
+                        atm_id = None
                     if not self._is_active(label, atm_id):
                         self._save_anomaly(label, atm_id, confidence, source="ML")
                         saved += 1
