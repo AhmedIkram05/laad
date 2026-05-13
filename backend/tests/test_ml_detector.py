@@ -12,6 +12,7 @@ from backend.src.anomaly_detection.ml.ml_detector import (
     HEURISTICS_ENABLED, RULES_DETECTION_ENABLED,
     TITLE_MAP, SOURCES_MAP, RECOMMENDED_ACTIONS_MAP,
 )
+from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
 
 
 @pytest.fixture(autouse=True)
@@ -236,7 +237,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -274,7 +275,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -309,7 +310,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([1])
@@ -336,7 +337,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -375,7 +376,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -412,7 +413,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -495,8 +496,8 @@ class TestConstants:
     def test_confidence_threshold_is_060(self):
         assert CONFIDENCE_THRESHOLD == 0.60
 
-    def test_window_seconds_is_300(self):
-        assert WINDOW_SECONDS == 300
+    def test_window_seconds_is_600(self):
+        assert WINDOW_SECONDS == 600
 
     def test_artifact_dir_points_to_backend_ml(self):
         assert "backend" in str(ARTIFACT_DIR) and "ml" in str(ARTIFACT_DIR)
