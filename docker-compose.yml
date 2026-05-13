@@ -29,7 +29,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-atm_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-change-in-production}
-      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
       - TEST_POSTGRES_HOST=postgres_test
       - TEST_POSTGRES_PORT=5432
       - TEST_POSTGRES_DB=atm_platform_test

@@ -60,11 +60,11 @@ async def lifespan(app: FastAPI):
     _ensure_db_initialized()
     _check_and_retrain_on_startup()
 
-    scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
-    scheduler.add_job(_run_ml_detection, "interval", seconds=10, id="ml_detector")
-    scheduler.add_job(_auto_retrain, "interval", hours=24, id="auto_retrain")
+    scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup", misfire_grace_time=60)
+    scheduler.add_job(_run_ml_detection, "interval", seconds=30, id="ml_detector", misfire_grace_time=60)
+    scheduler.add_job(_auto_retrain, "interval", hours=24, id="auto_retrain", misfire_grace_time=300)
     scheduler.start()
-    logger.info("Schedulers started: cleanup (1h), ml_detector (10s), auto_retrain (24h)")
+    logger.info("Schedulers started: cleanup (1h), ml_detector (30s), auto_retrain (24h)")
     yield
     scheduler.shutdown()
     logger.info("Schedulers stopped")
