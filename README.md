@@ -90,7 +90,7 @@ flowchart TD
 
 **Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it backfills historical data, then enters a live loop. A `ThreadedConnectionPool` (minconn=5, maxconn=20) handles concurrent writes with retry/backoff. All records normalise into shared `events` and `metrics` tables.
 
-**Detection:** A 4-layer detection engine identifies A1–A7 anomaly types. HEURISTIC (primary, multi-signal correlation) and RULES (secondary, tag-reader) layers fire on the current 60-second window every 30 seconds with entity-aware ATM attribution. ML (Isolation Forest + XGBoost, 47 features, trained on 360-minute windows with class balancing) and BASELINE (rolling 20-window Z-score, novel pattern detection) activate when trained models are loaded. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. All inference cycles are logged to MLflow.
+**Detection:** A 4-layer detection engine identifies A1–A7 anomaly types. HEURISTIC (primary, multi-signal correlation) and RULES (secondary, tag-reader) layers fire on the current 60-second window every 30 seconds with entity-aware ATM attribution. ML (Isolation Forest + XGBoost, 47 features, trained on 360-minute windows with class balancing, 99.17% CV accuracy) and BASELINE (rolling 20-window Z-score, novel pattern detection) activate when trained models are loaded. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. Models are registered in MLflow with "champion" alias for production serving. All training runs and inference cycles are logged to MLflow.
 
 **Serving layer:** FastAPI exposes `/auth`, `/anomalies`, `/analysis/detailed`, and `/admin` routes, served by the React + Vite dashboard.
 
@@ -131,6 +131,61 @@ No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-
 | A5 | High Response Time Spike | Transaction latency and success rate degradation | Kafka `response_time_ms > 3000ms` + `success_rate < 90%` | MAJOR |
 | A6 | OS Memory Pressure | OS resource exhaustion causing application timeouts | OS `memory_usage_percent >= 90` + ATM_APP `TIMEOUT` | MAJOR |
 | A7 | Out-of-Order Kafka | Malformed or missing fields in event stream | Kafka `offset = -1` or `_anomaly_tag = A7_OUT_OF_ORDER` | HIGH |
+
+---
+
+## ML Anomaly Detection
+
+A production-grade 4-layer hybrid engine detecting all 7 anomaly types (A1–A7) across 7 simultaneous log sources, combining rule-based correlation with machine learning.
+
+### Training Results — 99.17% Cross-Validation Accuracy
+
+| Metric | Value |
+|---|---|
+| **Cross-validation accuracy** | **99.17%** |
+| **Per-class precision/recall** | **1.0 / 1.0** across all 8 classes (A1–A7 + NORMAL) |
+| **Isolation Forest anomaly precision** | 89.7% |
+| **Training windows** | 2,879 (non-overlapping, 60s window / 30s step) |
+| **Offline dataset** | 868,320 rows · 24 hours of synthetic data with all A1–A7 types injected |
+| **Top features** | `kafka_out_of_order`, `fatal_critical_weighted_sum`, `hardware_cassette_empty_count`, `kafka_rt_max/mean`, `terminal_handler_startup_count`, `container_restart_max`, `jvm_mem_rate` |
+| **Champion models registered** | `atm-xgb-classifier` v14 · `atm-isolation-forest` v14 — both with MLflow "champion" alias |
+
+### 4 Detection Layers
+
+| Layer | Type | Trigger | Speed |
+|---|---|---|---|
+| `HEURISTIC` | **Reactive** | Multi-source signal correlation, 60s window, 30s cycle | Immediate |
+| `RULES` | **Reactive** | Tag-reader catches `_anomaly_tag` from synthetic payloads | Immediate |
+| `ML` | **Proactive** | Isolation Forest (unsupervised) + XGBoost (supervised, 47 features) | On trained models |
+| `BASELINE` | **Proactive** | Rolling 20-window Z-score (>3σ deviation) detects novel patterns | On trained models |
+
+HEURISTIC fires every 30 seconds on the current 60-second window. ML and BASELINE activate only when models are loaded, providing proactive coverage of patterns the rules haven't seen.
+
+### 47 ML Features
+
+- **Metric statistics (14):** JVM memory mean/rate/slope, GC pause, CPU, OS memory, Kafka RT/success rate
+- **Percentiles (9):** JVM p75/p95, OS p75/p95, Kafka RT p75/p90/p99, CPU p90/p99
+- **Temporal slopes (5):** memory trends, Kafka RT/success rate slopes
+- **Event counts (10):** ATM errors, FATAL events, STARTUP events, OOM, cassette empty/low, Kafka offline/null status, timeouts, network disconnects
+- **Severity-weighted (2):** FATAL-weighted sum, total error count
+- **Cross-source flags (7):** multi-source errors, OOM presence, network disconnect, timeout, Kafka out-of-order, anomaly tag count, unique ATM count
+
+### MLOps
+
+- **Experiment tracking:** Every training run (LIVE + OFFLINE) and all inference cycles logged to MLflow with full metrics, parameters, feature importance, and run IDs
+- **Model registry:** Two registered models — `atm-xgb-classifier` and `atm-isolation-forest` — with MLflow "champion" alias pointing to the latest production version
+- **Artifact persistence:** Model files (`xgb_classifier.joblib`, `isolation_forest.joblib`, `label_encoder.joblib`, `feature_names.json`) stored on a Docker named volume mount, surviving container restarts
+- **Auto-retrain:** APScheduler triggers retraining every 1 hour on live generator data; guards against retraining if models are < 24 hours old
+
+### Training Commands
+
+```bash
+make retrain               # Train on live generator data (production default)
+make retrain-offline       # Train on offline dataset (guaranteed all A1-A7 + NORMAL, triggers IF training)
+make generate-training-data # Generate 24h offline dataset (one-time setup, ~260MB)
+```
+
+Training uses non-overlapping 60-second windows sliding at 30-second steps. LIVE mode queries real generator data from the DB; OFFLINE mode loads the pre-generated `data/training_data.json` which guarantees all 8 classes. Both modes use identical 47-feature engineering and the same XGBoost + Isolation Forest pipeline.
 
 ---
 
@@ -289,11 +344,13 @@ erDiagram
 
 ## Testing
 
-150+ passing tests across 7 tiers:
+**145/145 tests passing** across 7 tiers, running in Docker with an isolated test database:
 
 ```bash
 make pytest        # runs all tests in Docker with isolated test DB
 ```
+
+> **Note:** When Airflow is running (uses port 5432), LAAD postgres runs on `localhost:5434` internally and `localhost:5432` is Airflow's PostgreSQL. The test database runs on `localhost:5433` externally. All internal container-to-container communication uses Docker service names on their respective internal ports (5432).
 
 | Tier | Coverage |
 |---|---|
@@ -375,9 +432,10 @@ Services run on:
 
 - **Backend API:** `http://localhost:8000` (API docs at `/docs`)
 - **Frontend:** `http://localhost:5173` (starts separately in terminal only, see step 3)
-- **PostgreSQL:** `localhost:5432`
-- **Test Database:** `localhost:5433`
+- **PostgreSQL:** `localhost:5434` (internal port 5432 inside containers)
+- **Test Database:** `localhost:5433` (internal port 5432 inside containers)
 - **MLflow UI:** `http://localhost:5001`
+- **Airflow:** `http://localhost:8080` (optional, separate project)
 
 The generator backfills 60 minutes of historical data on first boot, then enters live mode with probabilistic anomaly injection.
 
@@ -428,11 +486,11 @@ make rebuild
 | Scheduler | APScheduler | Cleanup every 1h, ML detector every 30s, auto-retrain every 1h |
 | Continuous generator | Python + psycopg2 | Backfill + live loop, SIGTERM/SIGINT handling, exponential backoff |
 | Anomaly detection | 4-layer hybrid (HEURISTIC + RULES + ML + BASELINE) | Isolation Forest + XGBoost, rolling Z-score baseline, entity-aware attribution, 47 features, 360-min windows, class balancing, auto-retrain every 1h, inference logged to MLflow |
-| MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model artifact storage |
+| MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React + Vite | Dashboard, anomaly detail, admin views |
 | RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker |
-| Testing | Pytest | Isolated test DB on port 5433 via `docker-compose.test.yml` |
+| Testing | Pytest | 145 passing tests in Docker with isolated test DB (internal port 5432, external port 5433) |
 
 ---
 
