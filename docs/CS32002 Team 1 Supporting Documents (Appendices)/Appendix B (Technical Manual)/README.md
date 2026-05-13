@@ -58,7 +58,7 @@ From the repository root run:
 make pytest  # Runs all tests in Docker with isolated test DB
 ```
 
-Current test status: 48/48 passing.
+Current test status: **145/145 passing**.
 
 ## Frontend (React + Vite)
 
