@@ -115,9 +115,14 @@ def _run_ml_detection() -> None:
 def _auto_retrain() -> None:
     """Retrain ML models if they are stale (> 24 hours old).
 
-    Fires every 24h via scheduler. Guards against retraining if the model
+    Fires every 1h via scheduler. Guards against retraining if the model
     was already retrained recently (e.g., on startup).
+    Trains on LIVE generator data by default.
+    Set USE_OFFLINE_DATA=true env var to use the offline training dataset instead.
     """
+    import os
+    use_offline = os.getenv("USE_OFFLINE_DATA", "false").lower() == "true"
+    logger.info("Auto-retrain triggered (%s)", "OFFLINE dataset" if use_offline else "LIVE generator data")
     model_file = ARTIFACT_DIR / "xgb_classifier.joblib"
     if model_file.exists():
         age_hours = (time.time() - model_file.stat().st_mtime) / 3600
