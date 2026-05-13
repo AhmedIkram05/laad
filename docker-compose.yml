@@ -46,6 +46,7 @@ services:
       start_period: 20s
     restart: unless-stopped
     volumes:
+      - ./backend/src:/app/backend/src
       - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
       - ./data:/app/data
 

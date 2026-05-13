@@ -27,8 +27,13 @@ const request = async (endpoint, options = {}) => {
 };
 
 // Fetches a list of anomalies filtered by Completed state
-export const fetchAnomalies = (is_active = 1) =>
-    request(`/api/anomalies?is_active=${is_active}`);
+// is_active: 1 = active only, 0 = resolved only, undefined/null = all
+export const fetchAnomalies = (is_active = 1) => {
+    if (is_active === null || is_active === undefined) {
+        return request("/api/anomalies");
+    }
+    return request(`/api/anomalies?is_active=${is_active}`);
+};
 
 // Fetches analysis data for a specific anomaly
 export const fetchDetailedAnalysis = (anomaly_type) =>
@@ -41,3 +46,7 @@ export const toggleStar = (id) =>
 // Toggles the "Completed" state of an anomaly
 export const toggleComplete = (id) =>
     request(`/api/anomalies/${id}/resolve`, {method: "PATCH",});
+
+// Fetches anomaly metrics for dashboard analytics
+export const fetchMetrics = (hours = 24, bucket_minutes = 60) =>
+    request(`/api/analysis/metrics?hours=${hours}&bucket_minutes=${bucket_minutes}`);

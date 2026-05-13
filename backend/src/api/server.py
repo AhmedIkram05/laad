@@ -19,6 +19,7 @@ from backend.src.admin.admin_router import router as adminRouter
 from backend.src.anomalies.anomalies_router import router as anomaliesRouter
 from backend.src.auth.auth_router import router as authRouter
 from backend.src.analysis.analysis_router import router as analysisRouter
+from backend.src.analytics.analytics_router import router as analyticsRouter
 from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.database.connection import get_conn, release_conn
 from backend.src.database.init_db import init_db
@@ -181,3 +182,4 @@ app.include_router(authRouter)
 app.include_router(adminRouter)
 app.include_router(anomaliesRouter)
 app.include_router(analysisRouter)
+app.include_router(analyticsRouter)
