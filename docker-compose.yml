@@ -47,6 +47,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
+      - ./data:/app/data
 
   generator:
     build: .

@@ -1,21 +1,23 @@
-.PHONY: help all rebuild rebuild-backend clean logs retrain pytest
+.PHONY: help all rebuild rebuild-backend clean logs retrain retrain-offline pytest generate-training-data
 
 help:
 	@echo "LAAD Makefile — Essential commands"
 	@echo ""
-	@echo "  make all          Start all services (postgres, backend, generator, mlflow)"
-	@echo "  make rebuild      Full rebuild: remove ALL containers/volumes/images, then start fresh"
-	@echo "  make rebuild-backend  Rebuild backend image only, keep other services running"
-	@echo "  make clean       Stop all containers and remove volumes"
-	@echo "  make logs        Follow all service logs"
-	@echo "  make retrain     Retrain ML models (Isolation Forest + XGBoost)"
-	@echo "  make pytest      Run all tests in Docker (postgres_test + pytest containers)"
+	@echo "  make all          		Start all services (postgres, backend, generator, mlflow)"
+	@echo "  make rebuild      		Full rebuild: remove ALL containers/volumes/images, then start fresh"
+	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
+	@echo "  make clean       		Stop all containers and remove volumes"
+	@echo "  make logs        		Follow all service logs"
+	@echo "  make retrain     		Retrain ML models (Isolation Forest + XGBoost)"
+	@echo "  make retrain-offline  	 Retrain ML on offline dataset (all A1-A7 guaranteed)"
+	@echo "  make training-data  	Generate offline training dataset (24h, all A1-A7)"
+	@echo "  make pytest      		Run all tests in Docker (postgres_test + pytest containers)"
 	@echo ""
 	@echo "Services:"
-	@echo "  Backend API:     http://localhost:8000"
-	@echo "  PostgreSQL:      localhost:5432"
-	@echo "  Test DB:         localhost:5433"
-	@echo "  MLflow UI:       http://localhost:5001"
+	@echo "  Backend API:     		http://localhost:8000"
+	@echo "  PostgreSQL:     		localhost:5432"
+	@echo "  Test DB:         		localhost:5433"
+	@echo "  MLflow UI:       		 http://localhost:5001"
 
 # ── Start All ────────────────────────────────────────────────────────────────
 
@@ -24,11 +26,12 @@ all:
 	docker compose --profile ml up -d
 	@echo ""
 	@echo "✓ All services started!"
-	@echo "  Backend API:     http://localhost:8000"
-	@echo "  PostgreSQL:      localhost:5432"
-	@echo "  Test DB:         localhost:5433"
-	@echo "  MLflow UI:       http://localhost:5001"
+	@echo "  Backend API:     		http://localhost:8000"
+	@echo "  PostgreSQL:     		localhost:5432"
+	@echo "  Test DB:         		localhost:5433"
+	@echo "  MLflow UI:       		 http://localhost:5001"
 	@echo ""
+	@echo "Tip: Run 'make training-data' once to create the ML training dataset."
 
 # ── Full Rebuild ────────────────────────────────────────────────────────────
 
@@ -80,11 +83,26 @@ logs:
 # ── Retrain ML Models ──────────────────────────────────────────────────────
 
 retrain:
-	@echo "==> Retraining ML models..."
+	@echo "==> Retraining ML models on LIVE data from generator DB..."
 	docker compose exec backend python -m backend.src.anomaly_detection.ml.train
 	@echo ""
 	@echo "✓ Retrain complete!"
 	@echo "  View training run at: http://localhost:5001"
+
+retrain-offline:
+	@echo "==> Retraining ML models on OFFLINE dataset..."
+	docker compose exec -e USE_OFFLINE_DATA=true backend python -m backend.src.anomaly_detection.ml.train
+	@echo ""
+	@echo "✓ Retrain complete!"
+	@echo "  View training run at: http://localhost:5001"
+
+training-data:
+	@echo "==> Generating offline training dataset (24h, all A1-A7)..."
+	python3 generate_training_data.py
+	@echo ""
+	@echo "✓ Training data generated!"
+	@echo "  Output: data/training_data.json"
+	@echo "  Run 'make retrain' to train models with the new dataset"
 
 # ── Run Tests ──────────────────────────────────────────────────────────────
 
