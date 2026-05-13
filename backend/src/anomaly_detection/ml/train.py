@@ -46,8 +46,9 @@ IF_CONTAMINATION = 0.1
 XGB_N_ESTIMATORS = 100
 MLFLOW_EXPERIMENT = "atm-anomaly-detection"
 USE_OFFLINE_DATA  = os.getenv("USE_OFFLINE_DATA", "false").lower() == "true"
-
-_tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+XGB_MODEL_NAME    = "atm-xgb-classifier"
+IF_MODEL_NAME     = "atm-isolation-forest"
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 
 
 def load_offline_dataset() -> list[dict]:
@@ -62,62 +63,11 @@ def load_offline_dataset() -> list[dict]:
     return rows
 
 
-def load_windows(minutes: int = 60) -> tuple[list[np.ndarray], list[str | None]]:
-    """Query recent DB rows and split into NON-overlapping windows.
-
-    Uses step=WINDOW_SECONDS to avoid the same anomaly appearing in multiple windows,
-    which would inflate training metrics and cause overfitting.
-
-    Args:
-        minutes: how far back to query (default 60 min)
-
-    Returns:
-        Tuple of (features list, labels list)
-    """
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-    with get_cursor() as cur:
-        cur.execute(
-            """
-            SELECT timestamp, source, atm_id, metric_name, metric_value,
-                   event_type, severity, raw_payload
-            FROM v_unified_analysis
-            WHERE timestamp >= %s
-            ORDER BY timestamp ASC
-            """,
-            (cutoff,)
-        )
-        rows = [dict(r) for r in cur.fetchall()]
-
-    if not rows:
-        log.warning("No rows returned from v_unified_analysis in last %d minutes", minutes)
-        return [], []
-
-    start = rows[0]["timestamp"]
-    end   = rows[-1]["timestamp"]
-    window_delta = timedelta(seconds=WINDOW_SECONDS)
-    step_delta   = timedelta(seconds=STEP_SECONDS)
-
-    features: list[np.ndarray] = []
-    labels:   list[str | None] = []
-
-    t = start
-    while t + window_delta <= end:
-        window_rows = [r for r in rows if t <= r["timestamp"] < t + window_delta]
-        if len(window_rows) >= 5:
-            feats = extract_features(window_rows)
-            if len(feats) == FEATURE_COUNT:
-                features.append(feats)
-                labels.append(extract_label(window_rows))
-        t += step_delta
-
-    return features, labels
-
-
 def train() -> None:
     """Run the full training pipeline."""
     ARTIFACT_DIR.mkdir(exist_ok=True)
 
-    mlflow.set_tracking_uri(_tracking_uri)
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
     with mlflow.start_run(run_name="isolation_forest_xgboost"):
         mlflow.log_params({
@@ -224,7 +174,6 @@ def train() -> None:
         print(f"Isolation Forest anomaly detection precision: {if_precision:.3f}")
 
         joblib.dump(iso_forest, ARTIFACT_DIR / "isolation_forest.joblib")
-        mlflow.sklearn.log_model(iso_forest, "isolation_forest")
         mlflow.log_artifact(str(ARTIFACT_DIR / "isolation_forest.joblib"))
 
         label_strings = [l if l is not None else "NORMAL" for l in labels]
@@ -275,7 +224,6 @@ def train() -> None:
 
         joblib.dump(clf, ARTIFACT_DIR / "xgb_classifier.joblib")
         joblib.dump(le,  ARTIFACT_DIR / "label_encoder.joblib")
-        mlflow.xgboost.log_model(clf, "xgb_classifier")
         mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_classifier.joblib"))
         mlflow.log_artifact(str(ARTIFACT_DIR / "label_encoder.joblib"))
 
@@ -288,6 +236,18 @@ def train() -> None:
         for feat, imp in feat_imp.head(10).items():
             print(f"  {feat}: {imp:.4f}")
             mlflow.log_metric(f"feat_importance_{feat}", float(imp))
+
+        xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier", registered_model_name=XGB_MODEL_NAME)
+        if_uri  = mlflow.sklearn.log_model(iso_forest, "isolation_forest", registered_model_name=IF_MODEL_NAME)
+
+        xgb_reg = mlflow.register_model(xgb_uri.model_uri, XGB_MODEL_NAME, await_registration_for=30)
+        if_reg  = mlflow.register_model(if_uri.model_uri, IF_MODEL_NAME, await_registration_for=30)
+        from mlflow.tracking import MlflowClient
+        client = MlflowClient()
+        client.set_registered_model_alias(XGB_MODEL_NAME, "champion", version=str(xgb_reg.version))
+        client.set_registered_model_alias(IF_MODEL_NAME, "champion", version=str(if_reg.version))
+        print(f"Registered XGBoost model: {XGB_MODEL_NAME} v{xgb_reg.version} (champion)")
+        print(f"Registered Isolation Forest: {IF_MODEL_NAME} v{if_reg.version} (champion)")
 
         print(f"Training complete. Artifacts saved to {ARTIFACT_DIR}")
 
