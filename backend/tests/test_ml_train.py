@@ -70,15 +70,19 @@ class TestTrain:
                      severity="INFO", raw_payload={}),
             ])
 
-        with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
-            mock_cur = MagicMock()
-            mock_cur.__enter__ = MagicMock(return_value=mock_cur)
-            mock_cur.__exit__ = MagicMock(return_value=None)
-            mock_cur.fetchall.return_value = rows
-            mock_gc.return_value = mock_cur
-            with patch("backend.src.anomaly_detection.ml.train.ARTIFACT_DIR", tmp_path):
-                with patch("backend.src.anomaly_detection.ml.train.mlflow"):
-                    train()
+            with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
+                mock_cur = MagicMock()
+                mock_cur.__enter__ = MagicMock(return_value=mock_cur)
+                mock_cur.__exit__ = MagicMock(return_value=None)
+                mock_cur.fetchall.return_value = rows
+                mock_gc.return_value = mock_cur
+                with patch("backend.src.anomaly_detection.ml.train.ARTIFACT_DIR", tmp_path):
+                    with patch("backend.src.anomaly_detection.ml.train.mlflow"):
+                        def noop_alias(*args, **kwargs): pass
+                        mock_client = MagicMock()
+                        mock_client.set_registered_model_alias = noop_alias
+                        with patch("mlflow.tracking.MlflowClient", return_value=mock_client):
+                            train()
 
         assert (tmp_path / "isolation_forest.joblib").exists()
         assert (tmp_path / "xgb_classifier.joblib").exists()
