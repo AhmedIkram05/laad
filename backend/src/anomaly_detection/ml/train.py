@@ -39,13 +39,27 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR    = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS  = 600
-STEP_SECONDS    = WINDOW_SECONDS
+TRAINING_DATA   = Path(os.getenv("TRAINING_DATA_PATH", "/app/data/training_data.json"))
+WINDOW_SECONDS  = 60
+STEP_SECONDS    = 30
 IF_CONTAMINATION = 0.1
 XGB_N_ESTIMATORS = 100
 MLFLOW_EXPERIMENT = "atm-anomaly-detection"
+USE_OFFLINE_DATA  = os.getenv("USE_OFFLINE_DATA", "false").lower() == "true"
 
 _tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+
+
+def load_offline_dataset() -> list[dict]:
+    """Load the pre-generated training dataset from disk."""
+    if not TRAINING_DATA.exists():
+        log.warning("Offline training dataset not found at %s — skipping", TRAINING_DATA)
+        return []
+    with open(TRAINING_DATA) as f:
+        rows = [{"timestamp": datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00")), **{k: v for k, v in r.items() if k != "timestamp"}}
+                for r in json.load(f)]
+    log.info("Loaded %d offline training rows from %s", len(rows), TRAINING_DATA)
+    return rows
 
 
 def load_windows(minutes: int = 60) -> tuple[list[np.ndarray], list[str | None]]:
@@ -113,16 +127,72 @@ def train() -> None:
             "if_contamination":  IF_CONTAMINATION,
             "xgb_n_estimators":  XGB_N_ESTIMATORS,
             "n_features":        FEATURE_COUNT,
+            "use_offline_data":  USE_OFFLINE_DATA,
         })
 
-        X_list, labels = load_windows(minutes=360)
+        if USE_OFFLINE_DATA:
+            all_rows = load_offline_dataset()
+            if all_rows:
+                log.info("Using %d offline rows for training", len(all_rows))
+            else:
+                cutoff = datetime.now(timezone.utc) - timedelta(minutes=360)
+                with get_cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT timestamp, source, atm_id, metric_name, metric_value,
+                               event_type, severity, raw_payload
+                        FROM v_unified_analysis
+                        WHERE timestamp >= %s
+                        ORDER BY timestamp ASC
+                        """,
+                        (cutoff,)
+                    )
+                    all_rows = [dict(r) for r in cur.fetchall()]
+                log.info("Fell back to %d live rows from DB", len(all_rows))
+        else:
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=360)
+            with get_cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT timestamp, source, atm_id, metric_name, metric_value,
+                           event_type, severity, raw_payload
+                    FROM v_unified_analysis
+                    WHERE timestamp >= %s
+                    ORDER BY timestamp ASC
+                    """,
+                    (cutoff,)
+                )
+                all_rows = [dict(r) for r in cur.fetchall()]
+            log.info("Loaded %d live rows from DB", len(all_rows))
 
-        if not X_list:
+        if not all_rows:
             log.error("No training data found. Ensure the generator has been running.")
             return
 
+        start_ts = all_rows[0]["timestamp"]
+        end_ts   = all_rows[-1]["timestamp"]
+        window_delta = timedelta(seconds=WINDOW_SECONDS)
+        step_delta   = timedelta(seconds=STEP_SECONDS)
+
+        X_list: list[np.ndarray] = []
+        labels:  list[str | None] = []
+        t = start_ts
+        while t + window_delta <= end_ts + timedelta(seconds=1):
+            window_rows = [r for r in all_rows if t <= r["timestamp"] < t + window_delta]
+            if len(window_rows) >= 5:
+                feats = extract_features(window_rows)
+                if len(feats) == FEATURE_COUNT:
+                    X_list.append(feats)
+                    labels.append(extract_label(window_rows))
+            t += step_delta
+
+        if not X_list:
+            log.error("No valid windows (need >=5 rows per window). Check feature engineering.")
+            return
+
         X_all = np.stack(X_list)
-        label_counts = {l: labels.count(l) for l in set(labels)}
+        label_counts = {str(l): labels.count(l) for l in set(labels) if l is not None}
+        label_counts["NORMAL"] = labels.count(None)
         print(f"Loaded {len(X_all)} non-overlapping windows. Label distribution: {label_counts}")
 
         normal_mask = np.array([l is None for l in labels])

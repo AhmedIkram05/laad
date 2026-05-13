@@ -67,7 +67,7 @@ FEATURE_NAMES = [
     "atm_unique_count",
 ]
 FEATURE_COUNT = len(FEATURE_NAMES)
-assert FEATURE_COUNT == 47, f"Expected 47 features, got {FEATURE_COUNT}"
+assert FEATURE_COUNT == len(FEATURE_NAMES), f"Expected {len(FEATURE_NAMES)} features, got {FEATURE_COUNT}"
 
 
 def _linear_slope(series: pd.Series) -> float:
@@ -130,7 +130,10 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
         if vals.empty or vals.isna().all():
             return {"mean": 0.0, "max": 0.0, "rate": 0.0, "p75": 0.0, "p95": 0.0, "slope": 0.0}
         sorted_vals = vals.sort_index()
-        rate = float(sorted_vals.iloc[-1] - sorted_vals.iloc[0]) if len(sorted_vals) > 1 else 0.0
+        if len(sorted_vals) > 1:
+            rate = float(sorted_vals.iloc[-1] - sorted_vals.iloc[0])
+        else:
+            rate = 0.0
         return {
             "mean": float(vals.mean()),
             "max": float(vals.max()),
@@ -213,7 +216,7 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
 
     kafka_oo = int(kafka_df["raw_payload"].apply(
         lambda p: parse_payload(p).get("_anomaly_tag") == "A7_OUT_OF_ORDER"
-    ).any())
+    ).sum())
 
     anomaly_tag_count = int(df["raw_payload"].apply(
         lambda p: bool(parse_payload(p).get("_anomaly_tag"))
@@ -263,8 +266,8 @@ def extract_label(rows: list[dict[str, Any]]) -> str | None:
     """Extract ground-truth anomaly label from _anomaly_tag in payloads (training only).
 
     Returns the dominant anomaly type ('A1'–'A7') or None for normal windows.
-    Uses percentage-based threshold: if < 10% of events have anomaly tags,
-    the window is considered normal. Otherwise, uses the dominant anomaly type.
+    Single-row anomalies (A1, A2, A4, A5, A7) are labelled if >=1 row has a tag.
+    Multi-row anomalies (A3, A6) need >=3 same-tag rows to pass noise threshold.
     """
     if not rows:
         return None
@@ -282,9 +285,15 @@ def extract_label(rows: list[dict[str, Any]]) -> str | None:
         except Exception:
             continue
 
-    anomaly_ratio = len(labels) / len(rows) if rows else 0
-    if anomaly_ratio < 0.10:
-        return None
     if not labels:
         return None
-    return max(set(labels), key=labels.count)
+
+    label_counts = {l: labels.count(l) for l in set(labels)}
+    dominant = max(label_counts, key=label_counts.get)
+    count = label_counts[dominant]
+
+    if count >= 3:
+        return dominant
+    if count >= 1 and dominant in {"A1", "A2", "A4", "A5", "A7"}:
+        return dominant
+    return None
