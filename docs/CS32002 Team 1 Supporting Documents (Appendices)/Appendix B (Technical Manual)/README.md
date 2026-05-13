@@ -22,23 +22,26 @@ pip install -r backend/requirements.txt
 
 ### Running the Pipeline
 
-Initialises the database, generates 24h of synthetic data, and ingests all log sources into the database.
+From the repository root, use the Makefile to start all services:
 
 ```bash
-# Must be run from the backend directory
-python main.py
+make all      # Starts postgres, backend, generator, mlflow
+make rebuild  # Full clean rebuild
+```
+
+The generator backfills 60 minutes of historical data on first boot, then enters live mode with probabilistic anomaly injection.
+
+To train ML models:
+
+```bash
+make retrain              # Train on live generator data
+make retrain-offline      # Train on offline dataset (all A1-A7 guaranteed)
+make generate-training-data  # Generate 24h offline dataset (one-time setup)
 ```
 
 ### Running the API Server
 
-Run the pipeline first to populate the database, then start the API server from the repo root:
-
-```bash
-# Must be run from the root directory
-uvicorn backend.src.api.server:app --reload --port 8000
-```
-
-API docs: <http://localhost:8000/docs>
+The API server starts automatically with `make all`. API docs are available at <http://localhost:8000/docs>.
 
 ### Default Admin Account
 
@@ -52,7 +55,7 @@ Seeded automatically on first `python main.py` run, for development purposes:
 From the repository root run:
 
 ```bash
-pytest
+make pytest  # Runs all tests in Docker with isolated test DB
 ```
 
 Current test status: 48/48 passing.

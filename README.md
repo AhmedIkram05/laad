@@ -90,7 +90,7 @@ flowchart TD
 
 **Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it backfills historical data, then enters a live loop. A `ThreadedConnectionPool` (minconn=5, maxconn=20) handles concurrent writes with retry/backoff. All records normalise into shared `events` and `metrics` tables.
 
-**Detection:** A 4-layer detection engine identifies A1–A7 anomaly types. HEURISTIC (primary, multi-signal correlation) and RULES (secondary, tag-reader) layers fire on the current 300-second window every 10 seconds with entity-aware ATM attribution. ML (Isolation Forest + XGBoost, 47 features, trained on 360-minute windows with class balancing) and BASELINE (rolling 20-window Z-score, novel pattern detection) activate when trained models are loaded. Detection auto-retrains once per UTC day and falls back to a wider 600-second window on low-traffic periods. All inference cycles are logged to MLflow. Retrain with `docker compose exec backend python -m backend.src.anomaly_detection.ml.train`.
+**Detection:** A 4-layer detection engine identifies A1–A7 anomaly types. HEURISTIC (primary, multi-signal correlation) and RULES (secondary, tag-reader) layers fire on the current 60-second window every 30 seconds with entity-aware ATM attribution. ML (Isolation Forest + XGBoost, 47 features, trained on 360-minute windows with class balancing) and BASELINE (rolling 20-window Z-score, novel pattern detection) activate when trained models are loaded. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. All inference cycles are logged to MLflow.
 
 **Serving layer:** FastAPI exposes `/auth`, `/anomalies`, `/analysis/detailed`, and `/admin` routes, served by the React + Vite dashboard.
 
@@ -113,7 +113,7 @@ Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool
 Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically.
 
 **4-layer anomaly detection — reactive + proactive**
-HEURISTIC (primary) and RULES (secondary) layers fire on the current 300-second window every 10 seconds. ML (Isolation Forest + XGBoost, 47 features) and BASELINE (rolling Z-score, >3σ threshold) activate when trained models are loaded, providing proactive detection of novel patterns. The `explanation` JSONB field embeds `"source": "HEURISTIC"|"RULES"|"ML"|"BASELINE"` for frontend display. Deduplication prevents duplicate anomalies for the same `(anomaly_type, atm_id)` pair. All inference cycles are logged to MLflow for observability.
+HEURISTIC (primary) and RULES (secondary) layers fire on the current 60-second window every 30 seconds. ML (Isolation Forest + XGBoost, 47 features) and BASELINE (rolling Z-score, >3σ threshold) activate when trained models are loaded, providing proactive detection of novel patterns. The `explanation` JSONB field embeds `"source": "HEURISTIC"|"RULES"|"ML"|"BASELINE"` for frontend display. Deduplication prevents duplicate anomalies for the same `(anomaly_type, atm_id)` pair. All inference cycles are logged to MLflow for observability.
 
 **Air-gapped RAG architecture**
 No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-text` embeddings feeds ChromaDB, with `llama3.1:8b` via Ollama. Evaluated with an LLM-as-judge pipeline scoring relevance, faithfulness, and answer completeness.
@@ -403,9 +403,12 @@ Seeded automatically by `init_db()` on first run.
 ### Other Makefile commands
 
 ```bash
-make rebuild  # Clean rebuild: stop all, remove volumes, rebuild images, start all
-make logs     # Follow logs from all services in real-time
-make clean    # Stop all containers and remove volumes (database data erased)
+make rebuild          # Clean rebuild: stop all, remove volumes, rebuild images, start all
+make retrain         # Retrain ML models on live generator data (default)
+make retrain-offline # Retrain ML models on offline dataset (all A1-A7 guaranteed)
+make generate-training-data  # Generate 24h offline training dataset
+make logs            # Follow logs from all services in real-time
+make clean           # Stop all containers and remove volumes (database data erased)
 ```
 
 ### Reset from scratch
@@ -422,11 +425,11 @@ make rebuild
 |---|---|---|
 | Backend framework | FastAPI | Lifespan context manager, dependency injection for RBAC |
 | Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool` (minconn=5, maxconn=20), `execute_values` batch inserts |
-| Scheduler | APScheduler | Cleanup every 1h, ML detector every 10s |
+| Scheduler | APScheduler | Cleanup every 1h, ML detector every 30s, auto-retrain every 1h |
 | Continuous generator | Python + psycopg2 | Backfill + live loop, SIGTERM/SIGINT handling, exponential backoff |
-| Anomaly detection | 4-layer hybrid (HEURISTIC + RULES + ML + BASELINE) | Isolation Forest + XGBoost, rolling Z-score baseline, entity-aware attribution, 47 features, 360-min windows, class balancing, auto-retrain daily, inference logged to MLflow |
+| Anomaly detection | 4-layer hybrid (HEURISTIC + RULES + ML + BASELINE) | Isolation Forest + XGBoost, rolling Z-score baseline, entity-aware attribution, 47 features, 360-min windows, class balancing, auto-retrain every 1h, inference logged to MLflow |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model artifact storage |
-| Training pipeline | `train.py` | Sliding windows (300s), StratifiedKFold CV, artifact serialization to `ml/artifacts/` |
+| Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React + Vite | Dashboard, anomaly detail, admin views |
 | RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker |
 | Testing | Pytest | Isolated test DB on port 5433 via `docker-compose.test.yml` |
