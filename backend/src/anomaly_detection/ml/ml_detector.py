@@ -48,7 +48,7 @@ from backend.src.anomaly_detection.anomaly_detector import detect_anomalies_from
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS            = 300
+WINDOW_SECONDS            = 600
 CONFIDENCE_THRESHOLD      = 0.60
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.1"))
 HEURISTICS_ENABLED        = os.getenv("ML_HEURISTICS_ENABLED", "true").lower() in ("true", "1", "yes")

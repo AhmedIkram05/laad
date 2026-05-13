@@ -39,7 +39,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR    = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS  = 300
+WINDOW_SECONDS  = 600
 STEP_SECONDS    = WINDOW_SECONDS
 IF_CONTAMINATION = 0.1
 XGB_N_ESTIMATORS = 100
@@ -155,6 +155,7 @@ def train() -> None:
 
         joblib.dump(iso_forest, ARTIFACT_DIR / "isolation_forest.joblib")
         mlflow.sklearn.log_model(iso_forest, "isolation_forest")
+        mlflow.log_artifact(str(ARTIFACT_DIR / "isolation_forest.joblib"))
 
         label_strings = [l if l is not None else "NORMAL" for l in labels]
         le = LabelEncoder()
@@ -205,6 +206,8 @@ def train() -> None:
         joblib.dump(clf, ARTIFACT_DIR / "xgb_classifier.joblib")
         joblib.dump(le,  ARTIFACT_DIR / "label_encoder.joblib")
         mlflow.xgboost.log_model(clf, "xgb_classifier")
+        mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_classifier.joblib"))
+        mlflow.log_artifact(str(ARTIFACT_DIR / "label_encoder.joblib"))
 
         with open(ARTIFACT_DIR / "feature_names.json", "w") as f:
             json.dump(FEATURE_NAMES, f)

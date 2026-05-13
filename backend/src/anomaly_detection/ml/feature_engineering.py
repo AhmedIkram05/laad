@@ -263,7 +263,12 @@ def extract_label(rows: list[dict[str, Any]]) -> str | None:
     """Extract ground-truth anomaly label from _anomaly_tag in payloads (training only).
 
     Returns the dominant anomaly type ('A1'–'A7') or None for normal windows.
+    Uses percentage-based threshold: if < 10% of events have anomaly tags,
+    the window is considered normal. Otherwise, uses the dominant anomaly type.
     """
+    if not rows:
+        return None
+
     labels = []
     for r in rows:
         raw = r.get("raw_payload") or r.get("payload")
@@ -276,6 +281,10 @@ def extract_label(rows: list[dict[str, Any]]) -> str | None:
                 labels.append(tag[:2])
         except Exception:
             continue
+
+    anomaly_ratio = len(labels) / len(rows) if rows else 0
+    if anomaly_ratio < 0.10:
+        return None
     if not labels:
         return None
     return max(set(labels), key=labels.count)
