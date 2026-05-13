@@ -28,3 +28,6 @@ dist-ssr
 *.sw?
 .github
 AGENTS.md
+
+# ML model artifacts (auto-generated, tracked via Docker volume)
+backend/src/anomaly_detection/ml/artifacts/

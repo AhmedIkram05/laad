@@ -275,6 +275,7 @@ erDiagram
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | GET | `/analysis/detailed` | JWT | Ranked anomaly list with `root_cause`, `operations`, `recommended_action`. Optional `Anomaly` query param |
+| GET | `/analysis/metrics` | JWT | Time-bucketed anomaly counts + summary stats for dashboard. Params: `hours`, `bucket_minutes`, `anomaly_type`, `severity`, `is_active` |
 
 ### Admin — `/api/admin`
 
