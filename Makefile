@@ -8,7 +8,7 @@ help:
 	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
 	@echo "  make clean       		Stop all containers and remove volumes"
 	@echo "  make logs         		Follow all service logs"
-	@echo "  make retrain     		Retrain ML models (Isolation Forest + XGBoost)"
+	@echo "  make retrain-online  	Retrain ML models (Isolation Forest + XGBoost)"
 	@echo "  make retrain-offline  	 Retrain ML on offline dataset (all A1-A7 guaranteed)"
 	@echo "  make training-data  	Generate offline training dataset (24h, all A1-A7)"
 	@echo "  make pytest       		Run all tests in Docker (postgres_test + pytest containers)"
@@ -34,7 +34,6 @@ all: ml-up
 	@echo "  Test DB:         		http://localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
 	@echo ""
-	@echo "Tip: Run 'make training-data' once to create the ML training dataset."
 
 # ── Full Rebuild ────────────────────────────────────────────────────────────
 
@@ -84,7 +83,7 @@ logs:
 
 # ── Retrain ML Models ──────────────────────────────────────────────────────
 
-retrain:
+retrain-online:
 	@echo "==> Retraining ML models on LIVE data from generator DB..."
 	docker compose exec backend python -m backend.src.anomaly_detection.ml.train
 	@echo ""
@@ -97,16 +96,6 @@ retrain-offline:
 	@echo ""
 	@echo "✓ Retrain complete!"
 	@echo "  View training run at: http://localhost:5001"
-
-# ── Generate Training Data ──────────────────────────────────────────────────
-
-training-data:
-	@echo "==> Generating offline training dataset (24h, all A1-A7)..."
-	python3 generate_training_data.py
-	@echo ""
-	@echo "✓ Training data generated!"
-	@echo "  Output: data/training_data.json"
-	@echo "  Run 'make retrain-offline' to train models with the new dataset"
 
 # ── Run Tests ──────────────────────────────────────────────────────────────
 

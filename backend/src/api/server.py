@@ -72,18 +72,31 @@ async def lifespan(app: FastAPI):
 
 
 def _check_and_retrain_on_startup() -> None:
-    """Retrain models on startup if they are stale (> 24 hours old) or absent."""
+    """Retrain models on startup if they are stale (> 24 hours old), absent, or corrupted."""
     model_file = ARTIFACT_DIR / "xgb_classifier.joblib"
     if not model_file.exists():
         logger.info("No model artifacts found — training on startup")
         _do_retrain()
         return
-    age_hours = (time.time() - model_file.stat().st_mtime) / 3600
-    if age_hours > 24:
-        logger.info("Model artifacts are %.1f hours old — retraining on startup", age_hours)
-        _do_retrain()
-    else:
-        logger.info("Model artifacts are %.1f hours old — using existing models", age_hours)
+    
+    # Try to load models to see if they're valid (handles scikit-learn version skew)
+    try:
+        import joblib
+        joblib.load(model_file)
+        joblib.load(ARTIFACT_DIR / "isolation_forest.joblib")
+        joblib.load(ARTIFACT_DIR / "label_encoder.joblib")
+        age_hours = (time.time() - model_file.stat().st_mtime) / 3600
+        if age_hours > 24:
+            logger.info("Model artifacts are %.1f hours old — retraining on startup", age_hours)
+            _do_retrain()
+        else:
+            logger.info("Model artifacts are %.1f hours old and valid — using existing models", age_hours)
+        return
+    except Exception as e:
+        logger.warning("Model artifacts exist but are corrupted or incompatible: %s — retraining", e)
+    
+    logger.info("No valid model artifacts found — training on startup")
+    _do_retrain()
 
 
 def _do_retrain() -> None:
