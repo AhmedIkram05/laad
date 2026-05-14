@@ -90,7 +90,7 @@ flowchart TD
 
 **Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it backfills historical data, then enters a live loop. A `ThreadedConnectionPool` (minconn=5, maxconn=20) handles concurrent writes with retry/backoff. All records normalise into shared `events` and `metrics` tables.
 
-**Detection:** A 3-layer detection engine identifies A1–A7 anomaly types. CLASSIFIER (primary, XGBoost + Isolation Forest, 47 features, 99.17% CV accuracy) runs first when models are loaded. ZSCORE (rolling 20-window Z-score, novel pattern detection) runs independently. SIGNAL_CORRELATOR (multi-signal correlation) is the final fallback. All layers fire every 30 seconds with entity-aware ATM attribution. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. Models are registered in MLflow with "champion" alias for production serving. All training runs and inference cycles are logged to MLflow.
+**Detection:** A 3-layer detection engine identifies A1–A7 anomaly types. CLASSIFIER (primary, XGBoost + Isolation Forest, 47 features, 97.0% CV accuracy) runs first when models are loaded. ZSCORE (rolling 20-window Z-score, novel pattern detection) runs independently. SIGNAL_CORRELATOR (multi-signal correlation) is the final fallback. All layers fire every 30 seconds with entity-aware ATM attribution. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. Models are registered in MLflow with "champion" alias for production serving. All training runs and inference cycles are logged to MLflow.
 
 **Serving layer:** FastAPI exposes `/auth`, `/anomalies`, `/analysis/detailed`, and `/admin` routes, served by the React + Vite dashboard.
 
@@ -138,18 +138,23 @@ No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-
 
 A production-grade 3-layer hybrid engine detecting all 7 anomaly types (A1–A7) across 7 simultaneous log sources, combining statistical detection with machine learning. Models are versioned with git SHA, registered in MLflow with "champion" alias, and include version descriptions for traceability.
 
-### Training Results — 99.17% Cross-Validation Accuracy
+### Training Results — 97.0% Cross-Validation Accuracy
 
 | Metric | Value |
 |---|---|
-| **Cross-validation accuracy** | **99.17%** |
-| **Per-class precision/recall** | **1.0 / 1.0** across all 8 classes (A1–A7 + NORMAL) |
-| **Isolation Forest anomaly precision** | 89.7% |
-| **Training windows** | 2,879 (non-overlapping, 60s window / 30s step) |
-| **Offline dataset** | 868,320 rows · 24 hours of synthetic data with all A1–A7 types injected |
-| **Top features** | `kafka_out_of_order`, `fatal_critical_weighted_sum`, `hardware_cassette_empty_count`, `kafka_rt_max/mean`, `terminal_handler_startup_count`, `container_restart_max`, `jvm_mem_rate` |
+| **Cross-validation accuracy** | **97.0% ± 1.4%** |
+| **Per-class precision/recall** | 1.0 / 1.0 across all 8 classes (A1–A7 + NORMAL) |
+| **Isolation Forest anomaly precision** | 90.3% |
+| **Training datasets** | **LIVE**: real generator data (228K rows, ~372 windows) · **OFFLINE**: 868,320 rows, 24h synthetic with all A1–A7 |
+| **Top features** | `kafka_out_of_order`, `fatal_critical_weighted_sum`, `hardware_cassette_low_count`, `kafka_rt_max/mean`, `terminal_handler_startup_count`, `container_restart_max`, `jvm_mem_rate` |
 | **Champion models registered** | `atm-xgb-classifier` · `atm-isolation-forest` — both with MLflow "champion" alias + version descriptions with git SHA |
-| **Data volume** | 868,320 training samples (24h offline) · ~16k rows/cycle inference · 2,879 sliding windows (60s/30s) |
+
+### Training & Auto-Retrain
+
+- **`make retrain`**: Trains on live generator data from DB (recommended for production continuous learning)
+- **`make retrain-offline`**: Trains on pre-generated offline dataset (recommended for initial setup with balanced classes)
+- **`make training-data`**: Generates offline training dataset (24h, all A1-A7 guaranteed)
+- **Auto-retrain**: Scheduled every 1 hour via APScheduler; skips if models are < 24h old; persists across restarts (bind mount); only wiped on `make rebuild`
 
 ### 3 Detection Layers
 
