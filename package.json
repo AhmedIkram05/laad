@@ -1,0 +1,27 @@
+{
+  "name": "laad",
+  "version": "1.0.0",
+  "description": "> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources, detects 7 anomaly types, ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with a fully local RAG-based diagnostic assistant.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AhmedIkram05/laad.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AhmedIkram05/laad/issues"
+  },
+  "homepage": "https://github.com/AhmedIkram05/laad#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}

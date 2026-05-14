@@ -11,10 +11,11 @@ h2 {
 }
 
 .mainContainer {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   padding: 30px;
+  padding-bottom: 60px;
 }
 
 .titleContainer {
@@ -33,10 +34,7 @@ h2 {
 }
 
 .anomalyContainer {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
-  min-height: 610px;
   flex-direction: column;
   gap: 15px;
   margin-top: 0px;
@@ -70,4 +68,272 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Option B: Metrics Dashboard Cards */
+.metricsDashboard {
+  margin-bottom: 24px;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.metricCard {
+  background: #1f2937;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.metricCard__value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+.metricCard__label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #9ca3af;
+}
+
+.metricCard--active .metricCard__value { color: #fbbf24; }
+.metricCard--resolved .metricCard__value { color: #34d399; }
+.metricCard--critical .metricCard__value { color: #ef4444; }
+.metricCard--major .metricCard__value { color: #f97316; }
+.metricCard--high .metricCard__value { color: #60a5fa; }
+
+/* Option A: Timeline */
+.timelineSection {
+  background: #1f2937;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.timelineHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.timelineHeader h3 {
+  color: #f9fafb;
+  font-size: 16px;
+}
+
+.timeFilterGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.timeFilterBtn {
+  background: transparent;
+  border: 1px solid #374151;
+  color: #9ca3af;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.timeFilterBtn:hover {
+  border-color: #6366f1;
+  color: #f9fafb;
+}
+
+.timeFilterBtn--active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #ffffff;
+}
+
+.timelineBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.timelineBar {
+  flex-shrink: 0;
+  width: 28px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  flex-direction: column-reverse;
+  background: #374151;
+  min-height: 4px;
+}
+
+.timelineBar:hover {
+  opacity: 0.8;
+}
+
+.timelineBar__count {
+  font-size: 9px;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 2px;
+}
+
+.timelineBar__fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+}
+
+.timelineBar__segment {
+  width: 100%;
+  transition: height 0.3s;
+}
+
+/* Option B: Type Distribution */
+.typeDistribution {
+  background: #1f2937;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.typeDistribution h3 {
+  color: #f9fafb;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.typeBadgeGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.typeBadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #111827;
+  border: 1px solid;
+  border-radius: 6px;
+  padding: 6px 12px;
+}
+
+.typeBadge__type {
+  font-weight: 600;
+  font-size: 13px;
+  color: #f9fafb;
+}
+
+.typeBadge__count {
+  font-size: 12px;
+  color: #9ca3af;
+  background: #374151;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+/* Option C: Log Stream */
+.logStreamSection {
+  background: #1f2937;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.logStreamSection h3 {
+  color: #f9fafb;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.logStreamSearch {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 14px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.logStreamSearch::placeholder {
+  color: #6b7280;
+}
+
+.logStreamList {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logStreamRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.logStreamRow--anomaly {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 3px solid #ef4444;
+}
+
+.logStreamRow--normal {
+  background: rgba(52, 211, 153, 0.08);
+  border-left: 3px solid #34d399;
+}
+
+.logStreamRow__tag {
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #374151;
+  color: #f9fafb;
+  flex-shrink: 0;
+}
+
+.logStreamRow__tag--resolved {
+  opacity: 0.5;
+}
+
+.logStreamRow__title {
+  flex: 1;
+  color: #d1d5db;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logStreamRow__meta {
+  color: #6b7280;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.noData {
+  color: #6b7280;
+  text-align: center;
+  padding: 16px;
 }

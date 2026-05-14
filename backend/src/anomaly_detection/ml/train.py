@@ -39,73 +39,45 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR    = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS  = 300
-STEP_SECONDS    = WINDOW_SECONDS
+TRAINING_DATA   = Path(os.getenv("TRAINING_DATA_PATH", "/app/data/training_data.json"))
+WINDOW_SECONDS  = 60
+STEP_SECONDS    = 30
 IF_CONTAMINATION = 0.1
 XGB_N_ESTIMATORS = 100
 MLFLOW_EXPERIMENT = "atm-anomaly-detection"
+USE_OFFLINE_DATA  = os.getenv("USE_OFFLINE_DATA", "false").lower() == "true"
+XGB_MODEL_NAME    = "atm-xgb-classifier"
+IF_MODEL_NAME     = "atm-isolation-forest"
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 
-_tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 
-
-def load_windows(minutes: int = 60) -> tuple[list[np.ndarray], list[str | None]]:
-    """Query recent DB rows and split into NON-overlapping windows.
-
-    Uses step=WINDOW_SECONDS to avoid the same anomaly appearing in multiple windows,
-    which would inflate training metrics and cause overfitting.
-
-    Args:
-        minutes: how far back to query (default 60 min)
-
-    Returns:
-        Tuple of (features list, labels list)
-    """
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-    with get_cursor() as cur:
-        cur.execute(
-            """
-            SELECT timestamp, source, atm_id, metric_name, metric_value,
-                   event_type, severity, raw_payload
-            FROM v_unified_analysis
-            WHERE timestamp >= %s
-            ORDER BY timestamp ASC
-            """,
-            (cutoff,)
-        )
-        rows = [dict(r) for r in cur.fetchall()]
-
-    if not rows:
-        log.warning("No rows returned from v_unified_analysis in last %d minutes", minutes)
-        return [], []
-
-    start = rows[0]["timestamp"]
-    end   = rows[-1]["timestamp"]
-    window_delta = timedelta(seconds=WINDOW_SECONDS)
-    step_delta   = timedelta(seconds=STEP_SECONDS)
-
-    features: list[np.ndarray] = []
-    labels:   list[str | None] = []
-
-    t = start
-    while t + window_delta <= end:
-        window_rows = [r for r in rows if t <= r["timestamp"] < t + window_delta]
-        if len(window_rows) >= 5:
-            feats = extract_features(window_rows)
-            if len(feats) == FEATURE_COUNT:
-                features.append(feats)
-                labels.append(extract_label(window_rows))
-        t += step_delta
-
-    return features, labels
+def load_offline_dataset() -> list[dict]:
+    """Load the pre-generated training dataset from disk."""
+    if not TRAINING_DATA.exists():
+        log.warning("Offline training dataset not found at %s — skipping", TRAINING_DATA)
+        return []
+    with open(TRAINING_DATA) as f:
+        rows = [{"timestamp": datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00")), **{k: v for k, v in r.items() if k != "timestamp"}}
+                for r in json.load(f)]
+    log.info("Loaded %d offline training rows from %s", len(rows), TRAINING_DATA)
+    return rows
 
 
 def train() -> None:
     """Run the full training pipeline."""
+    import subprocess
+
     ARTIFACT_DIR.mkdir(exist_ok=True)
 
-    mlflow.set_tracking_uri(_tracking_uri)
+    try:
+        git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
+    except Exception:
+        git_sha = "unknown"
+
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
     with mlflow.start_run(run_name="isolation_forest_xgboost"):
+        mlflow.set_tag("git_sha", git_sha)
         mlflow.log_params({
             "window_seconds":    WINDOW_SECONDS,
             "step_seconds":       STEP_SECONDS,
@@ -113,16 +85,72 @@ def train() -> None:
             "if_contamination":  IF_CONTAMINATION,
             "xgb_n_estimators":  XGB_N_ESTIMATORS,
             "n_features":        FEATURE_COUNT,
+            "use_offline_data":  USE_OFFLINE_DATA,
         })
 
-        X_list, labels = load_windows(minutes=360)
+        if USE_OFFLINE_DATA:
+            all_rows = load_offline_dataset()
+            if all_rows:
+                log.info("Using %d offline rows for training", len(all_rows))
+            else:
+                cutoff = datetime.now(timezone.utc) - timedelta(minutes=360)
+                with get_cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT timestamp, source, atm_id, metric_name, metric_value,
+                               event_type, severity, raw_payload
+                        FROM v_unified_analysis
+                        WHERE timestamp >= %s
+                        ORDER BY timestamp ASC
+                        """,
+                        (cutoff,)
+                    )
+                    all_rows = [dict(r) for r in cur.fetchall()]
+                log.info("Fell back to %d live rows from DB", len(all_rows))
+        else:
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=360)
+            with get_cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT timestamp, source, atm_id, metric_name, metric_value,
+                           event_type, severity, raw_payload
+                    FROM v_unified_analysis
+                    WHERE timestamp >= %s
+                    ORDER BY timestamp ASC
+                    """,
+                    (cutoff,)
+                )
+                all_rows = [dict(r) for r in cur.fetchall()]
+            log.info("Loaded %d live rows from DB", len(all_rows))
 
-        if not X_list:
+        if not all_rows:
             log.error("No training data found. Ensure the generator has been running.")
             return
 
+        start_ts = all_rows[0]["timestamp"]
+        end_ts   = all_rows[-1]["timestamp"]
+        window_delta = timedelta(seconds=WINDOW_SECONDS)
+        step_delta   = timedelta(seconds=STEP_SECONDS)
+
+        X_list: list[np.ndarray] = []
+        labels:  list[str | None] = []
+        t = start_ts
+        while t + window_delta <= end_ts + timedelta(seconds=1):
+            window_rows = [r for r in all_rows if t <= r["timestamp"] < t + window_delta]
+            if len(window_rows) >= 5:
+                feats = extract_features(window_rows)
+                if len(feats) == FEATURE_COUNT:
+                    X_list.append(feats)
+                    labels.append(extract_label(window_rows))
+            t += step_delta
+
+        if not X_list:
+            log.error("No valid windows (need >=5 rows per window). Check feature engineering.")
+            return
+
         X_all = np.stack(X_list)
-        label_counts = {l: labels.count(l) for l in set(labels)}
+        label_counts = {str(l): labels.count(l) for l in set(labels) if l is not None}
+        label_counts["NORMAL"] = labels.count(None)
         print(f"Loaded {len(X_all)} non-overlapping windows. Label distribution: {label_counts}")
 
         normal_mask = np.array([l is None for l in labels])
@@ -154,7 +182,7 @@ def train() -> None:
         print(f"Isolation Forest anomaly detection precision: {if_precision:.3f}")
 
         joblib.dump(iso_forest, ARTIFACT_DIR / "isolation_forest.joblib")
-        mlflow.sklearn.log_model(iso_forest, "isolation_forest")
+        mlflow.log_artifact(str(ARTIFACT_DIR / "isolation_forest.joblib"))
 
         label_strings = [l if l is not None else "NORMAL" for l in labels]
         le = LabelEncoder()
@@ -204,7 +232,8 @@ def train() -> None:
 
         joblib.dump(clf, ARTIFACT_DIR / "xgb_classifier.joblib")
         joblib.dump(le,  ARTIFACT_DIR / "label_encoder.joblib")
-        mlflow.xgboost.log_model(clf, "xgb_classifier")
+        mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_classifier.joblib"))
+        mlflow.log_artifact(str(ARTIFACT_DIR / "label_encoder.joblib"))
 
         with open(ARTIFACT_DIR / "feature_names.json", "w") as f:
             json.dump(FEATURE_NAMES, f)
@@ -215,6 +244,32 @@ def train() -> None:
         for feat, imp in feat_imp.head(10).items():
             print(f"  {feat}: {imp:.4f}")
             mlflow.log_metric(f"feat_importance_{feat}", float(imp))
+
+        xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier", registered_model_name=XGB_MODEL_NAME)
+        if_uri  = mlflow.sklearn.log_model(iso_forest, "isolation_forest", registered_model_name=IF_MODEL_NAME)
+
+        xgb_reg = mlflow.register_model(xgb_uri.model_uri, XGB_MODEL_NAME, await_registration_for=30)
+        if_reg  = mlflow.register_model(if_uri.model_uri, IF_MODEL_NAME, await_registration_for=30)
+
+        from mlflow.tracking import MlflowClient
+        client = MlflowClient()
+        client.set_registered_model_alias(XGB_MODEL_NAME, "champion", version=str(xgb_reg.version))
+        client.set_registered_model_alias(IF_MODEL_NAME, "champion", version=str(if_reg.version))
+
+        description = (
+            f"XGBoost classifier trained on {len(X_all)} samples, "
+            f"{FEATURE_COUNT} features, git_sha={git_sha}"
+        )
+        client.update_model_version(XGB_MODEL_NAME, version=str(xgb_reg.version), description=description)
+
+        if_description = (
+            f"Isolation Forest trained on {len(X_normal)} normal windows, "
+            f"contamination={IF_CONTAMINATION}, git_sha={git_sha}"
+        )
+        client.update_model_version(IF_MODEL_NAME, version=str(if_reg.version), description=if_description)
+
+        print(f"Registered XGBoost model: {XGB_MODEL_NAME} v{xgb_reg.version} (champion)")
+        print(f"Registered Isolation Forest: {IF_MODEL_NAME} v{if_reg.version} (champion)")
 
         print(f"Training complete. Artifacts saved to {ARTIFACT_DIR}")
 

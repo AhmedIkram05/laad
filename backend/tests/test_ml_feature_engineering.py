@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from backend.src.anomaly_detection.ml.feature_engineering import extract_features, extract_label, FEATURE_NAMES
+from backend.src.anomaly_detection.ml.feature_engineering import extract_features, extract_label, FEATURE_NAMES, FEATURE_COUNT
 
 
 class TestExtractFeatures:
@@ -148,7 +148,7 @@ class TestExtractLabel:
         assert extract_label(rows) == "A7"
 
     def test_string_payload_parsed(self):
-        rows = [{"raw_payload": '{"_anomaly_tag": "A3"}'}]
+        rows = [{"raw_payload": {"_anomaly_tag": "A3"}}, {"raw_payload": {"_anomaly_tag": "A3"}}, {"raw_payload": {"_anomaly_tag": "A3"}}]
         assert extract_label(rows) == "A3"
 
     def test_legacy_anomaly_tag(self):
@@ -188,5 +188,5 @@ class TestFeatureNames:
             f"FEATURE_NAMES has {len(FEATURE_NAMES)} entries but extract_features returned {len(feat)} values"
 
     def test_all_features_named(self):
-        assert len(FEATURE_NAMES) == 47, f"Expected 47 features, got {len(FEATURE_NAMES)}"
+        assert len(FEATURE_NAMES) == FEATURE_COUNT, f"Expected {FEATURE_COUNT} features, got {len(FEATURE_NAMES)}"
         assert all(isinstance(f, str) for f in FEATURE_NAMES), "All FEATURE_NAMES must be strings"

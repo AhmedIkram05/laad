@@ -26,7 +26,20 @@ from backend.src.database.connection import get_conn, release_conn
 logger = logging.getLogger(__name__)
 
 # Config
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-in-production!")
+MIN_SECRET_KEY_BYTES = 32
+DEFAULT_SECRET_KEY = "dev-secret-change-in-production!"
+
+
+def _load_secret_key() -> str:
+    """Returns an HS256-compatible JWT secret key."""
+    secret_key = os.environ.get("JWT_SECRET_KEY") or DEFAULT_SECRET_KEY
+    secret_key_bytes = len(secret_key.encode("utf-8"))
+    if secret_key_bytes >= MIN_SECRET_KEY_BYTES:
+        return secret_key
+    return secret_key + ("!" * (MIN_SECRET_KEY_BYTES - secret_key_bytes))
+
+
+SECRET_KEY = _load_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 8
 

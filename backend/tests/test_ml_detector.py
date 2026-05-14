@@ -9,9 +9,10 @@ import pytest
 
 from backend.src.anomaly_detection.ml.ml_detector import (
     MLAnomalyDetector, ARTIFACT_DIR, WINDOW_SECONDS, CONFIDENCE_THRESHOLD,
-    HEURISTICS_ENABLED, RULES_DETECTION_ENABLED,
+    SIGNAL_CORRELATOR_ENABLED,
     TITLE_MAP, SOURCES_MAP, RECOMMENDED_ACTIONS_MAP,
 )
+from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
 
 
 @pytest.fixture(autouse=True)
@@ -106,46 +107,6 @@ class TestIsActive:
         assert result is False
 
 
-class TestDetectRules:
-    def test_detects_a1_tag_from_payload(self):
-        detector = MLAnomalyDetector()
-        rows = [
-            {"atm_id": "ATM-GB-0003", "raw_payload": {"_anomaly_tag": "A1", "correlation_id": "corr-001"}},
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"_anomaly_tag": "A5"}},
-        ]
-        result = detector._detect_rules(rows)
-        assert len(result) == 2
-        types = [r[0] for r in result]
-        assert "A1" in types
-        assert "A5" in types
-
-    def test_ignores_unknown_tags(self):
-        detector = MLAnomalyDetector()
-        rows = [
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"_anomaly_tag": "UNKNOWN"}},
-        ]
-        result = detector._detect_rules(rows)
-        assert len(result) == 0
-
-    def test_deduplicates_same_type_atm(self):
-        detector = MLAnomalyDetector()
-        rows = [
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"_anomaly_tag": "A1"}},
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"_anomaly_tag": "A1"}},
-        ]
-        result = detector._detect_rules(rows)
-        assert len(result) == 1
-
-    def test_different_atms_same_type_produces_two_results(self):
-        detector = MLAnomalyDetector()
-        rows = [
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"_anomaly_tag": "A1"}},
-            {"atm_id": "ATM-GB-0002", "raw_payload": {"_anomaly_tag": "A1"}},
-        ]
-        result = detector._detect_rules(rows)
-        assert len(result) == 2
-
-
 class TestDetectHeuristic:
     def test_calls_detect_anomalies_from_window(self):
         detector = MLAnomalyDetector()
@@ -208,35 +169,15 @@ class TestDetectAndSave:
         call_kwargs = mock_save.call_args.kwargs
         assert call_kwargs["anomaly_type"] == "A1"
         assert call_kwargs["atm_id"] == "ATM-GB-0003"
-        assert call_kwargs["source"] == "HEURISTIC"
+        assert call_kwargs["source"] == "SIGNAL_CORRELATOR"
         assert call_kwargs["sources_involved"] == ["ATM_APP", "KAFKA", "TERMINAL_HANDLER"]
         assert "recommended_action" in call_kwargs
-
-    def test_rules_runs_when_tag_present_and_heuristic_empty(self):
-        detector = MLAnomalyDetector()
-        detector._loaded = False
-
-        rows = [{"atm_id": "ATM-GB-0001", "raw_payload": {"_anomaly_tag": "A3"},
-                 "source": "TERMINAL_HANDLER", "metric_name": None, "metric_value": None,
-                 "event_type": "OOM_ERROR", "severity": "FATAL", "timestamp": "2025-01-01T10:00:00Z"}
-                for _ in range(10)]
-
-        with patch.object(detector, "_query_window", return_value=(rows, None, None)):
-            with patch.object(detector, "_detect_heuristic", return_value=[]):
-                with patch.object(detector, "_is_active", return_value=False):
-                    with patch.object(detector, "_save_anomaly") as mock_save:
-                        result = detector.detect_and_save()
-
-        assert result == 1
-        call_kwargs = mock_save.call_args.kwargs
-        assert call_kwargs["anomaly_type"] == "A3"
-        assert call_kwargs["source"] == "RULES"
 
     def test_ml_runs_when_models_loaded_and_iso_flags_anomaly(self):
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -255,7 +196,7 @@ class TestDetectAndSave:
 
         with patch.object(detector, "_query_window", return_value=(rows, None, None)):
             with patch.object(detector, "_detect_heuristic", return_value=[]):
-                with patch.object(detector, "_detect_rules", return_value=[]):
+
                     with patch("backend.src.anomaly_detection.ml.ml_detector.extract_features", return_value=fake_features):
                         with patch.object(detector, "_iso", mock_iso):
                             with patch.object(detector, "_clf", mock_clf):
@@ -267,14 +208,14 @@ class TestDetectAndSave:
         assert result == 1
         call_kwargs = mock_save.call_args.kwargs
         assert call_kwargs["anomaly_type"] == "A7"
-        assert call_kwargs["source"] == "ML"
+        assert call_kwargs["source"] == "CLASSIFIER"
         assert call_kwargs["confidence"] == 0.8
 
     def test_ml_skips_when_confidence_below_threshold(self):
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -293,7 +234,7 @@ class TestDetectAndSave:
 
         with patch.object(detector, "_query_window", return_value=(rows, None, None)):
             with patch.object(detector, "_detect_heuristic", return_value=[]):
-                with patch.object(detector, "_detect_rules", return_value=[]):
+
                     with patch("backend.src.anomaly_detection.ml.ml_detector.extract_features", return_value=fake_features):
                         with patch.object(detector, "_iso", mock_iso):
                             with patch.object(detector, "_clf", mock_clf):
@@ -309,7 +250,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([1])
@@ -322,7 +263,7 @@ class TestDetectAndSave:
 
         with patch.object(detector, "_query_window", return_value=(rows, None, None)):
             with patch.object(detector, "_detect_heuristic", return_value=[]):
-                with patch.object(detector, "_detect_rules", return_value=[]):
+
                     with patch("backend.src.anomaly_detection.ml.ml_detector.extract_features", return_value=fake_features):
                         with patch.object(detector, "_iso", mock_iso):
                             with patch.object(detector, "_is_active", return_value=False):
@@ -336,7 +277,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -357,7 +298,7 @@ class TestDetectAndSave:
 
         with patch.object(detector, "_query_window", return_value=(rows, None, None)):
             with patch.object(detector, "_detect_heuristic", return_value=[]):
-                with patch.object(detector, "_detect_rules", return_value=[]):
+
                     with patch("backend.src.anomaly_detection.ml.ml_detector.extract_features", return_value=fake_features):
                         with patch.object(detector, "_iso", mock_iso):
                             with patch.object(detector, "_clf", mock_clf):
@@ -369,13 +310,13 @@ class TestDetectAndSave:
         assert result == 1
         call_kwargs = mock_save.call_args.kwargs
         assert call_kwargs["anomaly_type"] == "UNKNOWN"
-        assert call_kwargs["source"] == "ML"
+        assert call_kwargs["source"] == "CLASSIFIER"
 
     def test_ml_skips_unknown_when_iso_score_mild(self):
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -396,7 +337,7 @@ class TestDetectAndSave:
 
         with patch.object(detector, "_query_window", return_value=(rows, None, None)):
             with patch.object(detector, "_detect_heuristic", return_value=[]):
-                with patch.object(detector, "_detect_rules", return_value=[]):
+
                     with patch("backend.src.anomaly_detection.ml.ml_detector.extract_features", return_value=fake_features):
                         with patch.object(detector, "_iso", mock_iso):
                             with patch.object(detector, "_clf", mock_clf):
@@ -412,7 +353,7 @@ class TestDetectAndSave:
         detector = MLAnomalyDetector()
         detector._loaded = True
 
-        fake_features = np.zeros(47, dtype=np.float32)
+        fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
@@ -432,7 +373,7 @@ class TestDetectAndSave:
 
         with patch.object(detector, "_query_window", return_value=(rows, None, None)):
             with patch.object(detector, "_detect_heuristic", return_value=[]):
-                with patch.object(detector, "_detect_rules", return_value=[]):
+
                     with patch("backend.src.anomaly_detection.ml.ml_detector.extract_features", return_value=fake_features):
                         with patch.object(detector, "_iso", mock_iso):
                             with patch.object(detector, "_clf", mock_clf):
@@ -495,8 +436,8 @@ class TestConstants:
     def test_confidence_threshold_is_060(self):
         assert CONFIDENCE_THRESHOLD == 0.60
 
-    def test_window_seconds_is_300(self):
-        assert WINDOW_SECONDS == 300
+    def test_window_seconds_is_600(self):
+        assert WINDOW_SECONDS == 600
 
     def test_artifact_dir_points_to_backend_ml(self):
         assert "backend" in str(ARTIFACT_DIR) and "ml" in str(ARTIFACT_DIR)
@@ -516,9 +457,8 @@ class TestConstants:
             assert atype in RECOMMENDED_ACTIONS_MAP
             assert len(RECOMMENDED_ACTIONS_MAP[atype]) > 10
 
-    def test_heuristics_and_rules_enabled_by_default(self):
-        assert HEURISTICS_ENABLED is True
-        assert RULES_DETECTION_ENABLED is True
+    def test_signal_correlator_enabled_by_default(self):
+        assert SIGNAL_CORRELATOR_ENABLED is True
 
 
 class TestAttribution:

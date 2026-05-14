@@ -2,69 +2,160 @@
 from __future__ import annotations
 import random
 import logging
-from datetime import datetime
-import psycopg2.extras
+from datetime import datetime, timezone
+
 from backend.generator.config import ATMS, ATM_LOCATIONS, POD_NAME, OS_VERSION
 
 log = logging.getLogger(__name__)
 
-def insert_event(cur, t, source, atm_id, event_type, severity, message, payload, correlation_id=None, transaction_id=None):
-    cur.execute(
-        "INSERT INTO events (timestamp, source, atm_id, correlation_id, transaction_id, event_type, severity, message, payload) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        (t, source, atm_id, correlation_id, transaction_id, event_type, severity, message, psycopg2.extras.Json(payload))
-    )
 
-def insert_metric(cur, t, source, entity_id, metric_name, metric_value, payload, correlation_id=None):
-    if correlation_id:
-        payload = dict(payload, correlation_id=correlation_id)
-    cur.execute(
-        "INSERT INTO metrics (timestamp, source, entity_id, metric_name, metric_value, payload) VALUES (%s, %s, %s, %s, %s, %s)",
-        (t, source, entity_id, metric_name, metric_value, psycopg2.extras.Json(payload))
-    )
+def emit_atm_app_events(producer, t: datetime) -> None:
+    """Emit ATM application activity events for a random subset of ATMs.
 
-def emit_atm_app_events(cur, t):
+    Produces ACTIVITY events with INFO severity for ~35% of ATMs per tick.
+    """
     for atm in ATMS:
         if random.random() < 0.35:
-            # Normal heartbeat/activity
-            insert_event(cur, t, "ATM_APP", atm, "ACTIVITY", "INFO", "User session active", {"location_code": ATM_LOCATIONS[atm]})
+            producer.send_event({
+                "timestamp": t.isoformat(),
+                "source": "ATM_APP",
+                "atm_id": atm,
+                "event_type": "ACTIVITY",
+                "severity": "INFO",
+                "message": "User session active",
+                "payload": {"location_code": ATM_LOCATIONS[atm]},
+            })
 
-def emit_hardware_events(cur, t):
+
+def emit_hardware_events(producer, t: datetime) -> None:
+    """Emit hardware diagnostic events for a random subset of ATMs.
+
+    Produces DIAGNOSTIC events with INFO severity for ~10% of ATMs per tick.
+    """
     for atm in ATMS:
         if random.random() < 0.1:
-            insert_event(cur, t, "HARDWARE", atm, "DIAGNOSTIC", "INFO", "Cash dispenser health check passed", {"component": "dispenser_v2"})
+            producer.send_event({
+                "timestamp": t.isoformat(),
+                "source": "HARDWARE",
+                "atm_id": atm,
+                "event_type": "DIAGNOSTIC",
+                "severity": "INFO",
+                "message": "Cash dispenser health check passed",
+                "payload": {"component": "dispenser_v2"},
+            })
 
-def emit_terminal_handler_events(cur, t):
+
+def emit_terminal_handler_events(producer, t: datetime) -> None:
+    """Emit terminal handler log events for a random subset of ATMs.
+
+    Produces LOG events with INFO severity for ~20% of ATMs per tick.
+    """
     for atm in ATMS:
         if random.random() < 0.2:
-            insert_event(cur, t, "TERMINAL_HANDLER", atm, "LOG", "INFO", "Handling request", {"pod": POD_NAME, "os": OS_VERSION})
+            producer.send_event({
+                "timestamp": t.isoformat(),
+                "source": "TERMINAL_HANDLER",
+                "atm_id": atm,
+                "event_type": "LOG",
+                "severity": "INFO",
+                "message": "Handling request",
+                "payload": {"pod": POD_NAME, "os": OS_VERSION},
+            })
 
-def emit_kafka_metrics(cur, t):
+
+def emit_kafka_events(producer, t: datetime) -> None:
+    """Emit Kafka-sourced status events for all ATMs.
+
+    Produces STATUS events with INFO severity for ~50% of ATMs per tick.
+    """
     for atm in ATMS:
         if random.random() < 0.5:
-            # Simulate a metric window
-            insert_metric(cur, t, "KAFKA", atm, "kafka_throughput", random.uniform(100, 500), {"correlation_id": None})
+            producer.send_event({
+                "timestamp": t.isoformat(),
+                "source": "KAFKA",
+                "atm_id": atm,
+                "event_type": "STATUS",
+                "severity": "INFO",
+                "message": "ATM status update",
+                "payload": {"correlation_id": None},
+            })
 
-def emit_prometheus_metrics(cur, t):
+
+def emit_kafka_metrics(producer, t: datetime) -> None:
+    """Emit Kafka-sourced metric records for all ATMs.
+
+    Produces throughput metrics for ~50% of ATMs per tick.
+    """
     for atm in ATMS:
         if random.random() < 0.5:
-            insert_metric(cur, t, "PROMETHEUS", atm, "jvm_memory_used_bytes", random.uniform(1e8, 5e8), {})
+            producer.send_metric({
+                "timestamp": t.isoformat(),
+                "source": "KAFKA",
+                "entity_id": atm,
+                "metric_name": "kafka_throughput",
+                "metric_value": random.uniform(100, 500),
+                "payload": {"correlation_id": None},
+            })
 
-def emit_windows_os_metrics(cur, t):
+
+def emit_prometheus_metrics(producer, t: datetime) -> None:
+    """Emit Prometheus JVM memory metrics for all ATMs.
+
+    Produces jvm_memory_used_bytes for ~50% of ATMs per tick.
+    """
     for atm in ATMS:
         if random.random() < 0.5:
-            insert_metric(cur, t, "OS", atm, "windows_os_snapshot", random.uniform(10, 90), {})
+            producer.send_metric({
+                "timestamp": t.isoformat(),
+                "source": "PROMETHEUS",
+                "entity_id": atm,
+                "metric_name": "jvm_memory_used_bytes",
+                "metric_value": random.uniform(1e8, 5e8),
+                "payload": {},
+            })
 
-def emit_gcp_metrics(cur, t):
+
+def emit_windows_os_metrics(producer, t: datetime) -> None:
+    """Emit Windows OS snapshot metrics for all ATMs.
+
+    Produces windows_os_snapshot for ~50% of ATMs per tick.
+    """
     for atm in ATMS:
         if random.random() < 0.5:
-            insert_metric(cur, t, "CLOUD", atm, "container/cpu/usage_time", random.uniform(0.1, 1.0), {})
+            producer.send_metric({
+                "timestamp": t.isoformat(),
+                "source": "OS",
+                "entity_id": atm,
+                "metric_name": "windows_os_snapshot",
+                "metric_value": random.uniform(10, 90),
+                "payload": {},
+            })
+
+
+def emit_gcp_metrics(producer, t: datetime) -> None:
+    """Emit GCP container CPU metrics for all ATMs.
+
+    Produces container/cpu/usage_time for ~50% of ATMs per tick.
+    """
+    for atm in ATMS:
+        if random.random() < 0.5:
+            producer.send_metric({
+                "timestamp": t.isoformat(),
+                "source": "CLOUD",
+                "entity_id": atm,
+                "metric_name": "container/cpu/usage_time",
+                "metric_value": random.uniform(0.1, 1.0),
+                "payload": {},
+            })
+
 
 BASELINE_EMITTERS = [
     emit_atm_app_events,
     emit_hardware_events,
     emit_terminal_handler_events,
+    emit_kafka_events,
     emit_kafka_metrics,
     emit_prometheus_metrics,
     emit_windows_os_metrics,
-    emit_gcp_metrics
+    emit_gcp_metrics,
 ]

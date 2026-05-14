@@ -19,6 +19,7 @@ from backend.src.admin.admin_router import router as adminRouter
 from backend.src.anomalies.anomalies_router import router as anomaliesRouter
 from backend.src.auth.auth_router import router as authRouter
 from backend.src.analysis.analysis_router import router as analysisRouter
+from backend.src.analytics.analytics_router import router as analyticsRouter
 from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.database.connection import get_conn, release_conn
 from backend.src.database.init_db import init_db
@@ -60,11 +61,11 @@ async def lifespan(app: FastAPI):
     _ensure_db_initialized()
     _check_and_retrain_on_startup()
 
-    scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup")
-    scheduler.add_job(_run_ml_detection, "interval", seconds=10, id="ml_detector")
-    scheduler.add_job(_auto_retrain, "interval", hours=24, id="auto_retrain")
+    scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup", misfire_grace_time=60)
+    scheduler.add_job(_run_ml_detection, "interval", seconds=30, id="ml_detector", misfire_grace_time=60)
+    scheduler.add_job(_auto_retrain, "interval", hours=1, id="auto_retrain", misfire_grace_time=300)
     scheduler.start()
-    logger.info("Schedulers started: cleanup (1h), ml_detector (10s), auto_retrain (24h)")
+    logger.info("Schedulers started: cleanup (1h), ml_detector (30s), auto_retrain (1h)")
     yield
     scheduler.shutdown()
     logger.info("Schedulers stopped")
@@ -115,9 +116,14 @@ def _run_ml_detection() -> None:
 def _auto_retrain() -> None:
     """Retrain ML models if they are stale (> 24 hours old).
 
-    Fires every 24h via scheduler. Guards against retraining if the model
+    Fires every 1h via scheduler. Guards against retraining if the model
     was already retrained recently (e.g., on startup).
+    Trains on LIVE generator data by default.
+    Set USE_OFFLINE_DATA=true env var to use the offline training dataset instead.
     """
+    import os
+    use_offline = os.getenv("USE_OFFLINE_DATA", "false").lower() == "true"
+    logger.info("Auto-retrain triggered (%s)", "OFFLINE dataset" if use_offline else "LIVE generator data")
     model_file = ARTIFACT_DIR / "xgb_classifier.joblib"
     if model_file.exists():
         age_hours = (time.time() - model_file.stat().st_mtime) / 3600
@@ -176,3 +182,4 @@ app.include_router(authRouter)
 app.include_router(adminRouter)
 app.include_router(anomaliesRouter)
 app.include_router(analysisRouter)
+app.include_router(analyticsRouter)

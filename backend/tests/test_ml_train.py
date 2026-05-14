@@ -1,107 +1,41 @@
 """Unit tests for ML training pipeline — mocks DB."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from backend.src.anomaly_detection.ml.train import (
-    load_windows, train, WINDOW_SECONDS, STEP_SECONDS,
-    IF_CONTAMINATION, XGB_N_ESTIMATORS, MLFLOW_EXPERIMENT, ARTIFACT_DIR
+    train, WINDOW_SECONDS, STEP_SECONDS,
+    IF_CONTAMINATION, XGB_N_ESTIMATORS, MLFLOW_EXPERIMENT, ARTIFACT_DIR,
+    USE_OFFLINE_DATA, TRAINING_DATA,
 )
 from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
 
 
-class TestLoadWindows:
-    def test_returns_empty_when_no_rows(self):
-        with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
-            mock_cur = MagicMock()
-            mock_cur.__enter__  = MagicMock(return_value=mock_cur)
-            mock_cur.__exit__   = MagicMock(return_value=None)
-            mock_cur.fetchall.return_value = []
-            mock_gc.return_value = mock_cur
+class TestLoadOfflineDataset:
+    def test_training_data_path_is_app_data(self):
+        assert "training_data.json" in str(TRAINING_DATA)
 
-            features, labels = load_windows(minutes=10)
-
-        assert features == []
-        assert labels == []
-
-    def test_queries_with_correct_cutoff(self):
-        with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
-            mock_cur = MagicMock()
-            mock_cur.__enter__  = MagicMock(return_value=mock_cur)
-            mock_cur.__exit__   = MagicMock(return_value=None)
-            mock_cur.fetchall.return_value = []
-            mock_gc.return_value = mock_cur
-
-            load_windows(minutes=30)
-
-        mock_cur.execute.assert_called_once()
-        call_args = mock_cur.execute.call_args
-        query = call_args[0][0]
-        params = call_args[0][1]
-        assert "v_unified_analysis" in query
-        assert len(params) == 1
-
-    def test_skips_windows_with_fewer_than_5_rows(self):
-        now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-
-        rows = [
-            dict(timestamp=now - timedelta(seconds=10 * i), source="ATM_APP",
-                 atm_id="ATM-GB-0001", metric_name=None, metric_value=None,
-                 event_type="ACTIVITY", severity="INFO", raw_payload={})
-            for i in range(3)
-        ]
-
-        with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
-            mock_cur = MagicMock()
-            mock_cur.__enter__  = MagicMock(return_value=mock_cur)
-            mock_cur.__exit__   = MagicMock(return_value=None)
-            mock_cur.fetchall.return_value = rows
-            mock_gc.return_value = mock_cur
-
-            features, labels = load_windows(minutes=1)
-
-        assert features == []
-
-    def test_creates_windows_from_db_rows(self):
-        now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-
-        rows = [
-            dict(timestamp=now - timedelta(seconds=60 * (9 - i)),
-                 source="ATM_APP", atm_id="ATM-GB-0001",
-                 metric_name=None, metric_value=None,
-                 event_type="ACTIVITY", severity="INFO",
-                 raw_payload={"_anomaly_tag": "A1"} if i == 0 else {})
-            for i in range(10)
-        ]
-
-        with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
-            mock_cur = MagicMock()
-            mock_cur.__enter__  = MagicMock(return_value=mock_cur)
-            mock_cur.__exit__   = MagicMock(return_value=None)
-            mock_cur.fetchall.return_value = rows
-            mock_gc.return_value = mock_cur
-
-            features, labels = load_windows(minutes=5)
-
-        assert len(features) > 0, "Should produce at least one window"
-        for f in features:
-            assert isinstance(f, np.ndarray)
-            assert len(f) == 47, f"Expected 47 features, got {len(f)}"
-        assert len(labels) == len(features)
-        assert any(l is not None for l in labels), "At least one window should have an anomaly label"
+    def test_offline_flag_is_false_by_default(self):
+        assert USE_OFFLINE_DATA is False
 
 
 class TestTrain:
     def test_exits_early_when_no_data(self, tmp_path):
-        with patch("backend.src.anomaly_detection.ml.train.load_windows", return_value=([], [])):
+        with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
+            mock_cur = MagicMock()
+            mock_cur.__enter__ = MagicMock(return_value=mock_cur)
+            mock_cur.__exit__ = MagicMock(return_value=None)
+            mock_cur.fetchall.return_value = []
+            mock_gc.return_value = mock_cur
             with patch("backend.src.anomaly_detection.ml.train.ARTIFACT_DIR", tmp_path):
                 with patch("backend.src.anomaly_detection.ml.train.mlflow"):
-                    with patch("backend.src.anomaly_detection.ml.train.get_cursor"):
-                        train()
+                    train()
 
         assert not (tmp_path / "isolation_forest.joblib").exists()
         assert not (tmp_path / "xgb_classifier.joblib").exists()
@@ -109,20 +43,46 @@ class TestTrain:
     def test_saves_all_three_artifacts(self, tmp_path):
         now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        fake_window = np.zeros(FEATURE_COUNT, dtype=np.float32)
-        rows = [
-            dict(timestamp=now - timedelta(seconds=i * 10),
-                 source="ATM_APP", atm_id="ATM-GB-0001",
-                 metric_name="jvm_memory_used_bytes", metric_value=1e8,
-                 event_type="ACTIVITY", severity="INFO",
-                 raw_payload={}) for i in range(30)
-        ]
+        rows = []
+        for i in range(120):
+            t = now - timedelta(seconds=(120 - i) * 10)
+            rows.extend([
+                dict(timestamp=t, source="PROMETHEUS", atm_id="ATM-GB-0001",
+                     metric_name="jvm_memory_used_bytes", metric_value=8e7 + i * 1e6,
+                     event_type=None, severity=None, raw_payload={}),
+                dict(timestamp=t, source="PROMETHEUS", atm_id="ATM-GB-0001",
+                     metric_name="jvm_gc_pause_seconds_sum", metric_value=0.1,
+                     event_type=None, severity=None, raw_payload={}),
+                dict(timestamp=t, source="PROMETHEUS", atm_id="ATM-GB-0001",
+                     metric_name="process_cpu_usage", metric_value=0.3,
+                     event_type=None, severity=None, raw_payload={}),
+                dict(timestamp=t, source="CLOUD", atm_id="ATM-GB-0001",
+                     metric_name="container/cpu/usage_time", metric_value=30.0,
+                     event_type=None, severity=None, raw_payload={}),
+                dict(timestamp=t, source="OS", atm_id="ATM-GB-0001",
+                     metric_name="windows_os_snapshot", metric_value=50.0,
+                     event_type=None, severity=None, raw_payload={}),
+                dict(timestamp=t, source="KAFKA", atm_id="ATM-GB-0001",
+                     metric_name=None, metric_value=None, event_type="METRIC",
+                     severity="INFO", raw_payload=json.dumps({"response_time_ms": 150.0, "transaction_success_rate": 98.0})),
+                dict(timestamp=t, source="ATM_APP", atm_id="ATM-GB-0001",
+                     metric_name=None, metric_value=None, event_type="HEARTBEAT",
+                     severity="INFO", raw_payload={}),
+            ])
 
-        with patch("backend.src.anomaly_detection.ml.train.load_windows", return_value=([fake_window] * 10, [None] * 10)):
-            with patch("backend.src.anomaly_detection.ml.train.ARTIFACT_DIR", tmp_path):
-                with patch("backend.src.anomaly_detection.ml.train.mlflow"):
-                    with patch("backend.src.anomaly_detection.ml.train.get_cursor"):
-                        train()
+            with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
+                mock_cur = MagicMock()
+                mock_cur.__enter__ = MagicMock(return_value=mock_cur)
+                mock_cur.__exit__ = MagicMock(return_value=None)
+                mock_cur.fetchall.return_value = rows
+                mock_gc.return_value = mock_cur
+                with patch("backend.src.anomaly_detection.ml.train.ARTIFACT_DIR", tmp_path):
+                    with patch("backend.src.anomaly_detection.ml.train.mlflow"):
+                        def noop_alias(*args, **kwargs): pass
+                        mock_client = MagicMock()
+                        mock_client.set_registered_model_alias = noop_alias
+                        with patch("mlflow.tracking.MlflowClient", return_value=mock_client):
+                            train()
 
         assert (tmp_path / "isolation_forest.joblib").exists()
         assert (tmp_path / "xgb_classifier.joblib").exists()
@@ -131,11 +91,11 @@ class TestTrain:
 
 
 class TestConstants:
-    def test_window_seconds_is_300(self):
-        assert WINDOW_SECONDS == 300
+    def test_window_seconds_is_60(self):
+        assert WINDOW_SECONDS == 60
 
-    def test_step_seconds_matches_window(self):
-        assert STEP_SECONDS == WINDOW_SECONDS == 300
+    def test_step_seconds_is_30(self):
+        assert STEP_SECONDS == 30
 
     def test_if_contamination_is_010(self):
         assert IF_CONTAMINATION == 0.1
