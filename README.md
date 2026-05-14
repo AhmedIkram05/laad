@@ -50,51 +50,71 @@
 ```mermaid
 flowchart TD
   S["7 Log Sources"]
+  G["Log Generator (Kafka Producer)"]
+  K["Apache Kafka (KRaft)"]
+  KS["atm-events topic"]
+  KM["atm-metrics topic"]
+  C["Kafka Consumer Service"]
   P["7 Custom Parsers"]
   I["Ingestion Pipeline"]
     DB[("PostgreSQL (JSONB + TIMESTAMPTZ)")]
-  HEUR["HEURISTIC Layer"]
-  RULES["RULES Layer"]
-  ML["ML Layer"]
-  BASELINE["BASELINE Layer"]
+  CDB[("ChromaDB (atm_logs collection)")]
+  CLS["CLASSIFIER Layer"]
+  ZSC["ZSCORE Layer"]
+  SCC["SIGNAL_CORRELATOR Layer"]
   RK["Ranking Algorithm"]
   CL["APScheduler Cleanup"]
   API["FastAPI REST API"]
   UI["React + Vite Dashboard"]
   RAG["Local RAG Assistant"]
 
-  S --> P --> I --> DB
-  DB --> HEUR
-  DB --> RULES
-  DB --> ML
-  DB --> BASELINE
-  HEUR --> RK
-  RULES --> RK
-  ML --> RK
-  BASELINE --> RK
+  S --> G
+  G --> K
+  K --> KS
+  K --> KM
+  KS --> C
+  KM --> C
+  C --> DB
+  C --> CDB
+  DB --> CLS
+  DB --> ZSC
+  DB --> SCC
+  CLS --> RK
+  ZSC --> RK
+  SCC --> RK
   RK --> API --> UI --> RAG
+  CDB --> RAG
   DB --> CL
 
   classDef core fill:#1f2937,stroke:#6b7280,color:#ffffff;
   classDef db fill:#0f766e,stroke:#14b8a6,color:#ffffff;
+  classDef kafka fill:#2563eb,stroke:#60a5fa,color:#ffffff;
   classDef det fill:#7c3aed,stroke:#a78bfa,color:#ffffff;
   classDef ext fill:#374151,stroke:#9ca3af,color:#ffffff;
 
   class S,P,I,RK,CL,API,UI core;
-  class DB db;
-  class HEUR,RULES,ML,BASELINE det;
+  class K,KS,KM,C kafka;
+  class DB,CDB db;
+  class CLS,ZSC,SCC det;
   class RAG ext;
 ```
 
 **Sources:** ATM application logs, hardware sensor metrics, Kafka event streams, Prometheus OS metrics, Windows OS metrics, GCP cloud metrics, and terminal handler logs.
 
-**Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it backfills historical data, then enters a live loop. A `ThreadedConnectionPool` (minconn=5, maxconn=20) handles concurrent writes with retry/backoff. All records normalise into shared `events` and `metrics` tables.
+**Kafka message bus:** All generator data flows through Apache Kafka (KRaft mode, `confluentinc/cp-kafka:7.5.0`, no ZooKeeper). Two topics:
 
-**Detection:** A 3-layer detection engine identifies A1–A7 anomaly types. CLASSIFIER (primary, XGBoost + Isolation Forest, 47 features, 97.0% CV accuracy) runs first when models are loaded. ZSCORE (rolling 20-window Z-score, novel pattern detection) runs independently. SIGNAL_CORRELATOR (multi-signal correlation) is the final fallback. All layers fire every 30 seconds with entity-aware ATM attribution. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. Models are registered in MLflow with "champion" alias for production serving. All training runs and inference cycles are logged to MLflow.
+- `atm-events` — event-type messages (sources: ATM_APP, HARDWARE, TERMINAL_HANDLER, KAFKA). 3 partitions.
+- `atm-metrics` — metric-type messages (sources: PROMETHEUS, OS, CLOUD, KAFKA). 3 partitions.
+
+The log generator is now a pure Kafka producer — no direct database writes. A separate `kafka-consumer` service consumes from both topics and writes to PostgreSQL and ChromaDB simultaneously. The `atm-events` topic feeds the ChromaDB RAG buffer (10-event window per ATM, SemanticChunker with `nomic-embed-text`). The Kafka consumer also triggers the ML anomaly detector inline after each batch, rate-limited to every 30 seconds (matching the backend APScheduler interval).
+
+**Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it seeds the ATM fleet (FK constraint for anomalies table), backfills historical data via Kafka, then enters a live loop. All events carry `message_id` (UUID4) for consumer-side deduplication. Anomaly injectors A3 and A6 use state-based progressive emission — one message per invocation, producing the full 90/120-message cascade over as many ticks, faithfully simulating real-time behavior.
+
+**Detection:** A 3-layer detection engine identifies A1–A7 anomaly types. Both the `kafka-consumer` service (every 30s, post-batch) and the backend APScheduler (every 30s) independently trigger `MLAnomalyDetector.detect_and_save()`. A 5-minute dedup window in `_is_active()` prevents duplicate writes when both fire on the same incident window. CLASSIFIER (primary, XGBoost + Isolation Forest, 47 features, 97.0% CV accuracy) runs first when models are loaded. ZSCORE (rolling 20-window Z-score, novel pattern detection) runs independently. SIGNAL_CORRELATOR (multi-signal correlation) is the final fallback. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. Models are registered in MLflow with "champion" alias for production serving. All training runs and inference cycles are logged to MLflow.
 
 **Serving layer:** FastAPI exposes `/auth`, `/anomalies`, `/analysis/detailed`, and `/admin` routes, served by the React + Vite dashboard.
 
-**Extension:** A fully local RAG diagnostic assistant runs with LangChain, ChromaDB, and Ollama (`llama3.1:8b`).
+**Extension:** A fully local RAG diagnostic assistant runs with LangChain, ChromaDB, and Ollama (`llama3.1:8b`). ChromaDB is populated by the Kafka consumer — events are buffered per ATM (10-event window) and upserted using SemanticChunker with `nomic-embed-text` embeddings into the `atm_logs` collection.
 
 ---
 
@@ -103,8 +123,14 @@ flowchart TD
 **Unified events + metrics schema (lean data lake)**
 Rather than source-specific tables, all normalised records land in two unified tables: `events` and `metrics`. Detection queries one consistent schema regardless of source. Adding a new log source requires only a new parser — not schema changes or detector modifications. This directly implements NFR7 (extensibility without core pipeline modification).
 
+**Kafka message bus — producer/consumer pipeline**
+The generator is a pure Kafka producer — it no longer writes directly to the database. A `kafka-consumer` service reads from `atm-events` and `atm-metrics` topics and writes to both PostgreSQL and ChromaDB in the same consume loop. This decoupling means the generator is completely decoupled from the database — if the consumer falls behind, no data is lost (it lives in Kafka). The two-topic design (events vs metrics) mirrors the existing `events`/`metrics` table split, making the consumer routing straightforward.
+
 **Dead-letter routing — no silent data loss**
-Malformed records are routed to `ingestion_errors` rather than raising exceptions. Parsers use `.get()` with safe defaults throughout — a missing field in a Kafka stream never halts ingestion for that source.
+Malformed records are routed to `ingestion_errors` rather than raising exceptions. Parsers use `.get()` with safe defaults throughout — a missing field in a Kafka stream never halts ingestion for that source. The Kafka consumer also routes undeserialisable bytes to `ingestion_errors` via `_route_to_ingestion_errors()`.
+
+**At-least-once delivery with in-process deduplication**
+Kafka provides at-least-once delivery by default. The consumer uses an in-memory LRU set (10,000 `message_id` entries) to skip duplicates on redelivery. If the consumer restarts, the LRU set is reset — duplicates are possible immediately after restart, which is acceptable for at-least-once delivery.
 
 **PostgreSQL + ThreadedConnectionPool + retry-with-backoff**
 Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool` (minconn=5, maxconn=20). The `write_helper.py` implements retry/backoff for transient errors (deadlocks, serialization failures, pool exhaustion). SQL uses `%s` parameter placeholders throughout.
@@ -113,10 +139,10 @@ Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool
 Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically.
 
 **3-layer anomaly detection — reactive + proactive**
-CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display. Deduplication prevents duplicate anomalies for the same `(anomaly_type, atm_id)` pair. All inference cycles are logged to MLflow for observability.
+CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The Kafka consumer and the backend APScheduler independently trigger detection every 30 seconds each. A 5-minute dedup window in `_is_active()` prevents duplicate writes when both fire on the same incident window. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display.
 
 **Air-gapped RAG architecture**
-No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-text` embeddings feeds ChromaDB, with `llama3.1:8b` via Ollama. Evaluated with an LLM-as-judge pipeline scoring relevance, faithfulness, and answer completeness.
+No log data leaves the network. ChromaDB receives events from the Kafka consumer via a per-ATM buffer (10-event window). LangChain's `SemanticChunker` with `nomic-embed-text` embeddings chunks buffered events before upsert. The `llama3.1:8b` model via Ollama serves RAG queries from the `atm_logs` ChromaDB collection.
 
 ---
 
@@ -138,13 +164,13 @@ No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-
 
 A production-grade 3-layer hybrid engine detecting all 7 anomaly types (A1–A7) across 7 simultaneous log sources, combining statistical detection with machine learning. Models are versioned with git SHA, registered in MLflow with "champion" alias, and include version descriptions for traceability.
 
-### Training Results — 97.0% Cross-Validation Accuracy
+### Training Results — 99.1% Cross-Validation Accuracy
 
 | Metric | Value |
 |---|---|
-| **Cross-validation accuracy** | **97.0% ± 1.4%** |
+| **Cross-validation accuracy** | **99.1% ± 0.2%** (offline dataset) |
 | **Per-class precision/recall** | 1.0 / 1.0 across all 8 classes (A1–A7 + NORMAL) |
-| **Isolation Forest anomaly precision** | 90.3% |
+| **Isolation Forest anomaly precision** | 89.1% |
 | **Training datasets** | **LIVE**: real generator data (228K rows, ~372 windows) · **OFFLINE**: 868,320 rows, 24h synthetic with all A1–A7 |
 | **Top features** | `kafka_out_of_order`, `fatal_critical_weighted_sum`, `hardware_cassette_low_count`, `kafka_rt_max/mean`, `terminal_handler_startup_count`, `container_restart_max`, `jvm_mem_rate` |
 | **Champion models registered** | `atm-xgb-classifier` · `atm-isolation-forest` — both with MLflow "champion" alias + version descriptions with git SHA |
@@ -352,7 +378,7 @@ erDiagram
 
 ## Testing
 
-**145/145 tests passing** across 7 tiers, running in Docker with an isolated test database:
+**Full test suite passing** across 7 tiers, running in Docker with an isolated test database:
 
 ```bash
 make pytest        # runs all tests in Docker with isolated test DB
@@ -365,11 +391,27 @@ make pytest        # runs all tests in Docker with isolated test DB
 | Unit — parsers | Field mapping, log level normalisation, UTC timestamp conversion for all 7 sources |
 | Unit — database | Table structure, indexes, FK constraints, WAL, JSONB |
 | Unit — utilities | Retry/backoff resilience, retention cleanup |
-| Unit — generators | `_anomaly_tag` presence, correlation ID per cascade, durations, SQL parameterisation |
-| Integration | End-to-end ingestion, API responses, data writes, `_anomaly_tag` round-trip |
-| Concurrency & stress | 50 concurrent write threads, lock collision recovery |
+| Unit — generators | Kafka producer calls, `_anomaly_tag` presence, correlation ID per cascade, durations, no psycopg2 imports, A3/A6 progressive state across calls |
+| Unit — Kafka | Deduplicator LRU eviction, producer serialization, event/metric handler validation + dead-letter routing, ChromaDB buffer flush + graceful degradation, consumer deserialisation + routing |
+| Integration | End-to-end ingestion, API responses, data writes, `_anomaly_tag` round-trip, emit_tick via Kafka producer |
+| Concurrency & stress | 50 concurrent write threads, lock collision recovery, concurrent emit_tick calls |
 | Security & auth | Login, JWT, `require_admin` guard, privilege escalation |
-| Anomaly detector | Rule-based detection across A1–A7 with correct source assignment |
+| Anomaly detector | Rule-based detection across A1–A7 with correct source assignment, 5-min dedup window |
+
+### New tests added for Kafka integration
+
+| Test file | Coverage |
+|---|---|
+| `test_kafka_deduplicator.py` | LRU eviction, move-to-end on revisit, edge cases (empty ID, max_size=0) |
+| `test_kafka_producer.py` | Singleton, message_id injection, topic routing (events/metrics), datetime conversion, flush/close, KafkaError handling |
+| `test_kafka_event_handler.py` | Valid event write, all fields, missing required field, invalid timestamp, DB error, no-atm-id chroma skip, null payload, naive timestamp UTC assignment |
+| `test_kafka_metric_handler.py` | Valid metric write, all fields, missing required field, non-numeric metric_value, invalid timestamp, DB error, null payload, integer-to-float conversion |
+| `test_kafka_chroma_buffer.py` | Init failure graceful, init success, accumulation, flush at window size, flush_all, empty buffer, upsert error recovery, format_event_text |
+| `test_kafka_consumer.py` | Deserialise, anomaly trigger, import/runtime error handling, SIGTERM handler, consumer graceful shutdown |
+| `test_live_generator_emitters.py` (updated) | All emitters use (producer, timestamp) signature, no psycopg2 imports, Kafka topic routing |
+| `test_live_generator_anomalies.py` (updated) | All injectors use (producer, timestamp) signature, A3/A6 progressive state, no psycopg2 imports, all 7 anomaly tags present |
+| `test_live_generator_integration.py` (updated) | emit_tick calls producers, flush after tick, backfill mode skips anomaly injection, no direct DB writes |
+| `test_generator_concurrent_writes.py` (updated) | Concurrent emit_tick via Kafka producer |
 
 ### Critical defects caught by the test suite
 
@@ -382,6 +424,9 @@ make pytest        # runs all tests in Docker with isolated test DB
 | Integration test always passed — no real assertions | `test_live_generator_integration.py` | Changed to `count_after > count_before` before/after pattern |
 | Connection pool exhausted under ML detector load | (runtime) | Pool bumped to `maxconn=20`, `minconn=5` |
 | Analysis endpoint 500 on `None` comparison | (runtime) | Added `or 0` guard on `frac_increase` in `analysis.py` |
+| Generator wrote directly to DB (violated Kafka-only pipeline) | `test_live_generator_emitters.py` | Emitters refactored to use Kafka producer; no psycopg2 imports remain |
+| Dual-trigger duplicate anomaly writes | `test_ml_detector.py` | 5-minute dedup window added to `_is_active()` |
+| A3/A6 anomaly injection burst behavior unrealistic | (design decision) | State-based progressive emission: one message per tick over 90/120 ticks |
 
 ---
 
@@ -433,7 +478,7 @@ cp .env.example .env   # edit POSTGRES_* values as needed
 ### 2. Start all backend services
 
 ```bash
-make all      # Start everything: postgres, backend, generator, test-db, mlflow
+make all      # Start everything: postgres, kafka, kafka-consumer, chromadb, backend, generator, test-db, mlflow
 ```
 
 Services run on:
@@ -441,11 +486,13 @@ Services run on:
 - **Backend API:** `http://localhost:8000` (API docs at `/docs`)
 - **Frontend:** `http://localhost:5173` (starts separately in terminal only, see step 3)
 - **PostgreSQL:** `localhost:5434` (internal port 5432 inside containers)
+- **Kafka:** `localhost:9092` (KRaft mode, no ZooKeeper)
+- **ChromaDB:** `http://localhost:8001` (HTTP client, REST API)
 - **Test Database:** `localhost:5433` (internal port 5432 inside containers)
 - **MLflow UI:** `http://localhost:5001`
 - **Airflow:** `http://localhost:8080` (optional, separate project)
 
-The generator backfills 60 minutes of historical data on first boot, then enters live mode with probabilistic anomaly injection.
+The generator seeds the ATM fleet, backfills 60 minutes of historical data via Kafka, then enters live mode with probabilistic anomaly injection. The `kafka-consumer` service writes to PostgreSQL and ChromaDB, and triggers the ML anomaly detector every 30 seconds.
 
 ### 3. Start the frontend
 
@@ -472,12 +519,15 @@ Seeded automatically by `init_db()` on first run.
 make rebuild          # Clean rebuild: stop all, remove volumes, rebuild images, start all
 make retrain         # Retrain ML models on live generator data (default)
 make retrain-offline # Retrain ML models on offline dataset (all A1-A7 guaranteed)
-make generate-training-data  # Generate 24h offline training dataset
 make logs            # Follow logs from all services in real-time
 make clean           # Stop all containers and remove volumes (database data erased)
+
+# Kafka-specific commands
+docker compose exec kafka-consumer python -m backend.kafka.consumer  # Manually restart consumer
+docker compose exec kafka kafka-topics.sh --bootstrap-server kafka:9092 --list  # List Kafka topics
 ```
 
-### Reset from scratch
+### Reset and Restart backend services from scratch
 
 ```bash
 make rebuild
@@ -490,15 +540,29 @@ make rebuild
 | Layer | Technology | Notes |
 |---|---|---|
 | Backend framework | FastAPI | Lifespan context manager, dependency injection for RBAC |
+| Message bus | Apache Kafka (`confluentinc/cp-kafka:7.5.0`) | KRaft mode (no ZooKeeper), 2 topics (atm-events, atm-metrics), 3 partitions each, gzip compression, at-least-once delivery |
 | Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool` (minconn=5, maxconn=20), `execute_values` batch inserts |
 | Scheduler | APScheduler | Cleanup every 1h, ML detector every 30s, auto-retrain every 1h |
-| Continuous generator | Python + psycopg2 | Backfill + live loop, SIGTERM/SIGINT handling, exponential backoff |
-| Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain every 1h, inference logged to MLflow |
+| Log generator | Python + `kafka-python` | Backfill + live loop, SIGTERM/SIGINT handling, pure Kafka producer (no direct DB writes) |
+| Kafka consumer | Python + `kafka-python` | Manual offset commit, LRU deduplication (10k IDs), writes to PostgreSQL + ChromaDB, triggers anomaly detector every 30s |
+| ChromaDB | ChromaDB HTTP client | Per-ATM 10-event buffer, SemanticChunker with `nomic-embed-text`, `atm_logs` collection on Docker named volume |
+| Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain every 1h, inference logged to MLflow. Independent dual-detection (consumer + backend APScheduler each at 30s interval) with 5-min dedup window |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React + Vite | Dashboard, anomaly detail, admin views |
-| RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker |
-| Testing | Pytest | 145 passing tests in Docker with isolated test DB (internal port 5432, external port 5433) |
+| RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker. ChromaDB populated by Kafka consumer |
+| Testing | Pytest | Full test suite in Docker with isolated test DB (internal port 5432, external port 5433) |
+
+### New Kafka-related files
+
+| File | Purpose |
+|---|---|
+| `backend/kafka/producer.py` | Thread-safe singleton `ATMProducer` wrapping `KafkaProducer`. Routes ATM_APP/HARDWARE/TERMINAL_HANDLER/KAFKA events to `atm-events`, all metrics to `atm-metrics`. Injects `message_id` (UUID4) and converts `datetime` timestamps to ISO strings. |
+| `backend/kafka/deduplicator.py` | Fixed-size LRU set (default 10,000) tracking `message_id` to prevent duplicate inserts on Kafka redelivery. |
+| `backend/kafka/chroma_buffer.py` | Per-ATM event buffer. Flushes to ChromaDB `atm_logs` collection when window reaches 10 events. Uses LangChain `SemanticChunker` with `nomic-embed-text`. Gracefully degrades if ChromaDB is unavailable. |
+| `backend/kafka/handlers/event_handler.py` | Validates `atm-events` messages (required: `message_id`, `timestamp`, `source`, `severity`). Writes to `events` table. Adds ATM events to ChromaDB buffer. Routes malformed messages to `ingestion_errors`. |
+| `backend/kafka/handlers/metric_handler.py` | Validates `atm-metrics` messages (required: `message_id`, `timestamp`, `source`, `entity_id`, `metric_name`, `metric_value`). Writes to `metrics` table. Routes malformed messages to `ingestion_errors`. |
+| `backend/kafka/consumer.py` | Main consumer loop. Subscribes to both topics. Manual offset commit after each batch. Rate-limited anomaly detection trigger (30s). SIGTERM gracefully flushes ChromaDB buffer before exit. |
 
 ---
 
