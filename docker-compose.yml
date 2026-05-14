@@ -18,6 +18,92 @@ services:
       retries: 10
       start_period: 10s
 
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    restart: unless-stopped
+    user: root
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: "3"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_LOG_RETENTION_HOURS: "168"
+      KAFKA_LOG_DIRS: "/bitnami/kafka"
+      CLUSTER_ID: "80CbQ_gJS-qyg-JUs8tqZg"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD", "/usr/bin/kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic atm-events --partitions 3 --replication-factor 1 && \
+        /usr/bin/kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic atm-metrics --partitions 3 --replication-factor 1 && \
+        echo "Kafka topics created: atm-events, atm-metrics"
+    restart: "no"
+
+  chromadb:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  kafka-consumer:
+    build: .
+    command: python -m backend.kafka.consumer
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_CONSUMER_GROUP=atm-platform-consumer
+      - KAFKA_AUTO_OFFSET_RESET=earliest
+      - ANOMALY_TRIGGER_INTERVAL_S=30
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - CHROMA_WINDOW_SIZE=10
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-atm_platform}
+      - POSTGRES_USER=${POSTGRES_USER:-atm_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
+
   backend:
     build: .
     ports:
@@ -53,9 +139,8 @@ services:
   generator:
     build: .
     command: python -m backend.generator.continuous_generator
-    profiles:
-      - generator
     environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - TICK_SECONDS=1
       - BACKFILL_MINUTES=${BACKFILL_MINUTES:-60}
       - ANOMALY_PROB=${ANOMALY_PROB:-0.02}
@@ -66,8 +151,12 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-atm_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
     depends_on:
+      kafka:
+        condition: service_healthy
       postgres:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   mlflow:
@@ -109,16 +198,7 @@ services:
       sh -c "sleep 3 &&
       python -c 'from backend.src.database.init_db import init_db; init_db()' &&
       python -m pytest backend/tests/ -v
-      --ignore=backend/tests/test_atm_app_parser.py
-      --ignore=backend/tests/test_gcp_cloud_metrics_parser.py
-      --ignore=backend/tests/test_hardware_sensor_parser.py
-      --ignore=backend/tests/test_kafka_metrics_parser.py
-      --ignore=backend/tests/test_ingestion_integration.py
-      --ignore=backend/tests/test_prometheus_parser.py
-      --ignore=backend/tests/test_terminal_handler_parser.py
-      --ignore=backend/tests/test_windows_os_parser.py
-      --ignore=backend/tests/test_db_schema.py
-      --ignore=backend/tests/test_db_connection_pragmas.py
+      --ignore=backend/tests/test_kafka_producer.py
       --tb=short"
     environment:
       - POSTGRES_HOST=postgres_test
@@ -140,3 +220,5 @@ volumes:
   postgres_data:
   mlflow_artifacts:
   postgres_test_data:
+  kafka_data:
+  chroma_data:
