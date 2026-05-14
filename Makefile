@@ -47,6 +47,8 @@ rebuild:
 	-docker volume rm laad_postgres_data laad_mlflow_artifacts laad_postgres_test_data 2>/dev/null; true
 	@echo "==> Removing LAAD images..."
 	-docker rmi laad-backend:latest laad-generator:latest 2>/dev/null; true
+	@echo "==> Removing ML artifacts (bind mount survives rebuild)..."
+	-rm -rf backend/src/anomaly_detection/ml/artifacts/*.joblib backend/src/anomaly_detection/ml/artifacts/feature_names.json backend/src/anomaly_detection/ml/artifacts/label_encoder.joblib
 	@echo "==> Starting fresh..."
 	docker compose up -d --build postgres backend generator
 	docker compose --profile ml up -d
@@ -96,13 +98,14 @@ retrain-offline:
 	@echo "✓ Retrain complete!"
 	@echo "  View training run at: http://localhost:5001"
 
+# IGNORE
 training-data:
 	@echo "==> Generating offline training dataset (24h, all A1-A7)..."
 	python3 generate_training_data.py
 	@echo ""
 	@echo "✓ Training data generated!"
 	@echo "  Output: data/training_data.json"
-	@echo "  Run 'make retrain' to train models with the new dataset"
+	@echo "  Run 'make retrain-offline' to train models with the new dataset"
 
 # ── Run Tests ──────────────────────────────────────────────────────────────
 
