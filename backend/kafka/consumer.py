@@ -34,10 +34,9 @@ import signal
 import time
 
 from kafka import KafkaConsumer
-from backend.kafka.deduplicator import Deduplicator
 from backend.kafka.chroma_buffer import ChromaBuffer
-from backend.kafka.handlers.event_handler import handle_event
-from backend.kafka.handlers.metric_handler import handle_metric
+from backend.kafka.deduplicator import Deduplicator
+from backend.kafka.handlers import event_handler, metric_handler
 from backend.kafka.handlers.event_handler import _route_to_ingestion_errors as route_raw_ingestion_errors
 
 log = logging.getLogger(__name__)
@@ -132,16 +131,16 @@ def run_consumer() -> None:
                         continue
 
                     message_id = msg.get("message_id", "")
-                    if message_id and dedup.is_duplicate(message_id):
+                    if message_id and dedup.is_duplicate(message_id) is True:
                         log.debug("Duplicate message_id=%s — skipping.", message_id)
                         continue
                     if message_id:
                         dedup.mark_seen(message_id)
 
                     if topic == TOPIC_EVENTS:
-                        ok = handle_event(msg, chroma)
+                        ok = event_handler.handle_event(msg, chroma)
                     elif topic == TOPIC_METRICS:
-                        ok = handle_metric(msg)
+                        ok = metric_handler.handle_metric(msg)
                     else:
                         log.warning("Unknown topic: %s", topic)
                         ok = False

@@ -7,6 +7,7 @@ Called by the consumer router for every message on atm-events topic.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 

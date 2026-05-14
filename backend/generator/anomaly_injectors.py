@@ -13,13 +13,13 @@ from datetime import datetime, timedelta, timezone
 from backend.generator.config import ATMS, ATM_LOCATIONS
 
 _anomaly_state: dict[str, dict] = {}
-_injection_counter = 0
 
 
-def _next_injection_key() -> str:
-    global _injection_counter
-    _injection_counter += 1
-    return str(_injection_counter)
+def _get_progressive_state(key: str) -> dict:
+    """Returns the active progressive anomaly state for a key."""
+    if key not in _anomaly_state:
+        _anomaly_state[key] = {"atm": random.choice(ATMS), "corr_id": str(uuid4()), "produced": 0}
+    return _anomaly_state[key]
 
 
 def inject_a1(producer, t: datetime) -> None:
@@ -98,10 +98,8 @@ def inject_a3(producer, t: datetime) -> None:
     Produces monotonically rising JVM heap and GC pause metrics, terminating
     with a TERMINAL_HANDLER OOM_ERROR on the 90th call.
     """
-    atm_key = f"a3_{_next_injection_key()}"
-    if atm_key not in _anomaly_state:
-        _anomaly_state[atm_key] = {"atm": random.choice(ATMS), "corr_id": str(uuid4()), "produced": 0}
-    state = _anomaly_state[atm_key]
+    atm_key = "a3"
+    state = _get_progressive_state(atm_key)
 
     if state["produced"] >= 90:
         del _anomaly_state[atm_key]
@@ -216,10 +214,8 @@ def inject_a6(producer, t: datetime) -> None:
     Produces monotonically rising OS memory usage (20 → 90%), terminating
     with an ATM_APP TIMEOUT on the 120th call.
     """
-    atm_key = f"a6_{_next_injection_key()}"
-    if atm_key not in _anomaly_state:
-        _anomaly_state[atm_key] = {"atm": random.choice(ATMS), "corr_id": str(uuid4()), "produced": 0}
-    state = _anomaly_state[atm_key]
+    atm_key = "a6"
+    state = _get_progressive_state(atm_key)
 
     if state["produced"] >= 120:
         del _anomaly_state[atm_key]

@@ -9,16 +9,16 @@ help:
 	@echo "  make clean       		Stop all containers and remove volumes"
 	@echo "  make logs         		Follow all service logs"
 	@echo "  make retrain     		Retrain ML models (Isolation Forest + XGBoost)"
-	@echo "  make retrain-offline  	Retrain ML on offline dataset (all A1-A7 guaranteed)"
+	@echo "  make retrain-offline  	 Retrain ML on offline dataset (all A1-A7 guaranteed)"
 	@echo "  make training-data  	Generate offline training dataset (24h, all A1-A7)"
 	@echo "  make pytest       		Run all tests in Docker (postgres_test + pytest containers)"
 	@echo ""
 	@echo "Services:"
 	@echo "  Backend API:     		http://localhost:8000"
-	@echo "  Kafka:            		localhost:9092"
+	@echo "  Kafka:            		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
-	@echo "  PostgreSQL:     		localhost:5434"
-	@echo "  Test DB:         		localhost:5433"
+	@echo "  PostgreSQL:     		http://localhost:5434"
+	@echo "  Test DB:         		http://localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
 
 # ── Start All ────────────────────────────────────────────────────────────────
@@ -28,10 +28,10 @@ all: ml-up
 	@echo ""
 	@echo "✓ All services started!"
 	@echo "  Backend API:     		http://localhost:8000"
-	@echo "  Kafka:            		localhost:9092"
+	@echo "  Kafka:            		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
-	@echo "  PostgreSQL:     		localhost:5434"
-	@echo "  Test DB:         		localhost:5433"
+	@echo "  PostgreSQL:     		http://localhost:5434"
+	@echo "  Test DB:         		http://localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
 	@echo ""
 	@echo "Tip: Run 'make training-data' once to create the ML training dataset."
@@ -54,10 +54,10 @@ rebuild:
 	@echo ""
 	@echo "✓ Rebuild complete!"
 	@echo "  Backend API:     		http://localhost:8000"
-	@echo "  Kafka:           		localhost:9092"
+	@echo "  Kafka:           		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
-	@echo "  PostgreSQL:     		localhost:5434"
-	@echo "  Test DB:         		localhost:5433"
+	@echo "  PostgreSQL:     		http://localhost:5434"
+	@echo "  Test DB:         		http://localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
 
 # ── Backend-only Rebuild ───────────────────────────────────────────────────
@@ -111,10 +111,15 @@ training-data:
 # ── Run Tests ──────────────────────────────────────────────────────────────
 
 pytest:
-	@echo "==> Running tests (assumes main services are already running)..."
-	docker compose --profile test up --abort-on-container-exit
+	@echo "==> Stopping any leftover test containers..."
+	-docker compose --profile test down 2>/dev/null; true
+	@echo "==> Starting test environment and running tests..."
+	docker compose --profile test up -d postgres_test
+	@echo "==> Waiting for test DB to be ready..."
+	@sleep 5
+	docker compose run --rm --no-deps pytest
 	@echo "==> Stopping test environment..."
-	-docker compose --profile test down -v 2>/dev/null; true
+	-docker compose --profile test down 2>/dev/null; true
 	@echo ""
 	@echo "✓ Tests complete!"
 

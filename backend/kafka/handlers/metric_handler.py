@@ -8,6 +8,7 @@ Metrics are NOT embedded into ChromaDB — only event-type logs are.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
