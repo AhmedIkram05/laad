@@ -32,6 +32,20 @@ def seed_atms(conn) -> None:
             logger.info("ATMs already exist, skipping")
 
 
+def seed_atm_fleet() -> None:
+    """Standalone ATM fleet seeder — manages its own DB connection.
+
+    Called by the generator before backfill to ensure all ATM records
+    exist (required for FK constraints on the anomalies table).
+    """
+    conn = get_conn()
+    try:
+        seed_atms(conn)
+        conn.commit()
+    finally:
+        release_conn(conn)
+
+
 def seed_default_admin(conn) -> None:
     password_hash = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode()
     with conn.cursor() as cur:
