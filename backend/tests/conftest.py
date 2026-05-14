@@ -1,4 +1,5 @@
 import os
+import sys
 import pytest
 from unittest.mock import patch
 
@@ -11,6 +12,28 @@ os.environ["POSTGRES_PORT"] = os.getenv("TEST_POSTGRES_PORT", "5433")
 os.environ["POSTGRES_DB"] = os.getenv("TEST_POSTGRES_DB", "atm_platform_test")
 os.environ["POSTGRES_USER"] = os.getenv("TEST_POSTGRES_USER", "atm_user")
 os.environ["POSTGRES_PASSWORD"] = os.getenv("TEST_POSTGRES_PASSWORD", "your_password_here")
+
+_kafka_mock = None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_kafka_module():
+    global _kafka_mock
+    from unittest.mock import MagicMock
+    _kafka_mock = MagicMock()
+    original_modules = {}
+    for mod_name in ["kafka", "kafka.errors", "kafka.producer", "kafka.consumer"]:
+        if mod_name in sys.modules:
+            original_modules[mod_name] = sys.modules.pop(mod_name)
+    sys.modules["kafka"] = _kafka_mock
+    sys.modules["kafka.errors"] = _kafka_mock.errors
+    sys.modules["kafka.producer"] = _kafka_mock.producer
+    sys.modules["kafka.consumer"] = _kafka_mock.consumer
+    yield
+    for mod_name in list(sys.modules.keys()):
+        if mod_name.startswith("kafka"):
+            sys.modules.pop(mod_name, None)
+    sys.modules.update(original_modules)
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
@@ -45,11 +68,6 @@ def db_cleanup():
     from backend.src.database.connection import get_cursor
     with get_cursor(commit=True) as cur:
         cur.execute("TRUNCATE TABLE events, metrics, anomalies, ingestion_errors CASCADE")
-
-@pytest.fixture(scope="session", autouse=True)
-def refresh_schema():
-    """Re-apply schema after each test module to pick up schema changes."""
-    pass
 
 @pytest.fixture(scope="module", autouse=True)
 def ensure_db_schema():
