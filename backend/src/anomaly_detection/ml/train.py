@@ -65,11 +65,19 @@ def load_offline_dataset() -> list[dict]:
 
 def train() -> None:
     """Run the full training pipeline."""
+    import subprocess
+
     ARTIFACT_DIR.mkdir(exist_ok=True)
+
+    try:
+        git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
+    except Exception:
+        git_sha = "unknown"
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
     with mlflow.start_run(run_name="isolation_forest_xgboost"):
+        mlflow.set_tag("git_sha", git_sha)
         mlflow.log_params({
             "window_seconds":    WINDOW_SECONDS,
             "step_seconds":       STEP_SECONDS,
@@ -242,10 +250,24 @@ def train() -> None:
 
         xgb_reg = mlflow.register_model(xgb_uri.model_uri, XGB_MODEL_NAME, await_registration_for=30)
         if_reg  = mlflow.register_model(if_uri.model_uri, IF_MODEL_NAME, await_registration_for=30)
+
         from mlflow.tracking import MlflowClient
         client = MlflowClient()
         client.set_registered_model_alias(XGB_MODEL_NAME, "champion", version=str(xgb_reg.version))
         client.set_registered_model_alias(IF_MODEL_NAME, "champion", version=str(if_reg.version))
+
+        description = (
+            f"XGBoost classifier trained on {len(X_all)} samples, "
+            f"{FEATURE_COUNT} features, git_sha={git_sha}"
+        )
+        client.update_model_version(XGB_MODEL_NAME, version=str(xgb_reg.version), description=description)
+
+        if_description = (
+            f"Isolation Forest trained on {len(X_normal)} normal windows, "
+            f"contamination={IF_CONTAMINATION}, git_sha={git_sha}"
+        )
+        client.update_model_version(IF_MODEL_NAME, version=str(if_reg.version), description=if_description)
+
         print(f"Registered XGBoost model: {XGB_MODEL_NAME} v{xgb_reg.version} (champion)")
         print(f"Registered Isolation Forest: {IF_MODEL_NAME} v{if_reg.version} (champion)")
 

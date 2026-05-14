@@ -1,28 +1,26 @@
-"""ML-based anomaly detector — inference + hybrid rule/heuristic detection.
+"""ML-based anomaly detector — inference + hybrid detection.
 
 Loads trained Isolation Forest and XGBoost models from ml/artifacts/.
 Queries recent time windows from PostgreSQL, extracts features, and
 produces anomaly records for insertion into the anomalies table.
 
 Detection layers (in priority order):
-  1. HEURISTIC: Multi-signal correlation via detect_anomalies_from_window().
-     This is the primary layer — it detects real signal patterns (A1–A7)
-     WITHOUT relying on _anomaly_tag injected by the generator.
-  2. RULES: Tag-reader fallback. Catches _anomaly_tag from payloads that
-     may not trigger the heuristic (e.g., generator-injected anomalies
-     before enough signal accumulates). Runs for every inference cycle.
-  3. ML: Isolation Forest + XGBoost. Only active when model artifacts exist.
-     Provides statistical anomaly flagging and type classification.
-  4. BASELINE: Rolling Z-score deviation from historical feature windows.
-     Detects novel patterns by flagging when current window deviates >3σ
-     from the rolling median of recent windows. Runs when ML is loaded.
+  1. CLASSIFIER: XGBoost + Isolation Forest ensemble (primary). Only active
+     when model artifacts exist. Detects known A1–A7 patterns and UNKNOWN
+     anomalies via Isolation Forest anomaly score threshold. This is the
+     PRIMARY detector — runs first and catches most anomalies.
+  2. ZSCORE: Rolling Z-score statistical deviation. Detects novel patterns
+     by flagging when current window deviates >3σ from the rolling median.
+     INDEPENDENT layer — runs even when CLASSIFIER models fail to load.
+  3. SIGNAL_CORRELATOR: Multi-source signal correlation via detect_anomalies_from_window().
+     Final fallback layer — deterministic detection of A1–A7 patterns.
+     Always runs as safety net.
 
-Rule-based and heuristic detection always run.  ML and baseline run when models are loaded.
+CLASSIFIER requires loaded models. ZSCORE and SIGNAL_CORRELATOR always run.
 All inference cycles are logged to MLflow for observability.
 
 Configuration (env vars):
-    ML_HEURISTICS_ENABLED   : Enable heuristic detection (default: true)
-    ML_RULES_DETECTION_ENABLED: Enable tag-reader rules (default: true)
+    ML_SIGNAL_CORRELATOR_ENABLED   : Enable signal correlator detection (default: true)
     MLFLOW_TRACKING_URI      : MLflow server URI (default: http://mlflow:5000)
 
 Usage:
@@ -51,12 +49,11 @@ ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
 WINDOW_SECONDS            = 600
 CONFIDENCE_THRESHOLD      = 0.60
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.1"))
-HEURISTICS_ENABLED        = os.getenv("ML_HEURISTICS_ENABLED", "true").lower() in ("true", "1", "yes")
-RULES_DETECTION_ENABLED   = os.getenv("ML_RULES_DETECTION_ENABLED", "true").lower() in ("true", "1", "yes")
+SIGNAL_CORRELATOR_ENABLED = os.getenv("ML_SIGNAL_CORRELATOR_ENABLED", "true").lower() in ("true", "1", "yes")
 MLFLOW_TRACKING_URI       = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 MLFLOW_EXPERIMENT         = "atm-anomaly-detection"
-BASELINE_WINDOW_SIZE      = 20
-BASELINE_Z_THRESHOLD      = 3.0
+ZSCORE_WINDOW_SIZE        = 20
+ZSCORE_THRESHOLD          = 3.0
 
 SEVERITY_MAP = {
     "A1": "CRITICAL", "A2": "CRITICAL", "A3": "MAJOR",
@@ -148,10 +145,10 @@ class RollingBaseline:
     rolling median (μ) and standard deviation (σ). When a new window arrives,
     computes Z-scores: z_i = (x_i - μ_i) / σ_i.
 
-    Features with |z| > BASELINE_Z_THRESHOLD are flagged as novel deviations.
+    Features with |z| > ZSCORE_THRESHOLD are flagged as novel deviations.
     """
 
-    def __init__(self, window_size: int = BASELINE_WINDOW_SIZE):
+    def __init__(self, window_size: int = ZSCORE_WINDOW_SIZE):
         self._history: deque[np.ndarray] = deque(maxlen=window_size)
 
     def update(self, features: np.ndarray) -> None:
@@ -176,7 +173,7 @@ class RollingBaseline:
         return np.array([
             float(np.max(np.abs(z_scores))),
             float(np.mean(np.abs(z_scores))),
-            float(np.sum(np.abs(z_scores) > BASELINE_Z_THRESHOLD)),
+            float(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD)),
             float(np.max(z_scores)),
             float(np.min(z_scores)),
             float(np.mean(z_scores[z_scores > 0])) if np.any(z_scores > 0) else 0.0,
@@ -199,19 +196,26 @@ class MLAnomalyDetector:
         self._mlflow_available = False
         self._baseline = RollingBaseline()
 
+        import subprocess
+        try:
+            git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
+        except Exception:
+            git_sha = "unknown"
+
         try:
             mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
             mlflow.set_experiment(MLFLOW_EXPERIMENT)
             mlflow.set_tag("service", "ml_detector")
+            mlflow.set_tag("git_sha", git_sha)
             self._mlflow_available = True
             log.info(
-                "MLAnomalyDetector initialized: heuristics=%s, rules=%s, "
-                "models_loaded=%s, mlflow_uri=%s",
-                HEURISTICS_ENABLED, RULES_DETECTION_ENABLED, self._loaded, MLFLOW_TRACKING_URI
+                "MLAnomalyDetector initialized: signal_correlator=%s, "
+                "models_loaded=%s, git_sha=%s, mlflow_uri=%s",
+                SIGNAL_CORRELATOR_ENABLED, self._loaded, git_sha, MLFLOW_TRACKING_URI
             )
         except Exception as e:
             log.warning(
-                "MLflow unavailable (heuristics/rules will still run): %s. "
+                "MLflow unavailable (signal_correlator will still run): %s. "
                 "MLflow URI=%s",
                 e, MLFLOW_TRACKING_URI
             )
@@ -393,51 +397,6 @@ class MLAnomalyDetector:
             anomaly_type, atm_id, confidence, source
         )
 
-    def _detect_rules(self, rows: list[dict]) -> list[tuple[str, str | None, float, str | None]]:
-        """Tag-reader rule-based detection from payload _anomaly_tag signals.
-
-        This is a fast fallback layer that catches _anomaly_tag markers
-        directly from payloads. It supplements the heuristic detector but
-        should NOT be the primary detection path.
-
-        Returns:
-            List of (anomaly_type, atm_id, confidence, correlation_id) tuples.
-        """
-        def parse_payload(p):
-            if isinstance(p, dict):
-                return p
-            if isinstance(p, str):
-                try:
-                    return json.loads(p)
-                except (ValueError, TypeError):
-                    return {}
-            return {}
-
-        detected: list[tuple[str, str | None, float, str | None]] = []
-        seen: set[tuple[str, str | None]] = set()
-
-        for r in rows:
-            payload = parse_payload(r.get("raw_payload") or {})
-            tag = payload.get("_anomaly_tag") or payload.get("_anomaly")
-            if not tag or not isinstance(tag, str):
-                continue
-
-            atype = tag[:2] if tag.startswith("A") and len(tag) >= 2 else None
-            if atype not in {"A1","A2","A3","A4","A5","A6","A7"}:
-                continue
-
-            atm_id = r.get("atm_id") or None
-            key = (atype, atm_id)
-            if key in seen:
-                continue
-            seen.add(key)
-
-            confidence = 0.95 if atype in {"A1","A2"} else 0.85
-            correlation_id = payload.get("correlation_id") or r.get("correlation_id")
-            detected.append((atype, atm_id, confidence, correlation_id))
-
-        return detected
-
     def _detect_heuristic(
         self,
         rows: list[dict],
@@ -464,10 +423,13 @@ class MLAnomalyDetector:
     def detect_and_save(self) -> int:
         """Run full detection cycle across all layers.
 
-        Layer order:
-          1. Heuristic (multi-signal correlation) — always if enabled
-          2. Rules (tag reader) — always if enabled
-          3. ML (Isolation Forest + XGBoost) — only if models loaded
+        Detection order (priority):
+          1. CLASSIFIER: XGBoost + Isolation Forest — primary detector, only if models loaded
+             - Detects: A1–7 (trained) + UNKNOWN (via IF anomaly score threshold)
+          2. ZSCORE: Rolling Z-score — always runs (independent of models)
+             - Detects: UNKNOWN via >3σ deviation from rolling median
+          3. SIGNAL_CORRELATOR: Multi-signal correlation (A1–A7) — final fallback, always runs
+             - Detects: A1–7 via deterministic signal patterns
 
         Returns:
             Total number of anomalies saved this cycle.
@@ -479,7 +441,7 @@ class MLAnomalyDetector:
 
         saved = 0
         heur_anomalies: list = []
-        rule_anomalies: list = []
+        classifier_anomalies: list = []
 
         def _run_ml_logging():
             """Internal: log to MLflow if available. Raises on failure."""
@@ -487,82 +449,21 @@ class MLAnomalyDetector:
                 return
             mlflow.log_metric("rows_processed", len(rows))
             mlflow.log_param("window_seconds", WINDOW_SECONDS)
-            mlflow.log_param("heuristics_enabled", HEURISTICS_ENABLED)
-            mlflow.log_param("rules_enabled", RULES_DETECTION_ENABLED)
+            mlflow.log_param("signal_correlator_enabled", SIGNAL_CORRELATOR_ENABLED)
             mlflow.log_param("models_loaded", self._loaded)
-
-        # Layer 1: Heuristic detection (primary — always runs)
-        if HEURISTICS_ENABLED:
-            heur_anomalies = self._detect_heuristic(rows, window_start, window_end)
-            for a in heur_anomalies:
-                atype = a.get("anomaly_type")
-                if not atype:
-                    continue
-                if self._is_active(atype, a.get("atm_id")):
-                    continue
-                self._save_anomaly(
-                    anomaly_type=atype,
-                    atm_id=a.get("atm_id"),
-                    confidence=0.95 if atype in {"A1","A2"} else 0.85,
-                    source="HEURISTIC",
-                    explanation=json.loads(a.get("explanation", "{}")) if isinstance(a.get("explanation"), str) else (a.get("explanation") or {}),
-                    sources_involved=a.get("sources_involved"),
-                    recommended_action=a.get("recommended_action"),
-                    correlation_id=a.get("correlation_id"),
-                )
-                saved += 1
-                log.info("Heuristic detected: %s (atm=%s)", atype, a.get("atm_id"))
-
-        # Layer 2: Tag-reader rules (supplemental — always runs)
-        if RULES_DETECTION_ENABLED:
-            rule_anomalies = self._detect_rules(rows)
-            for atype, atm_id, confidence, correlation_id in rule_anomalies:
-                if self._is_active(atype, atm_id):
-                    continue
-                self._save_anomaly(
-                    anomaly_type=atype,
-                    atm_id=atm_id,
-                    confidence=confidence,
-                    source="RULES",
-                    correlation_id=correlation_id,
-                )
-                saved += 1
-                log.info("Rule detected: %s (atm=%s)", atype, atm_id)
 
         # Extract features for all ML layers (runs every cycle)
         features = extract_features(rows).reshape(1, -1)
         self._baseline.update(features.flatten())
         base_features = features
 
-        # Layer 3: ML detection (only when models loaded)
+        # ─────────────────────────────────────────────────────────────────────────
+        # Layer 1: CLASSIFIER DETECTION (Primary — XGBoost + IF ensemble)
+        # Detects: A1–A7 (via trained XGBoost) + UNKNOWN (via IF threshold)
+        # ─────────────────────────────────────────────────────────────────────────
+        classifier_anomalies: list = []
         if self._loaded:
-            # Layer 3a: Rolling Z-score baseline novelty detection
-            if self._baseline.ready:
-                z_scores = self._baseline.compute_z_scores(features.flatten())
-                max_z = float(np.max(np.abs(z_scores)))
-                n_deviating = int(np.sum(np.abs(z_scores) > BASELINE_Z_THRESHOLD))
-                if max_z > BASELINE_Z_THRESHOLD:
-                    base_confidence = min(max_z / 5.0, 1.0)
-                    if not self._is_active("UNKNOWN", None):
-                        self._save_anomaly(
-                            anomaly_type="UNKNOWN",
-                            atm_id=None,
-                            confidence=round(base_confidence, 3),
-                            source="BASELINE",
-                            explanation={
-                                "max_z_score": round(max_z, 3),
-                                "n_features_deviating": n_deviating,
-                                "z_threshold": BASELINE_Z_THRESHOLD,
-                                "baseline_window": len(self._baseline._history),
-                            },
-                        )
-                        saved += 1
-                        log.warning(
-                            "Novel baseline anomaly: UNKNOWN (max_z=%.2f, n_deviating=%d)",
-                            max_z, n_deviating
-                        )
-
-            # Layer 3b: Isolation Forest + XGBoost
+            # Layer 1a: Isolation Forest + XGBoost classification
             is_anomaly = self._iso.predict(base_features)[0] == -1
             log.info("ML: IF anomaly flag=%s", bool(is_anomaly))
 
@@ -577,17 +478,21 @@ class MLAnomalyDetector:
 
                 attributed_atm_id = self._attribution_for(label, rows)
 
+                # Known anomaly: XGB classifies as A1–A7 with sufficient confidence
                 if label != "NORMAL" and confidence >= CONFIDENCE_THRESHOLD:
                     if not self._is_active(label, attributed_atm_id):
                         self._save_anomaly(
                             anomaly_type=label,
                             atm_id=attributed_atm_id,
                             confidence=confidence,
-                            source="ML",
+                            source="CLASSIFIER",
                             explanation={"if_score": if_score},
                         )
                         saved += 1
+                        classifier_anomalies.append(label)
+                        log.info("Classifier detected: %s (atm=%s)", label, attributed_atm_id)
 
+                # Unknown anomaly: XGB says NORMAL but IF score is anomalous
                 elif label == "NORMAL" and if_score <= UNKNOWN_ANOMALY_THRESHOLD:
                     unknown_confidence = min(abs(if_score) / abs(UNKNOWN_ANOMALY_THRESHOLD), 1.0) if UNKNOWN_ANOMALY_THRESHOLD != 0 else 0.5
                     if not self._is_active("UNKNOWN", attributed_atm_id):
@@ -595,7 +500,7 @@ class MLAnomalyDetector:
                             anomaly_type="UNKNOWN",
                             atm_id=attributed_atm_id,
                             confidence=round(unknown_confidence, 3),
-                            source="ML",
+                            source="CLASSIFIER",
                             explanation={
                                 "if_score": if_score,
                                 "xgb_predicted": "NORMAL",
@@ -603,8 +508,64 @@ class MLAnomalyDetector:
                             },
                         )
                         saved += 1
-                        log.warning("Novel anomaly detected: UNKNOWN (atm=%s, if_score=%.3f)",
+                        classifier_anomalies.append("UNKNOWN")
+                        log.warning("Classifier detected: UNKNOWN (atm=%s, if_score=%.3f)",
                                     attributed_atm_id, if_score)
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # Layer 2: ZSCORE DETECTION (Novel patterns — always runs)
+        # Detects: UNKNOWN via rolling Z-score >3σ deviation from historical median
+        # Note: Runs independently of ML models (outside _loaded check)
+        # ─────────────────────────────────────────────────────────────────────────
+        if self._baseline.ready:
+            z_scores = self._baseline.compute_z_scores(features.flatten())
+            max_z = float(np.max(np.abs(z_scores)))
+            n_deviating = int(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD))
+            if max_z > ZSCORE_THRESHOLD:
+                base_confidence = min(max_z / 5.0, 1.0)
+                if not self._is_active("UNKNOWN", None):
+                    self._save_anomaly(
+                        anomaly_type="UNKNOWN",
+                        atm_id=None,
+                        confidence=round(base_confidence, 3),
+                        source="ZSCORE",
+                        explanation={
+                            "max_z_score": round(max_z, 3),
+                            "n_features_deviating": n_deviating,
+                            "z_threshold": ZSCORE_THRESHOLD,
+                            "zscore_window": len(self._baseline._history),
+                        },
+                    )
+                    saved += 1
+                    log.warning(
+                        "Z-score detected: UNKNOWN (max_z=%.2f, n_deviating=%d)",
+                        max_z, n_deviating
+                    )
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # Layer 3: SIGNAL_CORRELATOR DETECTION (Final fallback — deterministic)
+        # Detects: A1–7 via multi-signal correlation patterns
+        # ─────────────────────────────────────────────────────────────────────────
+        if SIGNAL_CORRELATOR_ENABLED:
+            heur_anomalies = self._detect_heuristic(rows, window_start, window_end)
+            for a in heur_anomalies:
+                atype = a.get("anomaly_type")
+                if not atype:
+                    continue
+                if self._is_active(atype, a.get("atm_id")):
+                    continue
+                self._save_anomaly(
+                    anomaly_type=atype,
+                    atm_id=a.get("atm_id"),
+                    confidence=0.95 if atype in {"A1","A2"} else 0.85,
+                    source="SIGNAL_CORRELATOR",
+                    explanation=json.loads(a.get("explanation", "{}")) if isinstance(a.get("explanation"), str) else (a.get("explanation") or {}),
+                    sources_involved=a.get("sources_involved"),
+                    recommended_action=a.get("recommended_action"),
+                    correlation_id=a.get("correlation_id"),
+                )
+                saved += 1
+                log.info("Signal correlator detected: %s (atm=%s)", atype, a.get("atm_id"))
 
         # Log to MLflow only if available — does NOT block detection
         try:
@@ -614,8 +575,8 @@ class MLAnomalyDetector:
                     run_name=f"inference_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
                     nested=True,
                 ):
-                    mlflow.log_metric("heuristic_anomalies", len(heur_anomalies) if HEURISTICS_ENABLED else 0)
-                    mlflow.log_metric("rule_anomalies", len(rule_anomalies) if RULES_DETECTION_ENABLED else 0)
+                    mlflow.log_metric("classifier_anomalies", len(classifier_anomalies))
+                    mlflow.log_metric("signal_correlator_anomalies", len(heur_anomalies) if SIGNAL_CORRELATOR_ENABLED else 0)
                     mlflow.log_metric("anomalies_saved", saved)
         except Exception as e:
             log.debug("MLflow logging skipped (not critical): %s", e)

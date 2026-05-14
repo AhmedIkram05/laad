@@ -90,7 +90,7 @@ flowchart TD
 
 **Generation & Ingestion:** The continuous generator (`backend/generator/continuous_generator.py`) emits baseline events every tick with probabilistic anomaly injection (A1–A7). On startup it backfills historical data, then enters a live loop. A `ThreadedConnectionPool` (minconn=5, maxconn=20) handles concurrent writes with retry/backoff. All records normalise into shared `events` and `metrics` tables.
 
-**Detection:** A 4-layer detection engine identifies A1–A7 anomaly types. HEURISTIC (primary, multi-signal correlation) and RULES (secondary, tag-reader) layers fire on the current 60-second window every 30 seconds with entity-aware ATM attribution. ML (Isolation Forest + XGBoost, 47 features, trained on 360-minute windows with class balancing, 99.17% CV accuracy) and BASELINE (rolling 20-window Z-score, novel pattern detection) activate when trained models are loaded. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. Models are registered in MLflow with "champion" alias for production serving. All training runs and inference cycles are logged to MLflow.
+**Detection:** A 3-layer detection engine identifies A1–A7 anomaly types. CLASSIFIER (primary, XGBoost + Isolation Forest, 47 features, 99.17% CV accuracy) runs first when models are loaded. ZSCORE (rolling 20-window Z-score, novel pattern detection) runs independently. SIGNAL_CORRELATOR (multi-signal correlation) is the final fallback. All layers fire every 30 seconds with entity-aware ATM attribution. Detection auto-retrains once per hour and falls back to a wider window on low-traffic periods. Models are registered in MLflow with "champion" alias for production serving. All training runs and inference cycles are logged to MLflow.
 
 **Serving layer:** FastAPI exposes `/auth`, `/anomalies`, `/analysis/detailed`, and `/admin` routes, served by the React + Vite dashboard.
 
@@ -112,8 +112,8 @@ Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool
 **Data retention preserving unresolved anomalies**
 Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically.
 
-**4-layer anomaly detection — reactive + proactive**
-HEURISTIC (primary) and RULES (secondary) layers fire on the current 60-second window every 30 seconds. ML (Isolation Forest + XGBoost, 47 features) and BASELINE (rolling Z-score, >3σ threshold) activate when trained models are loaded, providing proactive detection of novel patterns. The `explanation` JSONB field embeds `"source": "HEURISTIC"|"RULES"|"ML"|"BASELINE"` for frontend display. Deduplication prevents duplicate anomalies for the same `(anomaly_type, atm_id)` pair. All inference cycles are logged to MLflow for observability.
+**3-layer anomaly detection — reactive + proactive**
+CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display. Deduplication prevents duplicate anomalies for the same `(anomaly_type, atm_id)` pair. All inference cycles are logged to MLflow for observability.
 
 **Air-gapped RAG architecture**
 No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-text` embeddings feeds ChromaDB, with `llama3.1:8b` via Ollama. Evaluated with an LLM-as-judge pipeline scoring relevance, faithfulness, and answer completeness.
@@ -136,7 +136,7 @@ No log data leaves the network. LangChain's `SemanticChunker` with `nomic-embed-
 
 ## ML Anomaly Detection
 
-A production-grade 4-layer hybrid engine detecting all 7 anomaly types (A1–A7) across 7 simultaneous log sources, combining rule-based correlation with machine learning.
+A production-grade 3-layer hybrid engine detecting all 7 anomaly types (A1–A7) across 7 simultaneous log sources, combining statistical detection with machine learning. Models are versioned with git SHA, registered in MLflow with "champion" alias, and include version descriptions for traceability.
 
 ### Training Results — 99.17% Cross-Validation Accuracy
 
@@ -148,18 +148,20 @@ A production-grade 4-layer hybrid engine detecting all 7 anomaly types (A1–A7)
 | **Training windows** | 2,879 (non-overlapping, 60s window / 30s step) |
 | **Offline dataset** | 868,320 rows · 24 hours of synthetic data with all A1–A7 types injected |
 | **Top features** | `kafka_out_of_order`, `fatal_critical_weighted_sum`, `hardware_cassette_empty_count`, `kafka_rt_max/mean`, `terminal_handler_startup_count`, `container_restart_max`, `jvm_mem_rate` |
-| **Champion models registered** | `atm-xgb-classifier` v14 · `atm-isolation-forest` v14 — both with MLflow "champion" alias |
+| **Champion models registered** | `atm-xgb-classifier` · `atm-isolation-forest` — both with MLflow "champion" alias + version descriptions with git SHA |
+| **Data volume** | 868,320 training samples (24h offline) · ~16k rows/cycle inference · 2,879 sliding windows (60s/30s) |
 
-### 4 Detection Layers
+### 3 Detection Layers
 
-| Layer | Type | Trigger | Speed |
+| Layer | Type | Trigger | Always Active? |
 |---|---|---|---|
-| `HEURISTIC` | **Reactive** | Multi-source signal correlation, 60s window, 30s cycle | Immediate |
-| `RULES` | **Reactive** | Tag-reader catches `_anomaly_tag` from synthetic payloads | Immediate |
-| `ML` | **Proactive** | Isolation Forest (unsupervised) + XGBoost (supervised, 47 features) | On trained models |
-| `BASELINE` | **Proactive** | Rolling 20-window Z-score (>3σ deviation) detects novel patterns | On trained models |
+| `CLASSIFIER` | **Primary** | XGBoost + Isolation Forest (47 features). Detects A1–A7 (trained) + UNKNOWN (IF threshold) | Only when models exist |
+| `ZSCORE` | **Proactive** | Rolling 20-window Z-score (>3σ deviation) detects novel patterns | Yes (independent of models) |
+| `SIGNAL_CORRELATOR` | **Fallback** | Multi-source signal correlation for A1–A7 | Yes |
 
-HEURISTIC fires every 30 seconds on the current 60-second window. ML and BASELINE activate only when models are loaded, providing proactive coverage of patterns the rules haven't seen.
+CLASSIFIER runs first as primary detector. ZSCORE detects unknown patterns independently of models. SIGNAL_CORRELATOR is the final safety net.
+
+**Unknown anomaly detection:** The Isolation Forest component detects patterns that don't match any trained A1–A7 class, creating `UNKNOWN` anomalies when the anomaly score falls below the threshold. This catches novel failure modes the XGBoost classifier was never trained on.
 
 ### 47 ML Features
 
@@ -172,9 +174,10 @@ HEURISTIC fires every 30 seconds on the current 60-second window. ML and BASELIN
 
 ### MLOps
 
-- **Experiment tracking:** Every training run (LIVE + OFFLINE) and all inference cycles logged to MLflow with full metrics, parameters, feature importance, and run IDs
-- **Model registry:** Two registered models — `atm-xgb-classifier` and `atm-isolation-forest` — with MLflow "champion" alias pointing to the latest production version
+- **Experiment tracking:** Every training run (LIVE + OFFLINE) and all inference cycles logged to MLflow with full metrics, parameters, feature importance, run IDs, and git SHA for traceability
+- **Model registry:** Two registered models — `atm-xgb-classifier` and `atm-isolation-forest` — with MLflow "champion" alias and version descriptions
 - **Artifact persistence:** Model files (`xgb_classifier.joblib`, `isolation_forest.joblib`, `label_encoder.joblib`, `feature_names.json`) stored on a Docker named volume mount, surviving container restarts
+- **Data drift detection:** ZSCORE layer computes rolling 20-window baseline; when features deviate >3σ from historical median, triggers `UNKNOWN` anomaly for proactive alerting on distribution shift
 - **Auto-retrain:** APScheduler triggers retraining every 1 hour on live generator data; guards against retraining if models are < 24 hours old
 
 ### Training Commands
@@ -485,8 +488,8 @@ make rebuild
 | Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool` (minconn=5, maxconn=20), `execute_values` batch inserts |
 | Scheduler | APScheduler | Cleanup every 1h, ML detector every 30s, auto-retrain every 1h |
 | Continuous generator | Python + psycopg2 | Backfill + live loop, SIGTERM/SIGINT handling, exponential backoff |
-| Anomaly detection | 4-layer hybrid (HEURISTIC + RULES + ML + BASELINE) | Isolation Forest + XGBoost, rolling Z-score baseline, entity-aware attribution, 47 features, 360-min windows, class balancing, auto-retrain every 1h, inference logged to MLflow |
-| MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias, artifact storage on Docker named volume |
+| Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain every 1h, inference logged to MLflow |
+| MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React + Vite | Dashboard, anomaly detail, admin views |
 | RAG | LangChain + ChromaDB + Ollama | `nomic-embed-text`, `llama3.1:8b`, SemanticChunker |
