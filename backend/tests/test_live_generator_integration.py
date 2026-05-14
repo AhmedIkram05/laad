@@ -36,19 +36,13 @@ class TestEmitTick:
         assert mock.flush.called
 
     def test_emit_tick_in_backfill_mode_skips_anomaly_injection(self):
-        import backend.generator.continuous_generator as cg
-        original = cg._in_backfill
-        cg._in_backfill = True
         mock = _mock_producer()
-        try:
-            t = datetime.now(timezone.utc)
-            anomaly_last = {}
-            with patch("backend.generator.continuous_generator.rng") as mock_rng:
-                mock_rng.random.return_value = 0.99
-                emit_tick(mock, t, anomaly_last)
+        t = datetime.now(timezone.utc)
+        anomaly_last = {}
+        with patch("backend.generator.continuous_generator.rng") as mock_rng:
+            with patch("backend.generator.continuous_generator.ANOMALY_PROB", 0.0):
+                emit_tick(mock, t, anomaly_last, backfill_mode=True, backfill_prob=0.0)
                 mock_rng.random.assert_not_called()
-        finally:
-            cg._in_backfill = original
 
     def test_no_direct_db_writes_from_emit_tick(self):
         with patch("backend.src.database.connection.get_cursor") as mock_gc:

@@ -37,7 +37,7 @@ def mock_kafka_module():
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
-    """Seed baseline data and clean up DB between tests."""
+    """Seed ATM baseline data once per session. Run once at session start."""
     from backend.src.database import config
     
     config.DB_CONFIG["host"] = os.environ["POSTGRES_HOST"]
@@ -50,15 +50,11 @@ def setup_database():
     import bcrypt
     
     with get_cursor(commit=True) as cur:
-        atms = [f"ATM-GB-{str(i).zfill(4)}" for i in range(1, 11)]
         cur.execute("TRUNCATE TABLE events, metrics, anomalies, ingestion_errors, users CASCADE")
-        cur.execute("DELETE FROM atms")
-        for atm in atms:
-            cur.execute("INSERT INTO atms (atm_id) VALUES (%s)", (atm,))
-        
         admin_hash = bcrypt.hashpw(b'admin', bcrypt.gensalt()).decode()
         cur.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)",
+            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s) "
+            "ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role",
             ("admin", admin_hash, "admin")
         )
 
@@ -68,17 +64,6 @@ def db_cleanup():
     from backend.src.database.connection import get_cursor
     with get_cursor(commit=True) as cur:
         cur.execute("TRUNCATE TABLE events, metrics, anomalies, ingestion_errors CASCADE")
-
-@pytest.fixture(scope="module", autouse=True)
-def ensure_db_schema():
-    """Re-apply schema before each test module to pick up schema changes."""
-    from backend.src.database.connection import get_conn, release_conn
-    import backend.src.database.init_db as init_db
-    conn = get_conn()
-    try:
-        init_db.init_db()
-    finally:
-        release_conn(conn)
 
 @pytest.fixture(autouse=True)
 def override_db_dependency(monkeypatch):

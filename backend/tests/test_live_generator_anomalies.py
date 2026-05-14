@@ -19,6 +19,13 @@ def _mock_producer():
     return MagicMock()
 
 
+@pytest.fixture(autouse=True)
+def reset_anomaly_state(monkeypatch):
+    """Clears progressive injector state between tests."""
+    from backend.generator import anomaly_injectors as ai
+    monkeypatch.setattr(ai, "_anomaly_state", {})
+
+
 class TestInjectA1:
     def test_sends_4_event_messages(self):
         mock = _mock_producer()
@@ -119,9 +126,9 @@ class TestInjectA3:
     def test_oom_event_on_90th_call(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
+        inject_a3(mock, t)
         for _ in range(89):
             inject_a3(mock, t)
-        inject_a3(mock, t)
         assert mock.send_event.call_count == 1
         call_args = mock.send_event.call_args[0][0]
         assert call_args["payload"].get("_anomaly_tag") == "A3"
@@ -209,7 +216,8 @@ class TestInjectA6:
     def test_timeout_event_on_120th_call(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
-        for _ in range(120):
+        inject_a6(mock, t)
+        for _ in range(119):
             inject_a6(mock, t)
         assert mock.send_event.call_count == 1
         call_args = mock.send_event.call_args[0][0]
