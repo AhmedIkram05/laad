@@ -5,6 +5,7 @@ import { AuthProvider } from "./auth/AuthProvider";
 /* Import Pages */
 import MainLayout from "./layouts/MainLayout";
 import Dashboard from "./pages/Dashboard";
+import Analytics from "./pages/Analytics";
 import Starred from "./pages/Starred";
 import Completed from "./pages/Completed";
 import AnomalyData from "./pages/AnomalyData";
@@ -29,6 +30,7 @@ function App() {
                 <Route element={<ProtectedRoute />}>
                     <Route element={<MainLayout />}>
                         <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/analytics" element={<Analytics />} />
                         <Route path="/starred" element={<Starred />} />
                         <Route path="/completed" element={<Completed />} />
                         <Route path="/data/:anomaly_type" element={<AnomalyData />} />

@@ -9,6 +9,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { GoHome, GoStar, GoCheckCircle, GoSignOut } from "react-icons/go";
 import { FiSettings } from "react-icons/fi";
+import { FiActivity } from "react-icons/fi";
 
 /* Internal Imports */
 import './SideNavbar.css'
@@ -27,6 +28,8 @@ function SideNavbar() {
       <div className="buttonContainer">
         <button className={`button ${active("/dashboard") ? "active" : ""}`} onClick={() => navigate("/dashboard")}>
           <span className="icon"><GoHome/></span><span className="text">Dashboard</span></button>
+        <button className={`button ${active("/analytics") ? "active" : ""}`} onClick={() => navigate("/analytics")}>
+          <span className="icon"><FiActivity/></span><span className="text">Analytics</span></button>
         <button className={`button ${active("/starred") ? "active" : ""}`} onClick={() => navigate("/starred")}>
           <span className="icon"><GoStar/></span><span className="text">Starred</span></button>
         <button className={`button ${active("/completed") ? "active" : ""}`} onClick={() => navigate("/completed")}>

@@ -5,7 +5,7 @@
  */
 
 // Generates Authorisation Headers Using JWT
-const getAuthHeaders = () => ({
+export const getAuthHeaders = () => ({
     Authorization: `Bearer ${localStorage.getItem("jwt")}`,
 });
 

@@ -4,13 +4,16 @@
 
 .container {
     display: flex;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .page {
     flex: 1;
-    min-height: 100vh;
+    height: 100%;
     box-sizing: border-box;
     background-color: var(--bg-primary);
+    overflow-y: auto;
 }
 
 html, body {

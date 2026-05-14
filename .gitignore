@@ -30,9 +30,12 @@ dist-ssr
 AGENTS.md
 .agents
 .playwright-mcp
+test-results
+
 # ML model artifacts (auto-generated, tracked via Docker volume)
 backend/src/anomaly_detection/ml/artifacts/
 
 # Offline training dataset (generated artifact)
 data/
 skills-lock.json
+playwright.config.js
