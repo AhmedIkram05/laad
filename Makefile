@@ -3,31 +3,34 @@
 help:
 	@echo "LAAD Makefile — Essential commands"
 	@echo ""
-	@echo "  make all          		Start all services (postgres, backend, generator, mlflow)"
+	@echo "  make all          		Start all services (postgres, kafka, chromadb, backend, generator, kafka-consumer, mlflow)"
 	@echo "  make rebuild      		Full rebuild: remove ALL containers/volumes/images, then start fresh"
 	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
 	@echo "  make clean       		Stop all containers and remove volumes"
-	@echo "  make logs        		Follow all service logs"
+	@echo "  make logs         		Follow all service logs"
 	@echo "  make retrain     		Retrain ML models (Isolation Forest + XGBoost)"
-	@echo "  make retrain-offline  	 Retrain ML on offline dataset (all A1-A7 guaranteed)"
+	@echo "  make retrain-offline  	Retrain ML on offline dataset (all A1-A7 guaranteed)"
 	@echo "  make training-data  	Generate offline training dataset (24h, all A1-A7)"
-	@echo "  make pytest      		Run all tests in Docker (postgres_test + pytest containers)"
+	@echo "  make pytest       		Run all tests in Docker (postgres_test + pytest containers)"
 	@echo ""
 	@echo "Services:"
 	@echo "  Backend API:     		http://localhost:8000"
-	@echo "  PostgreSQL:     		localhost:5432"
+	@echo "  Kafka:            		localhost:9092"
+	@echo "  ChromaDB:         		http://localhost:8001"
+	@echo "  PostgreSQL:     		localhost:5434"
 	@echo "  Test DB:         		localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
 
 # ── Start All ────────────────────────────────────────────────────────────────
 
-all:
-	docker compose up -d --build postgres backend generator
-	docker compose --profile ml up -d
+all: ml-up
+	docker compose up -d --build postgres kafka kafka-init chromadb backend generator kafka-consumer
 	@echo ""
 	@echo "✓ All services started!"
 	@echo "  Backend API:     		http://localhost:8000"
-	@echo "  PostgreSQL:     		localhost:5432"
+	@echo "  Kafka:            		localhost:9092"
+	@echo "  ChromaDB:         		http://localhost:8001"
+	@echo "  PostgreSQL:     		localhost:5434"
 	@echo "  Test DB:         		localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
 	@echo ""
@@ -36,45 +39,42 @@ all:
 # ── Full Rebuild ────────────────────────────────────────────────────────────
 
 rebuild:
-	@echo "==> Stopping all containers..."
-	-docker compose --profile ml down -v
-	-docker compose --profile test down -v
-	-docker compose --profile generator down -v
-	-docker compose down -v
+	@echo "==> Stopping all containers and removing all volumes/images..."
+	-docker compose --profile ml down -v 2>/dev/null; true
+	-docker compose --profile test down -v 2>/dev/null; true
+	-docker compose down -v 2>/dev/null; true
+	-docker compose down --remove-orphans 2>/dev/null; true
+	@echo "==> Removing all LAAD volumes..."
+	-docker volume rm laad_postgres_data laad_mlflow_artifacts laad_postgres_test_data laad_kafka_data laad_chroma_data 2>/dev/null; true
 	@echo "==> Removing orphaned containers..."
-	-docker compose down --remove-orphans
-	@echo "==> Removing LAAD volumes..."
-	-docker volume rm laad_postgres_data laad_mlflow_artifacts laad_postgres_test_data 2>/dev/null; true
-	@echo "==> Removing LAAD images..."
-	-docker rmi laad-backend:latest laad-generator:latest 2>/dev/null; true
-	@echo "==> Removing ML artifacts (bind mount survives rebuild)..."
-	-rm -rf backend/src/anomaly_detection/ml/artifacts/*.joblib backend/src/anomaly_detection/ml/artifacts/feature_names.json backend/src/anomaly_detection/ml/artifacts/label_encoder.joblib
-	@echo "==> Starting fresh..."
-	docker compose up -d --build postgres backend generator
+	-docker compose down --remove-orphans 2>/dev/null; true
+	@echo "==> Starting fresh (mlflow starts with --profile ml)..."
+	docker compose up -d --build postgres kafka kafka-init chromadb backend generator kafka-consumer
 	docker compose --profile ml up -d
 	@echo ""
 	@echo "✓ Rebuild complete!"
-	@echo "  Backend API:     http://localhost:8000"
-	@echo "  PostgreSQL:      localhost:5432"
-	@echo "  Test DB:         localhost:5433"
-	@echo "  MLflow UI:       http://localhost:5001"
-	@echo ""
+	@echo "  Backend API:     		http://localhost:8000"
+	@echo "  Kafka:           		localhost:9092"
+	@echo "  ChromaDB:         		http://localhost:8001"
+	@echo "  PostgreSQL:     		localhost:5434"
+	@echo "  Test DB:         		localhost:5433"
+	@echo "  MLflow UI:       		 http://localhost:5001"
 
 # ── Backend-only Rebuild ───────────────────────────────────────────────────
 
 rebuild-backend:
-	docker compose build backend
-	docker compose up -d --no-deps backend
-	@echo "✓ Backend image rebuilt and container restarted"
+	docker compose build backend generator kafka-consumer
+	docker compose up -d --no-deps backend generator kafka-consumer
+	@echo "✓ Backend and related images rebuilt and containers restarted"
 
 # ── Stop All ─────────────────────────────────────────────────────────────
 
 clean:
-	-docker compose --profile ml down -v
-	-docker compose --profile test down -v
-	-docker compose --profile generator down -v
-	-docker compose down -v
-	-docker compose down --remove-orphans
+	@echo "==> Stopping all services and removing volumes..."
+	-docker compose --profile ml down -v 2>/dev/null; true
+	-docker compose --profile test down -v 2>/dev/null; true
+	-docker compose down -v 2>/dev/null; true
+	-docker compose down --remove-orphans 2>/dev/null; true
 	@echo "✓ All services stopped and volumes removed"
 
 # ── Follow Logs ─────────────────────────────────────────────────────────────
@@ -98,7 +98,8 @@ retrain-offline:
 	@echo "✓ Retrain complete!"
 	@echo "  View training run at: http://localhost:5001"
 
-# IGNORE
+# ── Generate Training Data ──────────────────────────────────────────────────
+
 training-data:
 	@echo "==> Generating offline training dataset (24h, all A1-A7)..."
 	python3 generate_training_data.py
@@ -111,8 +112,14 @@ training-data:
 
 pytest:
 	@echo "==> Running tests (assumes main services are already running)..."
-	docker compose --profile test run --rm pytest
-	@echo "==> Stopping test DB..."
-	-docker compose rm -s -f pytest 2>/dev/null; docker compose -f docker-compose.yml stop postgres_test 2>/dev/null; true
+	docker compose --profile test up --abort-on-container-exit
+	@echo "==> Stopping test environment..."
+	-docker compose --profile test down -v 2>/dev/null; true
 	@echo ""
 	@echo "✓ Tests complete!"
+
+# ── MLflow profile shortcut ─────────────────────────────────────────────────
+
+ml-up:
+	@docker compose --profile ml up -d
+	@echo "✓ MLflow started on http://localhost:5001"
