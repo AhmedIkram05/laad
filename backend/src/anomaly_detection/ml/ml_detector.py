@@ -319,17 +319,25 @@ class MLAnomalyDetector:
         return rows, window_start, window_end
 
     def _is_active(self, anomaly_type: str, atm_id: str | None) -> bool:
-        """Check if an active anomaly of this type already exists."""
+        """Check if an active anomaly of this (type, atm_id) was saved in the last 5 minutes.
+
+        Prevents double-write when both the Kafka consumer and the backend APScheduler
+        independently trigger detect_and_save() on similar windows.
+        The 5-minute window is wide enough to cover overlapping query windows while
+        preventing duplicate writes for the same detected incident.
+        """
+        from datetime import timedelta
+        window_start = datetime.now(timezone.utc) - timedelta(minutes=5)
         with get_cursor() as cur:
             if atm_id is None:
                 cur.execute(
-                    "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id IS NULL AND is_active = 1",
-                    (anomaly_type,)
+                    "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id IS NULL AND is_active = 1 AND detected_at >= %s",
+                    (anomaly_type, window_start)
                 )
             else:
                 cur.execute(
-                    "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id = %s AND is_active = 1",
-                    (anomaly_type, atm_id)
+                    "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id = %s AND is_active = 1 AND detected_at >= %s",
+                    (anomaly_type, atm_id, window_start)
                 )
             return cur.fetchone() is not None
 
