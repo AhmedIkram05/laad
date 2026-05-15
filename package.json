@@ -1,7 +1,7 @@
 {
   "name": "laad",
   "version": "1.0.0",
-  "description": "> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources, detects 7 anomaly types, ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with a fully local RAG-based diagnostic assistant.",
+  "description": "> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources, detects 7 anomaly types, ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by Gemini 3.1 Flash with confidence scoring and calibration.",
   "main": "index.js",
   "directories": {
     "doc": "docs"
