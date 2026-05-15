@@ -21,7 +21,6 @@ from backend.src.auth.auth_router import router as authRouter
 from backend.src.analysis.analysis_router import router as analysisRouter
 from backend.src.analytics.analytics_router import router as analyticsRouter
 from backend.src.rag.router import router as ragRouter
-from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.database.connection import get_conn, release_conn
 from backend.src.database.init_db import init_db
 from backend.src.anomaly_detection.ml.train import ARTIFACT_DIR
@@ -30,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
 
-_ml_detector: MLAnomalyDetector | None = None
 _db_initialized = False
 
 
@@ -63,9 +61,8 @@ async def lifespan(app: FastAPI):
     _check_and_retrain_on_startup()
 
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup", misfire_grace_time=60)
-    scheduler.add_job(_run_ml_detection, "interval", seconds=30, id="ml_detector", misfire_grace_time=60)
     scheduler.start()
-    logger.info("Schedulers started: cleanup (1h), ml_detector (30s)")
+    logger.info("Schedulers started: cleanup (1h)")
     yield
     scheduler.shutdown()
     logger.info("Schedulers stopped")
@@ -95,8 +92,7 @@ def _check_and_retrain_on_startup() -> None:
 
 
 def _do_retrain() -> None:
-    """Run the training pipeline and reload models."""
-    global _ml_detector
+    """Run the training pipeline."""
     try:
         import importlib
         from backend.src.anomaly_detection.ml import train
@@ -105,20 +101,6 @@ def _do_retrain() -> None:
         logger.info("Startup retrain complete")
     except Exception as exc:
         logger.error("Startup retrain failed: %s", exc, exc_info=True)
-    finally:
-        if _ml_detector is not None:
-            _ml_detector._loaded = _ml_detector._load_models()
-            logger.info("ML detector reloaded models after retrain")
-
-
-def _run_ml_detection() -> None:
-    global _ml_detector
-    try:
-        if _ml_detector is None:
-            _ml_detector = MLAnomalyDetector()
-        _ml_detector.detect_and_save()
-    except Exception as exc:
-        logger.error("ML detection cycle failed: %s", exc, exc_info=True)
 
 
 app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
