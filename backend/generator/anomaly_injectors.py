@@ -25,54 +25,63 @@ def _get_progressive_state(key: str) -> dict:
 def inject_a1(producer, t: datetime) -> None:
     """Inject A1 Network Timeout Cascade.
 
-    Fires a 4-message cascade across ATM_APP, KAFKA, and TERMINAL_HANDLER
+    Fires a variable cascade (3-4 signals) across ATM_APP, KAFKA, and TERMINAL_HANDLER
     sharing a single correlation_id.
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
-    message_id = str(uuid4())
+    
+    # Always include the first two signals: NETWORK_DISCONNECT and TIMEOUT
     producer.send_event({
         "timestamp": t.isoformat(), "source": "ATM_APP", "atm_id": atm,
         "event_type": "NETWORK_DISCONNECT", "severity": "ERROR",
         "message": "Network connection lost",
         "payload": {"_anomaly_tag": "A1", "location_code": ATM_LOCATIONS[atm]},
         "correlation_id": corr_id,
-        "message_id": message_id,
+        "message_id": str(uuid4()),
     })
     producer.send_event({
-        "timestamp": (t + timedelta(seconds=5)).isoformat(), "source": "ATM_APP",
+        "timestamp": (t + timedelta(seconds=random.randint(3, 8))).isoformat(), "source": "ATM_APP",
         "atm_id": atm, "event_type": "TIMEOUT", "severity": "ERROR",
         "message": "Request timed out",
         "payload": {"_anomaly_tag": "A1"},
         "correlation_id": corr_id,
         "message_id": str(uuid4()),
     })
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=10)).isoformat(), "source": "KAFKA",
-        "atm_id": atm, "event_type": "STATUS", "severity": "INFO",
-        "message": "ATM Offline",
-        "payload": {"_anomaly_tag": "A1", "atm_status": "Offline"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=15)).isoformat(), "source": "TERMINAL_HANDLER",
-        "atm_id": atm, "event_type": "NETWORK_ERROR", "severity": "FATAL",
-        "message": "Connection timed out",
-        "payload": {"_anomaly_tag": "A1"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    
+    # Randomly include KAFKA signal (70% probability)
+    if random.random() < 0.7:
+        producer.send_event({
+            "timestamp": (t + timedelta(seconds=random.randint(8, 15))).isoformat(), "source": "KAFKA",
+            "atm_id": atm, "event_type": "STATUS", "severity": "INFO",
+            "message": "ATM Offline",
+            "payload": {"_anomaly_tag": "A1", "atm_status": "Offline"},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        })
+    
+    # Randomly include TERMINAL_HANDLER signal (70% probability)
+    if random.random() < 0.7:
+        producer.send_event({
+            "timestamp": (t + timedelta(seconds=random.randint(12, 20))).isoformat(), "source": "TERMINAL_HANDLER",
+            "atm_id": atm, "event_type": "NETWORK_ERROR", "severity": "FATAL",
+            "message": "Connection timed out",
+            "payload": {"_anomaly_tag": "A1"},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        })
 
 
 def inject_a2(producer, t: datetime) -> None:
     """Inject A2 Cash Cassette Empty.
 
-    Fires a 3-message cascade across HARDWARE and KAFKA sharing a
-    single correlation_id. The CASSETTE_EMPTY fires 5 min after CASSETTE_LOW.
+    Fires a variable cascade (2-3 signals) across HARDWARE and KAFKA sharing a
+    single correlation_id. The CASSETTE_EMPTY fires after CASSETTE_LOW with variable timing.
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
+    
+    # Always include CASSETTE_LOW
     producer.send_event({
         "timestamp": t.isoformat(), "source": "HARDWARE", "atm_id": atm,
         "event_type": "CASSETTE_LOW", "severity": "WARNING",
@@ -81,22 +90,29 @@ def inject_a2(producer, t: datetime) -> None:
         "correlation_id": corr_id,
         "message_id": str(uuid4()),
     })
+    
+    # Variable delay for CASSETTE_EMPTY (3-8 minutes)
+    empty_delay = random.randint(3, 8)
     producer.send_event({
-        "timestamp": (t + timedelta(minutes=5)).isoformat(), "source": "HARDWARE",
+        "timestamp": (t + timedelta(minutes=empty_delay)).isoformat(), "source": "HARDWARE",
         "atm_id": atm, "event_type": "CASSETTE_EMPTY", "severity": "CRITICAL",
         "message": "Cash empty in cassette 1",
         "payload": {"_anomaly_tag": "A2"},
         "correlation_id": corr_id,
         "message_id": str(uuid4()),
     })
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=10)).isoformat(), "source": "KAFKA",
-        "atm_id": atm, "event_type": "STATUS", "severity": "INFO",
-        "message": "ATM Out of Service",
-        "payload": {"_anomaly_tag": "A2", "atm_status": "OutOfService"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    
+    # Randomly include KAFKA OutOfService signal (80% probability)
+    if random.random() < 0.8:
+        kafka_delay = empty_delay + random.randint(2, 5)  # 2-5 minutes after cassette empty
+        producer.send_event({
+            "timestamp": (t + timedelta(minutes=kafka_delay)).isoformat(), "source": "KAFKA",
+            "atm_id": atm, "event_type": "STATUS", "severity": "INFO",
+            "message": "ATM Out of Service",
+            "payload": {"_anomaly_tag": "A2", "atm_status": "OutOfService"},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        })
 
 
 def inject_a3(producer, t: datetime) -> None:
@@ -188,34 +204,72 @@ def inject_a4(producer, t: datetime) -> None:
         "correlation_id": corr_id,
         "message_id": str(uuid4()),
     })
+    # Add GCP metric for container restart count
+    producer.send_metric({
+        "timestamp": (t + timedelta(seconds=60)).isoformat(), "source": "CLOUD",
+        "entity_id": atm, "metric_name": "container/restart_count",
+        "metric_value": 2,
+        "payload": {"_anomaly_tag": "A4"},
+        "correlation_id": corr_id,
+        "message_id": str(uuid4()),
+    })
 
 
 def inject_a5(producer, t: datetime) -> None:
     """Inject A5 High Response Time Spike.
 
-    Fires 11 messages over 90 seconds with progressively degrading success
-    rate (from 1.0 to ~0.3) and response times > 5000ms.
+    Fires a variable cascade (8-12 messages) over 60-120 seconds with 
+    progressively degrading success rate and variable response times > 3000ms.
+    Includes ATM_APP TIMEOUT events for cross-source correlation.
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
+    
+    # Variable number of messages (8-12) and duration (60-120 seconds)
+    num_messages = random.randint(8, 12)
+    duration = random.randint(60, 120)
+    interval = duration / num_messages
+    
     success_rate = 1.0
-    for i in range(10):
-        tick_t = t + timedelta(seconds=i * 10)
-        success_rate = max(0.3, success_rate - random.uniform(0.05, 0.15))
+    for i in range(num_messages):
+        tick_t = t + timedelta(seconds=i * interval)
+        # Variable success rate drop (0.3 to 0.8)
+        success_rate = max(0.3, success_rate - random.uniform(0.02, 0.12))
+        # Variable response time threshold (3000-8000 ms)
+        response_time = 3000 + random.randint(0, 5000)
         producer.send_event({
             "timestamp": tick_t.isoformat(), "source": "KAFKA", "atm_id": atm,
             "event_type": "METRIC", "severity": "INFO",
             "message": "Latency update",
             "payload": {
                 "_anomaly_tag": "A5",
-                "response_time_ms": 5000 + random.randint(0, 1000),
+                "response_time_ms": response_time,
                 "success_rate": round(success_rate, 3),
             },
             "correlation_id": corr_id,
             "message_id": str(uuid4()),
         })
+        
+        # Occasionally add ATM_APP TIMEOUT for cross-source correlation (40% probability)
+        if random.random() < 0.4 and i > 0:
+            producer.send_event({
+                "timestamp": (tick_t + timedelta(seconds=random.randint(1, 5))).isoformat(), 
+                "source": "ATM_APP", 
+                "atm_id": atm,
+                "event_type": "TIMEOUT", 
+                "severity": "ERROR",
+                "message": "Request timed out",
+                "payload": {
+                    "_anomaly_tag": "A5",
+                    "error_code": "ERR-0012"
+                },
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            })
+    
+    # Final status message
     producer.send_event({
-        "timestamp": (t + timedelta(seconds=90)).isoformat(), "source": "KAFKA",
+        "timestamp": (t + timedelta(seconds=duration)).isoformat(), "source": "KAFKA",
         "atm_id": atm, "event_type": "STATUS", "severity": "WARNING",
         "message": "Success rate drop detected",
         "payload": {"_anomaly_tag": "A5", "success_rate": round(success_rate, 3)},
