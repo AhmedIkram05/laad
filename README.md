@@ -624,7 +624,7 @@ erDiagram
 
 | Parameter | Value | Description |
 |---|---|---|
-| **Pool type** | `ThreadedConnectionPool` | Thread-safe, suitable for FastAPI + APScheduler + Kafka consumer |
+| **Pool type** | `ThreadedConnectionPool` | Thread-safe, suitable for FastAPI + Kafka consumer |
 | **minconn** | 5 | Minimum persistent connections |
 | **maxconn** | 50 | Maximum connections (handles concurrent API requests + ML detector + generator + cleanup) |
 | **Retry policy** | 3 attempts, exponential backoff (100ms → 200ms) | Handles pool exhaustion, deadlocks, serialization failures |
@@ -746,7 +746,7 @@ Uses deterministic multi-signal correlation (`detect_anomalies_from_window()`) t
 
 | Mechanism | Window | Purpose |
 |---|---|---|
-| `_is_active()` | 5 minutes | Prevents duplicate writes when both kafka-consumer (30s trigger) and backend APScheduler (30s trigger) fire on the same incident window |
+| `_is_active()` | 5 minutes | Prevents duplicate writes when the kafka-consumer (30s trigger) fires on the same incident window |
 | Query | `SELECT 1 FROM anomalies WHERE anomaly_type = ? AND atm_id = ? AND is_active = 1 AND detected_at >= now() - 5min` | Returns true if active anomaly of same type+atm_id exists |
 
 ### Entity Attribution
@@ -771,16 +771,15 @@ The `_attribution_for()` method assigns the correct entity per anomaly type:
 | **Severity-weighted** | 2 | FATAL-weighted sum, total error count |
 | **Cross-source flags** | 7 | Multi-source errors, OOM presence, network disconnect, timeout, Kafka out-of-order, anomaly tag count, unique ATM count |
 
-### Dual-Trigger Detection
+### Anomaly Detection Trigger
 
-Both the `kafka-consumer` service and the backend APScheduler independently trigger detection every 30 seconds:
+The `kafka-consumer` service triggers anomaly detection every 30 seconds after processing a batch of messages:
 
 | Trigger | Location | Interval | Purpose |
 |---|---|---|---|
 | Kafka consumer | `consumer.py` `_trigger_anomaly_detection()` | 30s post-batch | Real-time detection as data arrives |
-| APScheduler | `server.py` `_run_ml_detection()` | 30s scheduled | Backup detection for when consumer is behind |
 
-The 5-minute dedup window ensures no duplicate writes when both fire on the same incident.
+The 5-minute dedup window in `_is_active()` prevents duplicate writes within the same detection cycle.
 
 ---
 
@@ -895,7 +894,7 @@ flowchart TD
 
 | Parameter | Value |
 |---|---|
-| **Schedule** | Every 1 hour (APScheduler) |
+| **Schedule** | On startup (if models missing or corrupted) |
 | **Guard** | Skips if models are < 24 hours old |
 | **Data source** | Live generator data from DB (360-min window) |
 | **Persistence** | Artifacts survive container restarts (bind mount) |
@@ -1176,7 +1175,7 @@ make pytest        # runs all tests in Docker with isolated test DB
 | Connection pool exhausted under ML detector load | (runtime) | Pool bumped to `maxconn=50`, `minconn=5` |
 | Analysis endpoint 500 on `None` comparison | (runtime) | Added `or 0` guard on `frac_increase` in `analysis.py` |
 | Generator wrote directly to DB (violated Kafka-only pipeline) | `test_live_generator_emitters.py` | Emitters refactored to use Kafka producer; no psycopg2 imports remain |
-| Dual-trigger duplicate anomaly writes | `test_ml_detector.py` | 5-minute dedup window added to `_is_active()` |
+| Duplicate anomaly writes from concurrent detection | `test_ml_detector.py` | Removed APScheduler; anomaly detection now only via Kafka consumer; 5-minute dedup window in `_is_active()` |
 | A3/A6 anomaly injection burst behavior unrealistic | (design decision) | State-based progressive emission: one message per tick over 90/120 ticks |
 
 ---
@@ -1199,10 +1198,10 @@ Kafka provides at-least-once delivery by default. The consumer uses an in-memory
 Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool` (minconn=5, maxconn=50). The `write_helper.py` implements retry/backoff for transient errors (deadlocks, serialization failures, pool exhaustion). SQL uses `%s` parameter placeholders throughout.
 
 **Data retention preserving unresolved anomalies**
-Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically. Batched DELETE (5,000 rows/batch) + VACUUM for efficient space reclamation.
+Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically (only scheduler remaining after removing ML detector). Batched DELETE (5,000 rows/batch) + VACUUM for efficient space reclamation.
 
 **3-layer anomaly detection — reactive + proactive**
-CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The Kafka consumer and the backend APScheduler independently trigger detection every 30 seconds each. A 5-minute dedup window in `_is_active()` prevents duplicate writes when both fire on the same incident window. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display.
+CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The Kafka consumer triggers detection every 30 seconds after processing messages. A 5-minute dedup window in `_is_active()` prevents duplicate writes within that window. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display.
 
 **RAG Data Privacy**
 Log data stored in ChromaDB never leaves the network — only generated responses are sent to the LLM API. Embeddings are created locally using `nomic-embed-text`. The LLM receives only the retrieved log context and user query, not raw ATM data.
@@ -1268,7 +1267,7 @@ flowchart TD
     KI["kafka-init\nTopic creation (atm-events, atm-metrics)\n3 partitions each"]
     KC["kafka-consumer\nconsumer.py\nDedup + Parse + Dual-write\nTriggers detection every 30s"]
     CB["chromadb\nchromadb/chroma:latest\nport: 8001→8000\nvolume: chroma_data"]
-    BE["backend\nFastAPI + APScheduler\nport: 8000\n3 schedulers: cleanup/1h, detect/30s, retrain/1h"]
+    BE["backend\nFastAPI + APScheduler\nport: 8000\n1 scheduler: cleanup/1h"]
     GE["generator\ncontinuous_generator.py\nKafka producer\nBackfill + Live loop"]
     MF["mlflow\nghcr.io/mlflow/mlflow:v3.1.1\nport: 5001→5000\nvolume: mlflow_artifacts"]
   end
@@ -1444,11 +1443,11 @@ make rebuild
 | Backend framework | FastAPI | Lifespan context manager, dependency injection for RBAC |
 | Message bus | Apache Kafka (`confluentinc/cp-kafka:7.5.0`) | KRaft mode (no ZooKeeper), 2 topics (atm-events, atm-metrics), 3 partitions each, gzip compression, acks=all, at-least-once delivery |
 | Database | PostgreSQL 16 (JSONB, TIMESTAMPTZ) | `ThreadedConnectionPool` (minconn=5, maxconn=50), `execute_values` batch inserts, exponential backoff retry |
-| Scheduler | APScheduler | Cleanup every 1h, ML detector every 30s, auto-retrain every 1h |
+| Scheduler | APScheduler | Cleanup every 1h, auto-retrain on startup (if models missing/corrupted) |
 | Log generator | Python + `kafka-python` | Backfill + live loop, SIGTERM/SIGINT handling, pure Kafka producer (no direct DB writes), 7 emitters + 7 anomaly injectors |
 | Kafka consumer | Python + `kafka-python` | Manual offset commit, LRU deduplication (10k IDs), writes to PostgreSQL + ChromaDB, triggers anomaly detector every 30s |
 | ChromaDB | ChromaDB HTTP client | Per-ATM 10-event buffer, SemanticChunker with `nomic-embed-text`, `atm_logs` collection on Docker named volume |
-| Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain every 1h, inference logged to MLflow. Independent dual-detection (consumer + backend APScheduler each at 30s interval) with 5-min dedup window |
+| Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain on startup (if models missing/corrupted), inference logged to MLflow. Detection triggered by Kafka consumer every 30s with 5-min dedup window |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React 19 + Vite 8 | 10 pages, 11 components, Recharts for visualization, React Router for navigation |
