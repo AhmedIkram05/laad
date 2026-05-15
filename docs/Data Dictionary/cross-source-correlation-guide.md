@@ -21,3 +21,5 @@
 | OS Memory Pressure (ATM)    | Windows OS Metrics, ATM App Log                | `memory_usage_percent > 90`, followed by `event_type=TIMEOUT`                  |
 | Out-of-Order Kafka Events   | Kafka Metrics Stream                           | `timestamp` not monotonic across `kafka_offset` values                         |
 | Malformed Log Injection      | Any source                                     | Missing required fields, null values in non-nullable fields, bad timestamp format |
+
+*Note: Actual implementations may use variable timing and probabilistic signal inclusion for more realistic anomaly patterns while maintaining the core correlation principles.*
