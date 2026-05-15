@@ -27,11 +27,12 @@ def reset_anomaly_state(monkeypatch):
 
 
 class TestInjectA1:
-    def test_sends_4_event_messages(self):
+    def test_sends_variable_event_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a1(mock, t)
-        assert mock.send_event.call_count == 4
+        # A1 now sends 2-4 messages (always 2 core + up to 2 optional)
+        assert 2 <= mock.send_event.call_count <= 4
 
     def test_network_disconnect_event_present(self):
         mock = _mock_producer()
@@ -49,20 +50,22 @@ class TestInjectA1:
         corr_ids = [c[0][0]["correlation_id"] for c in calls]
         assert len(set(corr_ids)) == 1
 
-    def test_sources_include_atm_app_kafka_terminal_handler(self):
+    def test_sources_include_atm_app_and_optionally_others(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a1(mock, t)
         sources = {c[0][0]["source"] for c in mock.send_event.call_args_list}
-        assert sources == {"ATM_APP", "KAFKA", "TERMINAL_HANDLER"}
+        assert "ATM_APP" in sources
+        # May include KAFKA and/or TERMINAL_HANDLER probabilistically
 
 
 class TestInjectA2:
-    def test_sends_3_event_messages(self):
+    def test_sends_variable_event_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a2(mock, t)
-        assert mock.send_event.call_count == 3
+        # A2 now sends 2-3 messages (always CASSETTE_LOW + CASSETTE_EMPTY + optional KAFKA)
+        assert 2 <= mock.send_event.call_count <= 3
 
     def test_anomaly_tag_present(self):
         mock = _mock_producer()
@@ -71,12 +74,13 @@ class TestInjectA2:
         payloads = [c[0][0]["payload"] for c in mock.send_event.call_args_list]
         assert any(p.get("_anomaly_tag") == "A2" for p in payloads)
 
-    def test_sources_include_hardware_and_kafka(self):
+    def test_sources_include_hardware_and_optionally_kafka(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a2(mock, t)
         sources = {c[0][0]["source"] for c in mock.send_event.call_args_list}
-        assert sources == {"HARDWARE", "KAFKA"}
+        assert "HARDWARE" in sources
+        # May include KAFKA probabilistically (80% chance)
 
 
 class TestInjectA3:
@@ -164,11 +168,14 @@ class TestInjectA4:
 
 
 class TestInjectA5:
-    def test_sends_11_event_messages(self):
+    def test_sends_variable_event_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a5(mock, t)
-        assert mock.send_event.call_count == 11
+        # A5 now sends variable number of messages (8-12 METRIC + optional ATM_APP TIMEOUT + 1 STATUS)
+        # Minimum: 8 METRIC + 1 STATUS = 9
+        # Maximum: 12 METRIC + up to 11 ATM_APP TIMEOUT + 1 STATUS = 24
+        assert mock.send_event.call_count >= 9
 
     def test_anomaly_tag_present_in_all(self):
         mock = _mock_producer()
@@ -177,12 +184,13 @@ class TestInjectA5:
         for call in mock.send_event.call_args_list:
             assert call[0][0]["payload"].get("_anomaly_tag") == "A5"
 
-    def test_source_is_kafka(self):
+    def test_sources_include_kafka_and_optionally_atm_app(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a5(mock, t)
         sources = {c[0][0]["source"] for c in mock.send_event.call_args_list}
-        assert sources == {"KAFKA"}
+        assert "KAFKA" in sources
+        # May include ATM_APP probabilistically (40% chance per METRIC after first)
 
 
 class TestInjectA6:
