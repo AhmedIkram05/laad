@@ -5,18 +5,20 @@
  */
 
 // Generates Authorisation Headers Using JWT
-export const getAuthHeaders = () => ({
-    Authorization: `Bearer ${localStorage.getItem("jwt")}`,
-});
+export const getAuthHeaders = () => {
+    const token = localStorage.getItem("jwt");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 // Helper Function for Making API Requests
 const request = async (endpoint, options = {}) => {
+    const { headers: optionHeaders, ...restOptions } = options;
     const res = await fetch(endpoint, {
         headers: {
             ...getAuthHeaders(),
-            ...(options.headers || {}),
+            ...(optionHeaders || {}),
         },
-        ...options,
+        ...restOptions,
     });
 
     if (!res.ok) {
@@ -50,3 +52,32 @@ export const toggleComplete = (id) =>
 // Fetches anomaly metrics for dashboard analytics
 export const fetchMetrics = (hours = 24, bucket_minutes = 60) =>
     request(`/api/analysis/metrics?hours=${hours}&bucket_minutes=${bucket_minutes}`);
+
+// RAG Diagnostic Assistant API
+export const queryRAG = (query, atm_id = null, top_k = 5, include_uncertainty = true) => {
+    const params = new URLSearchParams({
+        query,
+        top_k,
+        include_uncertainty,
+    });
+    if (atm_id) params.append("atm_id", atm_id);
+    return request(`/api/rag/query?${params}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({query, atm_id, top_k, include_uncertainty}),
+    });
+};
+
+export const submitRAGFeedback = (query_id, feedback) =>
+    request("/api/rag/feedback", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({query_id, feedback}),
+    });
+
+export const getRAGHistory = (limit = 20, offset = 0) =>
+    request(`/api/rag/history?limit=${limit}&offset=${offset}`);
+
+export const getRAGStats = () => request("/api/rag/stats");
+
+export const recalibrateRAG = () => request("/api/rag/recalibrate", {method: "POST"});

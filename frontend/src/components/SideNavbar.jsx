@@ -10,6 +10,8 @@ import { useAuth } from "../auth/AuthProvider";
 import { GoHome, GoStar, GoCheckCircle, GoSignOut } from "react-icons/go";
 import { FiSettings } from "react-icons/fi";
 import { FiActivity } from "react-icons/fi";
+import { FiMessageSquare } from "react-icons/fi";
+import { FiClock } from "react-icons/fi";
 
 /* Internal Imports */
 import './SideNavbar.css'
@@ -30,6 +32,10 @@ function SideNavbar() {
           <span className="icon"><GoHome/></span><span className="text">Dashboard</span></button>
         <button className={`button ${active("/analytics") ? "active" : ""}`} onClick={() => navigate("/analytics")}>
           <span className="icon"><FiActivity/></span><span className="text">Analytics</span></button>
+        <button className={`button ${active("/diagnostic") ? "active" : ""}`} onClick={() => navigate("/diagnostic")}>
+          <span className="icon"><FiMessageSquare/></span><span className="text">Diagnostic</span></button>
+        <button className={`button ${active("/rag-history") ? "active" : ""}`} onClick={() => navigate("/rag-history")}>
+          <span className="icon"><FiClock/></span><span className="text">RAG History</span></button>
         <button className={`button ${active("/starred") ? "active" : ""}`} onClick={() => navigate("/starred")}>
           <span className="icon"><GoStar/></span><span className="text">Starred</span></button>
         <button className={`button ${active("/completed") ? "active" : ""}`} onClick={() => navigate("/completed")}>
