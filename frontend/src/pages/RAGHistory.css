@@ -1,0 +1,110 @@
+.rag-history {
+    padding: 24px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.history-header {
+    margin-bottom: 24px;
+}
+
+.history-header h1 {
+    margin: 0 0 4px;
+    font-size: 1.5rem;
+    color: #e2e8f0;
+}
+
+.history-header p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.875rem;
+}
+
+.loading, .empty {
+    text-align: center;
+    padding: 48px;
+    color: #94a3b8;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.history-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.history-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.history-score {
+    background: #334155;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.history-query {
+    margin-bottom: 8px;
+    color: #e2e8f0;
+}
+
+.history-query strong {
+    color: #3b82f6;
+    margin-right: 6px;
+}
+
+.history-answer {
+    color: #cbd5e1;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.history-answer strong {
+    color: #10b981;
+    margin-right: 6px;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 24px;
+    padding: 16px;
+}
+
+.pagination button {
+    padding: 8px 16px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    color: #e2e8f0;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pagination button:hover:not(:disabled) {
+    background: #475569;
+}
+
+.pagination span {
+    color: #94a3b8;
+    font-size: 0.875rem;
+}

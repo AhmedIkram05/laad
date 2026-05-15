@@ -77,22 +77,50 @@ def generate_baseline(t: datetime, atm: str, rng: random.Random) -> list[dict]:
 
 def inject_a1(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
     loc = ATM_LOCATIONS.get(atm, "GB-LDN-001")
-    times = [t, t+timedelta(seconds=5), t+timedelta(seconds=10), t+timedelta(seconds=15)]
-    for i, (src, evt, sev, msg, p) in enumerate([
+    
+    # Variable timing for signals
+    timeout_delay = random.randint(3, 8)
+    kafka_delay = random.randint(8, 15) if random.random() < 0.7 else None
+    th_delay = random.randint(12, 20) if random.random() < 0.7 else None
+    
+    times = [t]
+    if timeout_delay is not None:
+        times.append(t + timedelta(seconds=timeout_delay))
+    if kafka_delay is not None:
+        times.append(t + timedelta(seconds=kafka_delay))
+    if th_delay is not None:
+        times.append(t + timedelta(seconds=th_delay))
+    
+    # Sort times to maintain chronological order
+    times.sort()
+    
+    signals = [
         ("ATM_APP", "NETWORK_DISCONNECT", "ERROR", "Network connection lost", {"_anomaly_tag": "A1", "location_code": loc}),
         ("ATM_APP", "TIMEOUT", "ERROR", "Request timed out", {"_anomaly_tag": "A1"}),
-        ("KAFKA", "STATUS", "INFO", "ATM Offline", {"_anomaly_tag": "A1", "atm_status": "Offline"}),
-        ("TERMINAL_HANDLER", "NETWORK_ERROR", "FATAL", "Connection timed out", {"_anomaly_tag": "A1"}),
-    ]):
+    ]
+    
+    if kafka_delay is not None:
+        signals.append(("KAFKA", "STATUS", "INFO", "ATM Offline", {"_anomaly_tag": "A1", "atm_status": "Offline"}))
+    
+    if th_delay is not None:
+        signals.append(("TERMINAL_HANDLER", "NETWORK_ERROR", "FATAL", "Connection timed out", {"_anomaly_tag": "A1"}))
+    
+    # Ensure we have the right number of signals for the times
+    for i, (src, evt, sev, msg, p) in enumerate(signals[:len(times)]):
         rows.append(_event(times[i], src, atm, evt, sev, msg, p | {"correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a2(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
-    for i, (src, evt, sev, msg, p) in enumerate([
-        ("HARDWARE", "CASSETTE_LOW", "WARNING", "Cash low in cassette 1", {"_anomaly_tag": "A2"}),
-        ("HARDWARE", "CASSETTE_EMPTY", "CRITICAL", "Cash empty in cassette 1", {"_anomaly_tag": "A2"}),
-        ("KAFKA", "STATUS", "INFO", "ATM Out of Service", {"_anomaly_tag": "A2", "atm_status": "OutOfService"}),
-    ]):
-        rows.append(_event(t + timedelta(minutes=i*5), src, atm, evt, sev, msg, p | {"correlation_id": corr_id, "atm_id": atm}))
+    # Always include CASSETTE_LOW
+    rows.append(_event(t, "HARDWARE", atm, "CASSETTE_LOW", "WARNING", "Cash low in cassette 1", {"_anomaly_tag": "A2", "correlation_id": corr_id, "atm_id": atm}))
+    
+    # Variable delay for CASSETTE_EMPTY (3-8 minutes)
+    empty_delay = random.randint(3, 8)
+    rows.append(_event(t + timedelta(minutes=empty_delay), "HARDWARE", atm, "CASSETTE_EMPTY", "CRITICAL", "Cash empty in cassette 1", {"_anomaly_tag": "A2", "correlation_id": corr_id, "atm_id": atm}))
+    
+    # Randomly include KAFKA OutOfService signal (80% probability)
+    if random.random() < 0.8:
+        kafka_delay = empty_delay + random.randint(2, 5)  # 2-5 minutes after cassette empty
+        rows.append(_event(t + timedelta(minutes=kafka_delay), "KAFKA", atm, "STATUS", "INFO", "ATM Out of Service", {"_anomaly_tag": "A2", "atm_status": "OutOfService", "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a3(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
     loc = ATM_LOCATIONS.get(atm, "GB-LDN-001")
@@ -115,16 +143,30 @@ def inject_a4(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
         ("CRASH", "ERROR", "Unexpected exit"),
     ]):
         rows.append(_event(t + timedelta(seconds=i*30), "TERMINAL_HANDLER", atm, evt, sev, msg, {"_anomaly_tag": "A4", "correlation_id": corr_id, "atm_id": atm, "pod_name": pod}))
-    rows.append(_metric("container/restart_count", 2, t + timedelta(minutes=2), "CLOUD", atm, {"_anomaly_tag": "A4", "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_metric("container/restart_count", 2, t + timedelta(seconds=60), "CLOUD", atm, {"_anomaly_tag": "A4", "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a5(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
+    # Variable number of messages (8-12) and duration (60-120 seconds)
+    num_messages = random.randint(8, 12)
+    duration = random.randint(60, 120)
+    interval = duration / num_messages
+    
     success_rate = 1.0
-    for i in range(10):
-        tick_t = t + timedelta(seconds=i*10)
-        success_rate = max(0.3, success_rate - random.uniform(0.05, 0.15))
-        rt = 5000 + random.randint(0, 1000)
+    for i in range(num_messages):
+        tick_t = t + timedelta(seconds=i * interval)
+        # Variable success rate drop (0.3 to 0.8)
+        success_rate = max(0.3, success_rate - random.uniform(0.02, 0.12))
+        # Variable response time threshold (3000-8000 ms)
+        rt = 3000 + random.randint(0, 5000)
         rows.append(_event(tick_t, "KAFKA", atm, "METRIC", "INFO", "Latency update", {"_anomaly_tag": "A5", "response_time_ms": rt, "success_rate": round(success_rate, 3), "correlation_id": corr_id, "atm_id": atm}))
-    rows.append(_event(t + timedelta(seconds=90), "KAFKA", atm, "STATUS", "WARNING", "Success rate drop detected", {"_anomaly_tag": "A5", "success_rate": round(success_rate, 3), "correlation_id": corr_id, "atm_id": atm}))
+        
+        # Occasionally add ATM_APP TIMEOUT for cross-source correlation (40% probability)
+        if random.random() < 0.4 and i > 0:
+            timeout_delay = random.randint(1, 5)
+            rows.append(_event((tick_t + timedelta(seconds=timeout_delay)), "ATM_APP", atm, "TIMEOUT", "ERROR", "Request timed out", {"_anomaly_tag": "A5", "error_code": "ERR-0012", "correlation_id": corr_id, "atm_id": atm}))
+    
+    # Final status message
+    rows.append(_event(t + timedelta(seconds=duration), "KAFKA", atm, "STATUS", "WARNING", "Success rate drop detected", {"_anomaly_tag": "A5", "success_rate": round(success_rate, 3), "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a6(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
     loc = ATM_LOCATIONS.get(atm, "GB-LDN-001")

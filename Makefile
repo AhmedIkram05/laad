@@ -1,4 +1,4 @@
-.PHONY: help all rebuild rebuild-backend clean logs retrain retrain-offline pytest generate-training-data
+.PHONY: help all rebuild rebuild-backend clean logs retrain-offline pytest generate-training-data
 
 help:
 	@echo "LAAD Makefile — Essential commands"
@@ -8,7 +8,6 @@ help:
 	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
 	@echo "  make clean       		Stop all containers and remove volumes"
 	@echo "  make logs         		Follow all service logs"
-	@echo "  make retrain-online  	Retrain ML models (Isolation Forest + XGBoost)"
 	@echo "  make retrain-offline  	 Retrain ML on offline dataset (all A1-A7 guaranteed)"
 	@echo "  make training-data  	Generate offline training dataset (24h, all A1-A7)"
 	@echo "  make pytest       		Run all tests in Docker (postgres_test + pytest containers)"
@@ -83,13 +82,6 @@ logs:
 
 # ── Retrain ML Models ──────────────────────────────────────────────────────
 
-retrain-online:
-	@echo "==> Retraining ML models on LIVE data from generator DB..."
-	docker compose exec backend python -m backend.src.anomaly_detection.ml.train
-	@echo ""
-	@echo "✓ Retrain complete!"
-	@echo "  View training run at: http://localhost:5001"
-
 retrain-offline:
 	@echo "==> Retraining ML models on OFFLINE dataset..."
 	docker compose exec -e USE_OFFLINE_DATA=true backend python -m backend.src.anomaly_detection.ml.train
@@ -101,14 +93,16 @@ retrain-offline:
 
 pytest:
 	@echo "==> Stopping any leftover test containers..."
-	-docker compose --profile test down 2>/dev/null; true
+	-docker compose stop postgres_test pytest 2>/dev/null; true
+	-docker compose rm -f postgres_test pytest 2>/dev/null; true
 	@echo "==> Starting test environment and running tests..."
 	docker compose --profile test up -d postgres_test
 	@echo "==> Waiting for test DB to be ready..."
 	@sleep 5
 	docker compose run --rm --no-deps pytest
 	@echo "==> Stopping test environment..."
-	-docker compose --profile test down 2>/dev/null; true
+	-docker compose stop postgres_test pytest 2>/dev/null; true
+	-docker compose rm -f postgres_test pytest 2>/dev/null; true
 	@echo ""
 	@echo "✓ Tests complete!"
 

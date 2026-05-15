@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import logging
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from backend.generator.config import ATMS, ATM_LOCATIONS, POD_NAME, OS_VERSION
 
@@ -24,6 +25,7 @@ def emit_atm_app_events(producer, t: datetime) -> None:
                 "severity": "INFO",
                 "message": "User session active",
                 "payload": {"location_code": ATM_LOCATIONS[atm]},
+                "message_id": str(uuid4()),
             })
 
 
@@ -42,6 +44,7 @@ def emit_hardware_events(producer, t: datetime) -> None:
                 "severity": "INFO",
                 "message": "Cash dispenser health check passed",
                 "payload": {"component": "dispenser_v2"},
+                "message_id": str(uuid4()),
             })
 
 
@@ -60,6 +63,7 @@ def emit_terminal_handler_events(producer, t: datetime) -> None:
                 "severity": "INFO",
                 "message": "Handling request",
                 "payload": {"pod": POD_NAME, "os": OS_VERSION},
+                "message_id": str(uuid4()),
             })
 
 
@@ -78,6 +82,7 @@ def emit_kafka_events(producer, t: datetime) -> None:
                 "severity": "INFO",
                 "message": "ATM status update",
                 "payload": {"correlation_id": None},
+                "message_id": str(uuid4()),
             })
 
 
@@ -95,6 +100,7 @@ def emit_kafka_metrics(producer, t: datetime) -> None:
                 "metric_name": "kafka_throughput",
                 "metric_value": random.uniform(100, 500),
                 "payload": {"correlation_id": None},
+                "message_id": str(uuid4()),
             })
 
 
@@ -112,6 +118,7 @@ def emit_prometheus_metrics(producer, t: datetime) -> None:
                 "metric_name": "jvm_memory_used_bytes",
                 "metric_value": random.uniform(1e8, 5e8),
                 "payload": {},
+                "message_id": str(uuid4()),
             })
 
 
@@ -129,6 +136,7 @@ def emit_windows_os_metrics(producer, t: datetime) -> None:
                 "metric_name": "windows_os_snapshot",
                 "metric_value": random.uniform(10, 90),
                 "payload": {},
+                "message_id": str(uuid4()),
             })
 
 
@@ -146,6 +154,7 @@ def emit_gcp_metrics(producer, t: datetime) -> None:
                 "metric_name": "container/cpu/usage_time",
                 "metric_value": random.uniform(0.1, 1.0),
                 "payload": {},
+                "message_id": str(uuid4()),
             })
 
 

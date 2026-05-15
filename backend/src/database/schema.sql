@@ -77,6 +77,35 @@ CREATE TABLE IF NOT EXISTS retention_config (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 8. rag_queries (RAG diagnostic assistant query history)
+CREATE TABLE IF NOT EXISTS rag_queries (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(id),
+    query_text TEXT NOT NULL,
+    answer_text TEXT NOT NULL,
+    uncertainty_score DOUBLE PRECISION,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 9. rag_feedback (User feedback for calibration)
+CREATE TABLE IF NOT EXISTS rag_feedback (
+    id BIGSERIAL PRIMARY KEY,
+    query_id INTEGER REFERENCES rag_queries(id),
+    feedback_rating TEXT CHECK (feedback_rating IN ('helpful', 'not_helpful', 'uncertain')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 10. rag_calibration (Calibration history)
+CREATE TABLE IF NOT EXISTS rag_calibration (
+    id BIGSERIAL PRIMARY KEY,
+    calibration_method TEXT,
+    scale_factor DOUBLE PRECISION,
+    bias_term DOUBLE PRECISION,
+    ece_score DOUBLE PRECISION,
+    sample_size INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_events_correlation ON events(correlation_id);
@@ -90,6 +119,8 @@ CREATE INDEX IF NOT EXISTS idx_anomalies_atm ON anomalies(atm_id);
 CREATE INDEX IF NOT EXISTS idx_anomalies_active_time ON anomalies(is_active, detected_at);
 CREATE INDEX IF NOT EXISTS idx_anomalies_correlation ON anomalies(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_anomalies_type_time ON anomalies(anomaly_type, detected_at);
+CREATE INDEX IF NOT EXISTS idx_rag_queries_user ON rag_queries(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_rag_feedback_query ON rag_feedback(query_id);
 
 -- Views
 DROP VIEW IF EXISTS v_unified_analysis;
