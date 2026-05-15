@@ -536,8 +536,8 @@ def build_detailed_table(anomalies):
             # get max failure
             spikes = exp.get("spikes", [])
             for s in spikes:
-                fc = s.get("fc", 0)
-                if fc > max_failures:
+                fc = s.get("fc")
+                if fc is not None and fc > max_failures:
                     max_failures = fc
 
             timeout = exp.get("timeouts")
