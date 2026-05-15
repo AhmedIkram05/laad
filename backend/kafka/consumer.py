@@ -155,6 +155,7 @@ def run_consumer() -> None:
 
             now = time.monotonic()
             if processed > 0 and (now - last_anomaly_trigger) >= ANOMALY_INTERVAL_S:
+                log.info("Triggering anomaly detection (processed=%d, last_trigger=%.1fs ago)", processed, now - last_anomaly_trigger)
                 _trigger_anomaly_detection()
                 last_anomaly_trigger = now
 

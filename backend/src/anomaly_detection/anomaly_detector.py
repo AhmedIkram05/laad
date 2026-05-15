@@ -334,7 +334,7 @@ def a3_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def a4_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """A4: Container Restart Loop.
 
-    Fires when at least 2 GCP/CLOUD restart_count events are detected
+    Fires when at least 1 GCP/CLOUD restart_count event is detected
      AND terminal handler shows >=2 STARTUP events OR >=2 FATAL events.
     Supports both real GCP parser output (source=CLOUD, metric_name=restart_count)
     and legacy/test format (source=GCP, metric_name=container/restart_count).
@@ -362,7 +362,7 @@ def a4_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if r.get("event_type") == "OOM_ERROR" or r.get("severity") == "FATAL":
                 total_fatals += 1
 
-    if len(gcp_restarts) >= 2 and (total_startups >= 2 or total_fatals >= 2):
+    if len(gcp_restarts) >= 1 and (total_startups >= 2 or total_fatals >= 2):
         detected_ts = gcp_restarts[-1].get("ts") or last_ts
         anomalies.append({
             "anomaly_type": "A4",
@@ -527,10 +527,10 @@ def a7_detection(
                 "row": r,
             })
             trtps_val = _payload_get(r, "transaction_rate_tps")
-            if kafka_offset == -1:
+            if str(kafka_offset) == "-1" or kafka_offset == -1:
                 kafka_offset_minus_one.setdefault(atm, []).append(r.get("timestamp"))
                 kafka_missing_ts.setdefault(atm, []).append(r.get("timestamp"))
-            elif r.get("atm_status") is None or trtps_val is None:
+            elif r.get("atm_status") is None and trtps_val is None:
                 kafka_missing_ts.setdefault(atm, []).append(r.get("timestamp"))
 
         if src in ("METRIC", "PROMETHEUS"):

@@ -22,11 +22,12 @@ def _get_progressive_state(key: str) -> dict:
     return _anomaly_state[key]
 
 
-def inject_a1(producer, t: datetime) -> None:
+def inject_a1(producer, t: datetime) -> str | None:
     """Inject A1 Network Timeout Cascade.
 
     Fires a variable cascade (3-4 signals) across ATM_APP, KAFKA, and TERMINAL_HANDLER
     sharing a single correlation_id.
+    Returns the ATM ID used.
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
@@ -70,13 +71,15 @@ def inject_a1(producer, t: datetime) -> None:
             "correlation_id": corr_id,
             "message_id": str(uuid4()),
         })
+    return atm
 
 
-def inject_a2(producer, t: datetime) -> None:
+def inject_a2(producer, t: datetime) -> str | None:
     """Inject A2 Cash Cassette Empty.
 
     Fires a variable cascade (2-3 signals) across HARDWARE and KAFKA sharing a
     single correlation_id. The CASSETTE_EMPTY fires after CASSETTE_LOW with variable timing.
+    Returns the ATM ID used.
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
@@ -113,25 +116,27 @@ def inject_a2(producer, t: datetime) -> None:
             "correlation_id": corr_id,
             "message_id": str(uuid4()),
         })
+    return atm
 
 
-def inject_a3(producer, t: datetime) -> None:
+def inject_a3(producer, t: datetime) -> str | None:
     """Inject A3 JVM Memory Leak.
 
-    State-based progressive emission — one message per call across 90 ticks.
+    State-based progressive emission — one message per call across 10 ticks.
     Produces monotonically rising JVM heap and GC pause metrics, terminating
-    with a TERMINAL_HANDLER OOM_ERROR on the 90th call.
+    with a TERMINAL_HANDLER OOM_ERROR on the 10th call.
+    Returns the ATM ID used.
     """
     atm_key = "a3"
     state = _get_progressive_state(atm_key)
 
-    if state["produced"] >= 90:
+    if state["produced"] >= 10:
         del _anomaly_state[atm_key]
-        return
+        return state.get("atm")
 
     i = state["produced"]
     state["produced"] += 1
-    tick_t = t + timedelta(minutes=i)
+    tick_t = t + timedelta(seconds=i * 10)
 
     producer.send_metric({
         "timestamp": tick_t.isoformat(), "source": "PROMETHEUS",
@@ -160,7 +165,7 @@ def inject_a3(producer, t: datetime) -> None:
         "message_id": str(uuid4()),
     })
 
-    if state["produced"] == 90:
+    if state["produced"] == 10:
         producer.send_event({
             "timestamp": tick_t.isoformat(), "source": "TERMINAL_HANDLER",
             "atm_id": state["atm"], "event_type": "OOM_ERROR", "severity": "FATAL",
@@ -170,13 +175,15 @@ def inject_a3(producer, t: datetime) -> None:
             "message_id": str(uuid4()),
         })
         del _anomaly_state[atm_key]
+    return state.get("atm")
 
 
-def inject_a4(producer, t: datetime) -> None:
+def inject_a4(producer, t: datetime) -> str | None:
     """Inject A4 Container Restart Loop.
 
     Fires a 3-message cascade: STARTUP → CRASH → STARTUP within 60 seconds,
     simulating a pod restart loop.
+    Returns the ATM ID used.
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
@@ -213,14 +220,16 @@ def inject_a4(producer, t: datetime) -> None:
         "correlation_id": corr_id,
         "message_id": str(uuid4()),
     })
+    return atm
 
 
-def inject_a5(producer, t: datetime) -> None:
+def inject_a5(producer, t: datetime) -> str | None:
     """Inject A5 High Response Time Spike.
 
     Fires a variable cascade (8-12 messages) over 60-120 seconds with 
     progressively degrading success rate and variable response times > 3000ms.
     Includes ATM_APP TIMEOUT events for cross-source correlation.
+    Returns the ATM ID used.
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
@@ -276,52 +285,56 @@ def inject_a5(producer, t: datetime) -> None:
         "correlation_id": corr_id,
         "message_id": str(uuid4()),
     })
+    return atm
 
 
-def inject_a6(producer, t: datetime) -> None:
+def inject_a6(producer, t: datetime) -> str | None:
     """Inject A6 OS Memory Pressure.
 
     State-based progressive emission — one message per call across 120 ticks.
     Produces monotonically rising OS memory usage (20 → 90%), terminating
     with an ATM_APP TIMEOUT on the 120th call.
+    Returns the ATM ID used.
     """
     atm_key = "a6"
     state = _get_progressive_state(atm_key)
 
-    if state["produced"] >= 120:
+    if state["produced"] >= 10:
         del _anomaly_state[atm_key]
-        return
+        return state.get("atm")
 
     i = state["produced"]
     state["produced"] += 1
-    tick_t = t + timedelta(minutes=i)
+    tick_t = t + timedelta(seconds=i * 10)
 
     producer.send_metric({
         "timestamp": tick_t.isoformat(), "source": "OS",
-        "entity_id": state["atm"], "metric_name": "windows_os_snapshot",
-        "metric_value": 20 + (i * 1.2),
+        "entity_id": state["atm"], "metric_name": "memory_usage_percent",
+        "metric_value": 20 + (i * 7),
         "payload": {"_anomaly_tag": "A6"},
         "correlation_id": state["corr_id"],
         "message_id": str(uuid4()),
     })
 
-    if state["produced"] == 120:
+    if state["produced"] == 10:
         producer.send_event({
             "timestamp": tick_t.isoformat(), "source": "ATM_APP",
             "atm_id": state["atm"], "event_type": "TIMEOUT", "severity": "ERROR",
             "message": "OS resource timeout",
-            "payload": {"_anomaly_tag": "A6"},
+            "payload": {"_anomaly_tag": "A6", "error_code": "ERR-MEM"},
             "correlation_id": state["corr_id"],
             "message_id": str(uuid4()),
         })
         del _anomaly_state[atm_key]
+    return state.get("atm")
 
 
-def inject_a7(producer, t: datetime) -> None:
+def inject_a7(producer, t: datetime) -> str | None:
     """Inject A7 Out-of-Order Kafka Events.
 
     Fires a single malformed KAFKA event with offset=-1 and
     _anomaly_tag=A7_OUT_OF_ORDER.
+    Returns the ATM ID used.
     """
     atm = random.choice(ATMS)
     producer.send_event({
@@ -332,14 +345,15 @@ def inject_a7(producer, t: datetime) -> None:
         "correlation_id": str(uuid4()),
         "message_id": str(uuid4()),
     })
+    return atm
 
 
 ANOMALY_REGISTRY = [
     ("A1", inject_a1, 300),
     ("A2", inject_a2, 600),
-    ("A3", inject_a3, 3600),
+    ("A3", inject_a3, 10),
     ("A4", inject_a4, 300),
     ("A5", inject_a5, 300),
-    ("A6", inject_a6, 3600),
+    ("A6", inject_a6, 10),
     ("A7", inject_a7, 300),
 ]
