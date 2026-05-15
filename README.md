@@ -36,7 +36,7 @@
 | **Calibration** | Platt scaling, ECE < 0.10 target, 20-sample minimum |
 | **MLflow Tracking** | All training runs + inference cycles logged, 2 registered models with "champion" alias |
 | **Frontend Pages** | 10 pages, 11 components (React 19 + Vite 8 + Recharts) |
-| **Auto-Retrain** | Every 1 hour via APScheduler, 24-hour guard, persists across restarts |
+| **Model Training** | Manual retraining via `make retrain` (live) or `make retrain-offline` (offline dataset) |
 
 ---
 
