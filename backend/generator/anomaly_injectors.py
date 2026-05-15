@@ -30,12 +30,14 @@ def inject_a1(producer, t: datetime) -> None:
     """
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
+    message_id = str(uuid4())
     producer.send_event({
         "timestamp": t.isoformat(), "source": "ATM_APP", "atm_id": atm,
         "event_type": "NETWORK_DISCONNECT", "severity": "ERROR",
         "message": "Network connection lost",
         "payload": {"_anomaly_tag": "A1", "location_code": ATM_LOCATIONS[atm]},
         "correlation_id": corr_id,
+        "message_id": message_id,
     })
     producer.send_event({
         "timestamp": (t + timedelta(seconds=5)).isoformat(), "source": "ATM_APP",
@@ -43,6 +45,7 @@ def inject_a1(producer, t: datetime) -> None:
         "message": "Request timed out",
         "payload": {"_anomaly_tag": "A1"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
     producer.send_event({
         "timestamp": (t + timedelta(seconds=10)).isoformat(), "source": "KAFKA",
@@ -50,6 +53,7 @@ def inject_a1(producer, t: datetime) -> None:
         "message": "ATM Offline",
         "payload": {"_anomaly_tag": "A1", "atm_status": "Offline"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
     producer.send_event({
         "timestamp": (t + timedelta(seconds=15)).isoformat(), "source": "TERMINAL_HANDLER",
@@ -57,6 +61,7 @@ def inject_a1(producer, t: datetime) -> None:
         "message": "Connection timed out",
         "payload": {"_anomaly_tag": "A1"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
 
 
@@ -74,6 +79,7 @@ def inject_a2(producer, t: datetime) -> None:
         "message": "Cash low in cassette 1",
         "payload": {"_anomaly_tag": "A2"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
     producer.send_event({
         "timestamp": (t + timedelta(minutes=5)).isoformat(), "source": "HARDWARE",
@@ -81,6 +87,7 @@ def inject_a2(producer, t: datetime) -> None:
         "message": "Cash empty in cassette 1",
         "payload": {"_anomaly_tag": "A2"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
     producer.send_event({
         "timestamp": (t + timedelta(minutes=10)).isoformat(), "source": "KAFKA",
@@ -88,6 +95,7 @@ def inject_a2(producer, t: datetime) -> None:
         "message": "ATM Out of Service",
         "payload": {"_anomaly_tag": "A2", "atm_status": "OutOfService"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
 
 
@@ -115,6 +123,7 @@ def inject_a3(producer, t: datetime) -> None:
         "metric_value": 1e8 + (i * 1e7),
         "payload": {"_anomaly_tag": "A3"},
         "correlation_id": state["corr_id"],
+        "message_id": str(uuid4()),
     })
     gc_pause = min(5.0, i * 0.05)
     producer.send_metric({
@@ -123,6 +132,7 @@ def inject_a3(producer, t: datetime) -> None:
         "metric_value": gc_pause,
         "payload": {"_anomaly_tag": "A3"},
         "correlation_id": state["corr_id"],
+        "message_id": str(uuid4()),
     })
     cpu_usage = min(95.0, 20 + (i * 0.8))
     producer.send_metric({
@@ -131,6 +141,7 @@ def inject_a3(producer, t: datetime) -> None:
         "metric_value": cpu_usage,
         "payload": {"_anomaly_tag": "A3"},
         "correlation_id": state["corr_id"],
+        "message_id": str(uuid4()),
     })
 
     if state["produced"] == 90:
@@ -140,6 +151,7 @@ def inject_a3(producer, t: datetime) -> None:
             "message": "Java heap space",
             "payload": {"_anomaly_tag": "A3"},
             "correlation_id": state["corr_id"],
+            "message_id": str(uuid4()),
         })
         del _anomaly_state[atm_key]
 
@@ -158,6 +170,7 @@ def inject_a4(producer, t: datetime) -> None:
         "message": "Pod starting",
         "payload": {"_anomaly_tag": "A4"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
     producer.send_event({
         "timestamp": (t + timedelta(seconds=30)).isoformat(), "source": "TERMINAL_HANDLER",
@@ -165,6 +178,7 @@ def inject_a4(producer, t: datetime) -> None:
         "message": "Unexpected exit",
         "payload": {"_anomaly_tag": "A4"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
     producer.send_event({
         "timestamp": (t + timedelta(seconds=60)).isoformat(), "source": "TERMINAL_HANDLER",
@@ -172,6 +186,7 @@ def inject_a4(producer, t: datetime) -> None:
         "message": "Pod restarting",
         "payload": {"_anomaly_tag": "A4"},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
 
 
@@ -197,6 +212,7 @@ def inject_a5(producer, t: datetime) -> None:
                 "success_rate": round(success_rate, 3),
             },
             "correlation_id": corr_id,
+            "message_id": str(uuid4()),
         })
     producer.send_event({
         "timestamp": (t + timedelta(seconds=90)).isoformat(), "source": "KAFKA",
@@ -204,6 +220,7 @@ def inject_a5(producer, t: datetime) -> None:
         "message": "Success rate drop detected",
         "payload": {"_anomaly_tag": "A5", "success_rate": round(success_rate, 3)},
         "correlation_id": corr_id,
+        "message_id": str(uuid4()),
     })
 
 
@@ -231,6 +248,7 @@ def inject_a6(producer, t: datetime) -> None:
         "metric_value": 20 + (i * 1.2),
         "payload": {"_anomaly_tag": "A6"},
         "correlation_id": state["corr_id"],
+        "message_id": str(uuid4()),
     })
 
     if state["produced"] == 120:
@@ -240,6 +258,7 @@ def inject_a6(producer, t: datetime) -> None:
             "message": "OS resource timeout",
             "payload": {"_anomaly_tag": "A6"},
             "correlation_id": state["corr_id"],
+            "message_id": str(uuid4()),
         })
         del _anomaly_state[atm_key]
 
@@ -257,6 +276,7 @@ def inject_a7(producer, t: datetime) -> None:
         "message": "Malformed event",
         "payload": {"_anomaly_tag": "A7_OUT_OF_ORDER", "offset": -1},
         "correlation_id": str(uuid4()),
+        "message_id": str(uuid4()),
     })
 
 
