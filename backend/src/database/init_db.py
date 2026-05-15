@@ -103,6 +103,9 @@ def init_db(schema_path: str = "schema.sql", db_path=None, force: bool = False) 
                     DROP TABLE IF EXISTS ingestion_errors;
                     DROP TABLE IF EXISTS metrics;
                     DROP TABLE IF EXISTS events;
+                    DROP TABLE IF EXISTS rag_calibration;
+                    DROP TABLE IF EXISTS rag_feedback;
+                    DROP TABLE IF EXISTS rag_queries;
                     DROP TABLE IF EXISTS users;
                     DROP TABLE IF EXISTS retention_config;
                     DROP TABLE IF EXISTS atms;
