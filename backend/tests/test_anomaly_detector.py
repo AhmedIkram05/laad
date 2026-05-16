@@ -141,6 +141,21 @@ class TestA3Detection:
         anomalies = a3_detection(data)
         assert len(anomalies) == 0
 
+    def test_a3_fires_with_OutOfMemoryError(self):
+        data = [
+            {"source": "PROMETHEUS", "metric_name": "jvm_memory_used_bytes",
+             "pod_name": "pod-1", "metric_value": 300_000_000, "timestamp": "2024-01-01T10:00:00Z"},
+            {"source": "PROMETHEUS", "metric_name": "jvm_memory_used_bytes",
+             "pod_name": "pod-1", "metric_value": 700_000_000, "timestamp": "2024-01-01T10:45:00Z"},
+            {"source": "PROMETHEUS", "metric_name": "jvm_memory_used_bytes",
+             "pod_name": "pod-1", "metric_value": 1_040_000_000, "timestamp": "2024-01-01T11:29:00Z"},
+            {"source": "TERMINAL_HANDLER", "event_type": "OutOfMemoryError",
+             "pod_name": "pod-1", "timestamp": "2024-01-01T11:30:00Z"},
+        ]
+        anomalies = a3_detection(data)
+        assert len(anomalies) == 1
+        assert anomalies[0]["anomaly_type"] == "A3"
+
     def test_a3_attributes_to_atm_id_when_provided(self):
         data = [
             {"source": "PROMETHEUS", "metric_name": "jvm_memory_used_bytes",
@@ -200,10 +215,8 @@ class TestA4Detection:
         assert anomalies[0]["anomaly_type"] == "A4"
         assert anomalies[0]["sources_involved"] == ["GCP", "TERMINAL_HANDLER"]
 
-    def test_requires_at_least_two_gcp_restarts(self):
+    def test_requires_at_least_one_gcp_restart(self):
         data = [
-            {"source": "GCP", "metric_name": "container/restart_count",
-             "metric_value": 1, "timestamp": "2024-01-01T09:30:00Z"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
              "timestamp": "2024-01-01T09:30:00Z"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",

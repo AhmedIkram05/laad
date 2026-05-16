@@ -4,6 +4,95 @@ import json
 from psycopg2.extras import RealDictCursor
 from backend.src.database.connection import get_conn, release_conn
 
+_CLASSIFIER_DESCRIPTIONS = {
+    "A3": {
+        "explanation": (
+            "ML classifier detected JVM memory leak pattern with confidence {confidence:.2f} "
+            "(Isolation Forest score: {if_score:.3f}). "
+            "Heap usage trend and GC behavior match trained A3 signature. "
+            "Review terminal handler JVM metrics for this ATM to confirm."
+        ),
+        "operation_impact": "Backend transaction processing is unstable and at risk of service interruption across affected ATM flows.",
+        "recommendation": (
+            "Inspect JVM heap usage trends for this ATM's terminal handler, "
+            "review recent deployments for memory-intensive changes, "
+            "and schedule a controlled restart if heap growth continues."
+        ),
+    },
+    "A4": {
+        "explanation": (
+            "ML classifier detected container restart loop pattern with confidence {confidence:.2f} "
+            "(Isolation Forest score: {if_score:.3f}). "
+            "Restart and startup metrics match trained A4 signature. "
+            "Review GCP container logs for this ATM to confirm."
+        ),
+        "operation_impact": "Service would be unstable which may interrupt or delay transaction handling across multiple ATM sessions.",
+        "recommendation": (
+            "Investigate the crash source from container logs, "
+            "validate memory and resource limits in Kubernetes, "
+            "and stabilize the service before returning it to normal traffic."
+        ),
+    },
+    "A5": {
+        "explanation": (
+            "ML classifier detected high response time spike pattern with confidence {confidence:.2f} "
+            "(Isolation Forest score: {if_score:.3f}). "
+            "Latency and success rate features match trained A5 signature. "
+            "Review Kafka metrics and ATM application logs for this ATM to confirm."
+        ),
+        "operation_impact": "Customers may experience slow responses, failed transactions, and degraded ATM service quality.",
+        "recommendation": (
+            "Investigate latency sources (database queries, external services, network), "
+            "review ATM backend service health, "
+            "and check for recent deployments that may have introduced performance regressions."
+        ),
+    },
+    "A6": {
+        "explanation": (
+            "ML classifier detected OS memory pressure pattern with confidence {confidence:.2f} "
+            "(Isolation Forest score: {if_score:.3f}). "
+            "Host resource metrics match trained A6 signature. "
+            "Review OS memory and CPU metrics for this ATM to confirm."
+        ),
+        "operation_impact": "ATM responsiveness is degraded and transactions may fail under host resource exhaustion.",
+        "recommendation": (
+            "Investigate host memory pressure on this ATM, "
+            "review running processes for memory leaks, "
+            "and consider restarting the ATM process or rebalancing to a higher-capacity host."
+        ),
+    },
+    "A7": {
+        "explanation": (
+            "ML classifier detected malformed or out-of-order Kafka event pattern with confidence {confidence:.2f} "
+            "(Isolation Forest score: {if_score:.3f}). "
+            "Event sequencing and data quality features match trained A7 signature. "
+            "Review Kafka partition ordering and Prometheus schema for this ATM."
+        ),
+        "operation_impact": "Monitoring accuracy is reduced, which may hide real operational issues or generate misleading diagnostics.",
+        "recommendation": (
+            "Validate event schema compliance, inspect Kafka partition ordering, "
+            "and correct any malformed metric ingestion before relying on analysis."
+        ),
+    },
+}
+
+
+def _build_classifier_description(A_code, atm_id, confidence, if_score):
+    """Return (explanation, operation_impact, recommendation) for classifier-detected anomalies."""
+    tpl = _CLASSIFIER_DESCRIPTIONS.get(A_code)
+    if not tpl:
+        return (
+            f"ML classifier detected {A_code} pattern with confidence {confidence:.2f} "
+            f"(Isolation Forest score: {if_score:.3f}).",
+            "Impact requires investigation.",
+            "Review telemetry for this ATM to confirm the anomaly.",
+        )
+    return (
+        tpl["explanation"].format(confidence=confidence, if_score=if_score),
+        tpl["operation_impact"],
+        tpl["recommendation"],
+    )
+
 
 def _to_datetime(value):
     """Normalise DB timestamp values to datetime.
@@ -430,21 +519,29 @@ def build_detailed_table(anomalies):
 
             #explanation.json so i can quickly scan keys i need:
             #'{"pod": "terminal-handler-pod-0", "points": [300000114.0, 299999099.0, 300000870.0, 299999128.0, 1040000000.0], "rel_increase": 2.4666749982422456, "frac_increase": 0.55}'
+            # Classifier format: '{"confidence": 0.99, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.706}'
 
             # checklist
-            mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen = (0, 0, 0, 0, False, False) 
-            points = exp.get("points", [])
-            
-            #gets first and last point
-            mem_start = points[0] if points else mem_start
-            mem_end =  points[-1] if points else mem_end
+            mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen = (0, 0, 0, 0, False, False)
+            source = exp.get("source", "UNKNOWN")
 
-            #no gc start in explanation so we have to skip that metric
+            if source == "CLASSIFIER":
+                if_score = exp.get("if_score", 0)
+                confidence = exp.get("confidence", 0)
+                explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
+            else:
+                points = exp.get("points", [])
+                
+                #gets first and last point
+                mem_start = points[0] if points else mem_start
+                mem_end =  points[-1] if points else mem_end
 
-            high_cpu = True if (exp.get("frac_increase") or 0) >= 0.5 else high_cpu
-            oom_seen = True
+                #no gc start in explanation so we have to skip that metric
 
-            explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen)
+                high_cpu = True if (exp.get("frac_increase") or 0) >= 0.5 else high_cpu
+                oom_seen = exp.get("oom_seen", False) or exp.get("xgb_predicted") == "OutOfMemoryError"
+
+                explanation, operation_impact, recommendation = A3(mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -473,21 +570,28 @@ def build_detailed_table(anomalies):
             
             #explanation.json so i can quickly scan keys i need:
             #'{"gcp_restarts": [{"ts": "2026-03-29T09:32:00+00:00", "count": 1.0} {"ts": "2026-03-29T09:34:00+00:00", "count": 2.0}], "total_startups": 3, "total_fatals": 3}'
+            # Classifier format: '{"confidence": 0.82, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.71}'
 
             # checklist
-            max_restart, fatal_count, startup_count = (0, 0, 0) 
-            
-            # get max count
-            restart = exp.get("gcp_restarts", [])
-            for r in restart:
-                count = r.get("count", 0)
-                if count > max_restart:
-                    max_restart = count
-            
-            fatal_count = exp.get('total_fatals', 0)
-            startup_count = exp.get('total_startups', 0)
+            max_restart, fatal_count, startup_count = (0, 0, 0)
+            source = exp.get("source", "UNKNOWN")
 
-            explanation, operation_impact, recommendation = A4(max_restart, fatal_count, startup_count)
+            if source == "CLASSIFIER":
+                if_score = exp.get("if_score", 0)
+                confidence = exp.get("confidence", 0)
+                explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
+            else:
+                # get max count
+                restart = exp.get("gcp_restarts", [])
+                for r in restart:
+                    count = r.get("count", 0)
+                    if count > max_restart:
+                        max_restart = count
+                
+                fatal_count = exp.get('total_fatals', 0)
+                startup_count = exp.get('total_startups', 0)
+
+                explanation, operation_impact, recommendation = A4(max_restart, fatal_count, startup_count)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -515,38 +619,43 @@ def build_detailed_table(anomalies):
 
             #explanation.json so i can quickly scan keys i need:
             #'{"spikes": [{"ts": "2026-03-29T09:30:00+00:00", "rt": 3200.0, "sr": 72.0, "fc": 8.0}, {"ts": "2026-03-29T09:31:00+00:00", "rt": 30000.0, "sr": 50.0, "fc": 14.0}], "timeouts": [{"ts": "2026-03-29T09:30:00+00:00", "txn": "txn-d95dbe59-dfe"}, {"ts": "2026-03-29T09:31:00+00:00", "txn": "txn-d95dbe59-dfe"}]}', 
+            # Classifier format: '{"confidence": 0.95, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.755}'
 
             # checklist
-            max_rt5, min_success, max_failures, timeout_seen = (0, None, 0, False) 
+            max_rt5, min_success, max_failures, timeout_seen = (0, None, 0, False)
+            source = exp.get("source", "UNKNOWN")
 
-            #get max response time
-            spikes = exp.get("spikes", [])
-            for s in spikes:
-                rt = s.get("rt", 0)
-                if rt > max_rt5:
-                    max_rt5 = rt
-                    
-            #get min success
-            spikes = exp.get("spikes", [])
-            for s in spikes:
-                sr = s.get("sr", 0)
-                if min_success is None or sr < min_success:
-                    min_success = sr
-                       
-            # get max failure
-            spikes = exp.get("spikes", [])
-            for s in spikes:
-                fc = s.get("fc", 0)
-                if fc > max_failures:
-                    max_failures = fc
+            if source == "CLASSIFIER":
+                if_score = exp.get("if_score", 0)
+                confidence = exp.get("confidence", 0)
+                explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
+            else:
+                #get max response time
+                spikes = exp.get("spikes", [])
+                for s in spikes:
+                    rt = s.get("rt") or 0
+                    if rt > max_rt5:
+                        max_rt5 = rt
+                        
+                #get min success
+                for s in spikes:
+                    sr = s.get("sr")
+                    if sr is not None and (min_success is None or sr < min_success):
+                        min_success = sr
+                           
+                # get max failure
+                for s in spikes:
+                    fc = s.get("fc")
+                    if fc is not None and fc > max_failures:
+                        max_failures = fc
 
-            timeout = exp.get("timeouts")
-            if timeout:
-                timeout_seen = True
+                timeout = exp.get("timeouts")
+                if timeout:
+                    timeout_seen = True
+
+                explanation, operation_impact, recommendation = A5(atm_id, max_rt5, min_success, max_failures, timeout_seen)
   
             
-            explanation, operation_impact, recommendation = A5(atm_id, max_rt5, min_success, max_failures, timeout_seen)
-
             detailed_rows.append({
                 "id": a.get('id'),
                 "ATM_ID": atm_id,
@@ -573,25 +682,32 @@ def build_detailed_table(anomalies):
 
             #explanation.json so i can quickly scan keys i need:
             #'{"memory_samples": [10.06, 24.63, 19.09, 10.13, 35.13], "timeout": {"ts": "2026-03-29T09:45:00+00:00", "error_detail": "ThreadAbortException: memory pressure", "error_code": "ERR-MEM"}}'
+            # Classifier format: '{"confidence": 0.96, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.688}'
 
             # checklist
             mem_start, mem_max, cpu_max, net_error_max, timeout_seen = (0, 0, 0, 0, False)
-            
-            #get mem start
-            spikes = exp.get("memory_samples", [])
+            source = exp.get("source", "UNKNOWN")
 
-            mem_start = spikes[0] if spikes else mem_start
+            if source == "CLASSIFIER":
+                if_score = exp.get("if_score", 0)
+                confidence = exp.get("confidence", 0)
+                explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
+            else:
+                #get mem start
+                spikes = exp.get("memory_samples", [])
 
-            for s in spikes:
-                if s > mem_max:
-                    mem_max = s
-            
-            timeout = exp.get("timeout", {})
-            error = timeout.get("error_detail", "")
-            if error == "ThreadAbortException: memory pressure":        
-                timeout_seen = True        
+                mem_start = spikes[0] if spikes else mem_start
 
-            explanation, operation_impact, recommendation = A6(atm_id, mem_start, mem_max, cpu_max, net_error_max, timeout_seen)
+                for s in spikes:
+                    if s > mem_max:
+                        mem_max = s
+                
+                timeout = exp.get("timeout", {})
+                error = timeout.get("error_detail", "")
+                if error == "ThreadAbortException: memory pressure":        
+                    timeout_seen = True        
+
+                explanation, operation_impact, recommendation = A6(atm_id, mem_start, mem_max, cpu_max, net_error_max, timeout_seen)
 
             detailed_rows.append({
                 "id": a.get('id'),
@@ -620,19 +736,74 @@ def build_detailed_table(anomalies):
             
             #explanation.json so i can quickly scan keys i need:
             #'{"prom_err_id": 2, "kafka_err_id": 1, "prom_ts": "2026-03-29T15:18:57.814751+00:00", "kafka_ts": "2026-03-29T15:18:57.667783+00:00"}'
+            # Classifier format: '{"confidence": 0.73, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.699}'
             
             # checklist
-            missing_field_count, malformed_metric, ooo  = (0, False, False) 
-            
-            if exp.get("prom_err_id"):
-                missing_field_count += 1
-                malformed_metric = True
+            missing_field_count, malformed_metric, ooo  = (0, False, False)
+            source = exp.get("source", "UNKNOWN")
 
-            if exp.get("kafka_err_id"):
-                missing_field_count += 1
-                ooo = True
-            
-            explanation, operation_impact, recommendation = A7(atm_id,  missing_field_count, malformed_metric, ooo)
+            if source == "CLASSIFIER":
+                if_score = exp.get("if_score", 0)
+                confidence = exp.get("confidence", 0)
+                explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
+            else:
+                if exp.get("prom_err_id"):
+                    missing_field_count += 1
+                    malformed_metric = True
+
+                if exp.get("kafka_err_id"):
+                    missing_field_count += 1
+                    ooo = True
+                
+                explanation, operation_impact, recommendation = A7(atm_id,  missing_field_count, malformed_metric, ooo)
+
+            detailed_rows.append({
+                "id": a.get('id'),
+                "ATM_ID": atm_id,
+                "Anomaly": A_code,
+                "Severity": a['severity'],
+                "Score": a['issue_score'],
+                "Event_Time": f"{start_time} - {end_time}",
+                "Title": a['title'],
+                "root_cause": explanation,
+                "operations": operation_impact,
+                "Recommended_Action": recommendation,
+                "recommended_action": a.get("recommended_action") or recommendation,
+                "model_confidence_score": a.get("model_confidence_score"),
+                "sources_involved": a.get("sources_involved") or [],
+                "detection_source": exp.get("source") if isinstance(exp, dict) else None,
+            })
+
+        elif A_code == "UNKNOWN":
+
+            end_time_arg = a['detected_at']
+
+            start_time, end_time = time_window(end_time_arg, 10)
+
+            source = exp.get("source", "UNKNOWN")
+            if source == "ZSCORE":
+                max_z = exp.get("max_z_score", 0)
+                n_dev = exp.get("n_features_deviating", 0)
+                explanation = (
+                    f"Statistical deviation detected: {n_dev} features exceeded 3σ threshold "
+                    f"(max z-score: {max_z:.2f}). Pattern does not match any known anomaly type."
+                )
+            else:
+                if_score = exp.get("if_score", 0)
+                xgb_pred = exp.get("xgb_predicted", "N/A")
+                xgb_conf = exp.get("xgb_confidence", 0)
+                explanation = (
+                    f"Isolation Forest flagged anomalous behavior (score: {if_score:.3f}), "
+                    f"but XGBoost classified as {xgb_pred} (confidence: {xgb_conf:.2f}). "
+                    f"Pattern is novel and does not match trained A1–A7 signatures."
+                )
+
+            operation_impact = "System behavior is atypical; impact depends on underlying cause which requires investigation."
+            recommendation = (
+                "Review telemetry across all sources (ATM app, Kafka, Prometheus, GCP) for this time window. "
+                "Check for recent deployments, config changes, or traffic anomalies. "
+                "If pattern recurs, consider adding it to the training dataset."
+            )
 
             detailed_rows.append({
                 "id": a.get('id'),

@@ -69,9 +69,9 @@ def emit_tick(producer, t: datetime, anomaly_last_seen: dict[str, datetime], bac
         if eligible:
             name, fn, _ = rng.choice(eligible)
             try:
-                fn(producer, t)
+                atm_id = fn(producer, t)
                 anomaly_last_seen[name] = t
-                log.info("Injected anomaly %s", name)
+                log.info("Injected anomaly %s on %s", name, atm_id)
             except Exception as exc:
                 log.warning("Anomaly injector %s failed: %s", name, exc)
 

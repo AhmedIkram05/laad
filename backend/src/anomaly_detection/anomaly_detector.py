@@ -248,7 +248,7 @@ def a3_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     for r in data:
         src = (r.get("source") or "").upper()
-        if src == "TERMINAL_HANDLER" and (r.get("event_type") == "OOM_ERROR" or r.get("severity") == "FATAL"):
+        if src == "TERMINAL_HANDLER" and (r.get("event_type") in ("OOM_ERROR", "OutOfMemoryError") or r.get("severity") == "FATAL"):
             pod = _payload_get(r, "pod_name") or r.get("component") or "unknown"
             atm_id = r.get("atm_id") or _payload_get(r, "atm_id")
             if pod not in oom_pods:
@@ -268,23 +268,35 @@ def a3_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not series:
             continue
 
-        oom_ts_str = oom_pods[pod].get("ts")
+        oom_ts_val = oom_pods[pod].get("ts")
         window_start: datetime | None = None
         window_end: datetime | None = None
         try:
-            if oom_ts_str:
-                oom_dt_str = oom_ts_str.replace("Z", "+00:00")
-                oom_dt = datetime.fromisoformat(oom_dt_str)
+            if oom_ts_val:
+                if isinstance(oom_ts_val, datetime):
+                    oom_dt = oom_ts_val
+                else:
+                    oom_dt_str = str(oom_ts_val).replace("Z", "+00:00")
+                    oom_dt = datetime.fromisoformat(oom_dt_str)
+                if oom_dt.tzinfo is None:
+                    oom_dt = oom_dt.replace(tzinfo=timezone.utc)
                 window_end = oom_dt
                 window_start = oom_dt - timedelta(minutes=90)
         except Exception:
             pass
 
         filtered: List[float] = []
-        for tstr, val in series:
+        for tval, val in series:
             try:
-                ts_str = tstr.replace("Z", "+00:00") if tstr else tstr
-                tdt = datetime.fromisoformat(ts_str)
+                if isinstance(tval, datetime):
+                    tdt = tval
+                else:
+                    ts_str = str(tval).replace("Z", "+00:00") if tval else None
+                    if not ts_str:
+                        continue
+                    tdt = datetime.fromisoformat(ts_str)
+                if tdt.tzinfo is None:
+                    tdt = tdt.replace(tzinfo=timezone.utc)
             except Exception:
                 continue
             if window_start and window_end:
@@ -311,7 +323,7 @@ def a3_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             anomalies.append({
                 "anomaly_type": "A3",
                 "atm_id": pod_atm_id,
-                "detected_at": oom_ts_str or datetime.now(timezone.utc).isoformat(),
+                "detected_at": (oom_ts_val.isoformat() if isinstance(oom_ts_val, datetime) else oom_ts_val) or datetime.now(timezone.utc).isoformat(),
                 "severity": "MAJOR",
                 "title": "JVM memory leak suspected — heap usage increasing.",
                 "explanation": _datetime_safe_json_dumps({
@@ -334,56 +346,77 @@ def a3_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def a4_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """A4: Container Restart Loop.
 
-    Fires when at least 2 GCP/CLOUD restart_count events are detected
+    Fires when at least 1 GCP/CLOUD restart_count event is detected
      AND terminal handler shows >=2 STARTUP events OR >=2 FATAL events.
     Supports both real GCP parser output (source=CLOUD, metric_name=restart_count)
     and legacy/test format (source=GCP, metric_name=container/restart_count).
+
+    Per-ATM evaluation: each ATM is evaluated independently to prevent
+    cross-contamination from signals across different ATMs.
     """
     anomalies: List[Dict[str, Any]] = []
-    gcp_restarts: List[Dict[str, Any]] = []
-    total_startups = 0
-    total_fatals = 0
-    last_ts: str | None = None
+    atm_restarts: Dict[str, List[Dict[str, Any]]] = {}
+    atm_startups: Dict[str, int] = {}
+    atm_fatals: Dict[str, int] = {}
+    atm_last_ts: Dict[str, str] = {}
 
     for r in data:
         src = (r.get("source") or "").upper()
-        last_ts = r.get("timestamp") or last_ts
         metric_name = r.get("metric_name") or ""
+        atm_id = r.get("atm_id") or _payload_get(r, "atm_id")
+        entity_id = r.get("entity_id") or _payload_get(r, "entity_id")
+
+        if not atm_id and entity_id and "atm" in str(entity_id).lower():
+            import re
+            match = re.search(r'(ATM-[A-Z]{2}-\d{4})', str(entity_id), re.IGNORECASE)
+            if match:
+                atm_id = match.group(1).upper()
+
+        if not atm_id:
+            continue
+
+        atm_last_ts[atm_id] = r.get("timestamp") or atm_last_ts.get(atm_id)
 
         if src in ("CLOUD", "GCP"):
             if metric_name in ("restart_count", "container/restart_count"):
                 v = _as_float(r.get("metric_value") or _payload_get(r, "metric_value"))
                 if v is not None:
-                    gcp_restarts.append({"ts": r.get("timestamp"), "count": v})
+                    atm_restarts.setdefault(atm_id, []).append({"ts": r.get("timestamp"), "count": v})
 
         if src == "TERMINAL_HANDLER":
             if r.get("event_type") == "STARTUP":
-                total_startups += 1
+                atm_startups[atm_id] = atm_startups.get(atm_id, 0) + 1
             if r.get("event_type") == "OOM_ERROR" or r.get("severity") == "FATAL":
-                total_fatals += 1
+                atm_fatals[atm_id] = atm_fatals.get(atm_id, 0) + 1
 
-    if len(gcp_restarts) >= 2 and (total_startups >= 2 or total_fatals >= 2):
-        detected_ts = gcp_restarts[-1].get("ts") or last_ts
-        anomalies.append({
-            "anomaly_type": "A4",
-            "atm_id": None,
-            "detected_at": detected_ts or datetime.now(timezone.utc).isoformat(),
-            "severity": "MAJOR",
-            "title": "Container restart loop causing instability.",
-            "explanation": _datetime_safe_json_dumps({
-                "gcp_restarts": gcp_restarts,
-                "total_startups": total_startups,
-                "total_fatals": total_fatals,
-            }),
-            "sources_involved": ["GCP", "TERMINAL_HANDLER"],
-            "recommended_action": (
-                "1. Identify the root cause from container logs before restart. "
-                "2. Check resource limits (CPU/memory) in Kubernetes. "
-                "3. Review application startup sequence for failure points. "
-                "4. If OOM suspected, increase memory limit or optimise usage. "
-                "5. Block further restarts with a pre-stop hook if the crash loop is harmful."
-            ),
-        })
+    all_atms = set(list(atm_restarts.keys()) + list(atm_startups.keys()) + list(atm_fatals.keys()))
+    for atm_id in all_atms:
+        restarts = atm_restarts.get(atm_id, [])
+        startups = atm_startups.get(atm_id, 0)
+        fatals = atm_fatals.get(atm_id, 0)
+
+        if len(restarts) >= 1 and (startups >= 2 or fatals >= 2):
+            detected_ts = restarts[-1].get("ts") or atm_last_ts.get(atm_id)
+            anomalies.append({
+                "anomaly_type": "A4",
+                "atm_id": atm_id,
+                "detected_at": detected_ts or datetime.now(timezone.utc).isoformat(),
+                "severity": "MAJOR",
+                "title": "Container restart loop causing instability.",
+                "explanation": _datetime_safe_json_dumps({
+                    "gcp_restarts": restarts,
+                    "total_startups": startups,
+                    "total_fatals": fatals,
+                }),
+                "sources_involved": ["GCP", "TERMINAL_HANDLER"],
+                "recommended_action": (
+                    "1. Identify the root cause from container logs before restart. "
+                    "2. Check resource limits (CPU/memory) in Kubernetes. "
+                    "3. Review application startup sequence for failure points. "
+                    "4. If OOM suspected, increase memory limit or optimise usage. "
+                    "5. Block further restarts with a pre-stop hook if the crash loop is harmful."
+                ),
+            })
 
     return anomalies
 
@@ -406,7 +439,7 @@ def a5_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         last_ts.setdefault(atm, r.get("timestamp"))
         if (r.get("source") or "").upper() == "KAFKA":
             rt = _as_float(_payload_get(r, "response_time_ms") or r.get("response_time_ms") or r.get("metric_value"))
-            sr = _as_float(_payload_get(r, "transaction_success_rate"))
+            sr = _as_float(_payload_get(r, "transaction_success_rate") or _payload_get(r, "success_rate") or r.get("success_rate"))
             fc = _as_float(_payload_get(r, "failure_count"))
             if rt is not None and rt >= 3000:
                 spikes_by_atm.setdefault(atm, []).append({"ts": r.get("timestamp"), "rt": rt, "sr": sr, "fc": fc})
@@ -455,7 +488,11 @@ def a6_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         last_ts.setdefault(atm, r.get("timestamp"))
 
         if (r.get("source") or "").upper() == "OS":
-            mem = _as_float(_payload_get(r, "memory_usage_percent") or r.get("memory_usage_percent"))
+            # Check metric_name/metric_value (from v_unified_analysis) or payload column
+            if r.get("metric_name") == "memory_usage_percent":
+                mem = _as_float(r.get("metric_value"))
+            else:
+                mem = _as_float(_payload_get(r, "memory_usage_percent") or r.get("memory_usage_percent"))
             if mem is not None:
                 mem_by_atm.setdefault(atm, []).append(mem)
 
@@ -527,10 +564,10 @@ def a7_detection(
                 "row": r,
             })
             trtps_val = _payload_get(r, "transaction_rate_tps")
-            if kafka_offset == -1:
+            if str(kafka_offset) == "-1" or kafka_offset == -1:
                 kafka_offset_minus_one.setdefault(atm, []).append(r.get("timestamp"))
                 kafka_missing_ts.setdefault(atm, []).append(r.get("timestamp"))
-            elif r.get("atm_status") is None or trtps_val is None:
+            elif r.get("atm_status") is None and trtps_val is None:
                 kafka_missing_ts.setdefault(atm, []).append(r.get("timestamp"))
 
         if src in ("METRIC", "PROMETHEUS"):

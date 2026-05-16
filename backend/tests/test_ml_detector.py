@@ -281,7 +281,7 @@ class TestDetectAndSave:
 
         mock_iso = MagicMock()
         mock_iso.predict.return_value = np.array([-1])
-        mock_iso.score_samples.return_value = np.array([-0.25])
+        mock_iso.score_samples.return_value = np.array([-0.80])
 
         mock_clf = MagicMock()
         mock_clf.predict_proba.return_value = np.array([[0.9]])
@@ -433,11 +433,11 @@ class TestSaveAnomaly:
 
 
 class TestConstants:
-    def test_confidence_threshold_is_060(self):
-        assert CONFIDENCE_THRESHOLD == 0.60
+    def test_confidence_threshold_is_070(self):
+        assert CONFIDENCE_THRESHOLD == 0.70
 
-    def test_window_seconds_is_600(self):
-        assert WINDOW_SECONDS == 600
+    def test_window_seconds_is_120(self):
+        assert WINDOW_SECONDS == 120
 
     def test_artifact_dir_points_to_backend_ml(self):
         assert "backend" in str(ARTIFACT_DIR) and "ml" in str(ARTIFACT_DIR)
@@ -470,30 +470,30 @@ class TestAttribution:
         result = detector._attribution_for("A1", rows)
         assert result == "ATM-GB-0001"
 
-    def test_returns_pod_for_a3(self):
+    def test_returns_atm_from_pod_for_a3(self):
         detector = MLAnomalyDetector()
         rows = [
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"pod_name": "terminal-handler-7"}},
-            {"atm_id": "ATM-GB-0002", "raw_payload": {"pod_name": "terminal-handler-7"}},
+            {"atm_id": "ATM-GB-0001", "raw_payload": {"pod_name": "terminal-handler-atm-gb-0001"}},
+            {"atm_id": "ATM-GB-0002", "raw_payload": {"pod_name": "terminal-handler-atm-gb-0001"}},
         ]
         result = detector._attribution_for("A3", rows)
-        assert result == "terminal-handler-7"
+        assert result == "ATM-GB-0001"
 
-    def test_returns_pod_for_a4(self):
+    def test_returns_atm_from_pod_for_a4(self):
         detector = MLAnomalyDetector()
         rows = [
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"pod_name": "atm-service-3"}},
+            {"atm_id": "ATM-GB-0001", "raw_payload": {"pod_name": "terminal-handler-atm-gb-0003"}},
         ]
         result = detector._attribution_for("A4", rows)
-        assert result == "atm-service-3"
+        assert result == "ATM-GB-0003"
 
-    def test_returns_pod_for_a7(self):
+    def test_returns_atm_mode_for_a7(self):
         detector = MLAnomalyDetector()
         rows = [
-            {"atm_id": "ATM-GB-0001", "raw_payload": {"entity_id": "kafka-partition-2"}},
+            {"atm_id": "ATM-GB-0001"}, {"atm_id": "ATM-GB-0001"}, {"atm_id": "ATM-GB-0002"},
         ]
         result = detector._attribution_for("A7", rows)
-        assert result == "kafka-partition-2"
+        assert result == "ATM-GB-0001"
 
     def test_returns_mode_when_no_pod(self):
         detector = MLAnomalyDetector()
@@ -508,13 +508,13 @@ class TestAttribution:
         result = detector._attribution_for("A1", [])
         assert result is None
 
-    def test_parses_string_payload_for_pod(self):
+    def test_parses_string_payload_for_atm(self):
         detector = MLAnomalyDetector()
         rows = [
-            {"atm_id": "ATM-GB-0001", "raw_payload": '{"pod_name": "service-x", "atm_id": "ATM-GB-0005"}'},
+            {"atm_id": "ATM-GB-0001", "raw_payload": '{"pod_name": "terminal-handler-atm-gb-0005", "atm_id": "ATM-GB-0005"}'},
         ]
         result = detector._attribution_for("A3", rows)
-        assert result == "service-x"
+        assert result == "ATM-GB-0005"
 
 
 class TestQueryWindowFallback:

@@ -30,11 +30,14 @@ const request = async (endpoint, options = {}) => {
 
 // Fetches a list of anomalies filtered by Completed state
 // is_active: 1 = active only, 0 = resolved only, undefined/null = all
-export const fetchAnomalies = (is_active = 1) => {
+// hours: time range filter (default 24 hours)
+export const fetchAnomalies = (is_active = 1, hours = 24) => {
+    const now = new Date();
+    const from = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
     if (is_active === null || is_active === undefined) {
-        return request("/anomalies");
+        return request(`/anomalies?from_date=${encodeURIComponent(from)}`);
     }
-    return request(`/anomalies?is_active=${is_active}`);
+    return request(`/anomalies?is_active=${is_active}&from_date=${encodeURIComponent(from)}`);
 };
 
 // Fetches analysis data for a specific anomaly
