@@ -261,15 +261,15 @@ flowchart LR
 
 ### Anomaly Injector Details
 
-| Injector | Type | Mechanism | Cooldown/Duration | Messages per Injection |
+| Injector | Type | Mechanism | Cooldown/Duration | Exact Signals |
 |---|---|---|---|---|
-| A1 | Network Timeout Cascade | `NETWORK_DISCONNECT` + Kafka `Offline` + `NETWORK_ERROR` across 3+ sources | 300s | ~6-9 messages |
-| A2 | Cash Cassette Empty | `CASSETTE_EMPTY` + Kafka `OutOfService` | 600s | ~4-6 messages |
-| A3 | JVM Memory Leak | Batch `jvm_memory_used_bytes` increase over 90 ticks + OOM_ERROR event | Single call (batch) | 270 metrics + 1 event |
-| A4 | Container Restart Loop | GCP `restart_count > 0` + Terminal Handler `STARTUP` × 2 | 300s | ~4-5 messages |
-| A5 | High Response Time Spike | Kafka `response_time_ms > 3000ms` + `success_rate < 90%` | 300s | ~4-6 messages |
-| A6 | OS Memory Pressure | Batch `memory_usage_percent >= 90` + ATM_APP `TIMEOUT` over 120 ticks | Single call (batch) | 120 metrics + 1 event |
-| A7 | Out-of-Order Kafka | Malformed messages with `offset = -1` and missing fields | 300s | ~3-5 messages |
+| A1 | Network Timeout Cascade | `NETWORK_DISCONNECT` + Kafka `Offline` + `NETWORK_TIMEOUT` across 3+ sources | 300s | correlation_id=`corr-0030-nnet-disc-0001`, error_code=ERR-0040, response_time_ms=30000 |
+| A2 | Cash Cassette Depletion → Out of Service | `CASSETTE_LOW`×2 + `CASSETTE_EMPTY`×2 + Kafka `Out of Service` | 600s | atm_status="Out of Service", transaction_failure_reason="CASH_DISPENSE_ERROR", transaction_rate_tps=0.0, transaction_success_rate=0.0 |
+| A3 | JVM Memory Leak → OOM | Batch `jvm_memory_used_bytes` 300MB→1040MB + GC 0.45s→24.7s over 90 ticks | Single call (batch) | 270 metrics + 1 event, OutOfMemoryError FATAL |
+| A4 | Container Restart Loop | GCP `restart_count` 1→2 + ≥3 STARTUP events + 2× FATAL | 300s | container_id changes each STARTUP, 2× OutOfMemoryError FATAL |
+| A5 | High Response Time Spike | Kafka `response_time_ms` 3200→30000ms + success_rate 100%→50% | 300s | corr_ids=`corr-0010-xxyy-aabb-1234`,`corr-0011-xyzw-ccdd-5678`, failure_count 8,14, error_code=ERR-0012 |
+| A6 | OS Memory Pressure → Timeout | Batch `memory_usage_percent` 46%→98.75% + `network_errors` 0→22 + cpu 91.5% over 120 ticks | Single call (batch) | 120 metrics + 1 event, error_detail contains "ThreadAbortException" |
+| A7 | Malformed / Out-of-Order Kafka | Kafka offset 4050 out-of-order + offset 4051 null fields + Prometheus malformed | 300s | metric_value="890iembre" (non-numeric) |
 
 ---
 
