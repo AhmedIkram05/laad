@@ -84,11 +84,12 @@ class TestInjectA2:
 
 
 class TestInjectA3:
-    def test_first_call_sends_3_metric_messages(self):
+    def test_emits_270_metric_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a3(mock, t)
-        assert mock.send_metric.call_count == 3
+        # 90 ticks × 3 metrics per tick = 270 metric messages
+        assert mock.send_metric.call_count == 270
 
     def test_anomaly_tag_present_in_all_metrics(self):
         mock = _mock_producer()
@@ -97,13 +98,14 @@ class TestInjectA3:
         for call in mock.send_metric.call_args_list:
             assert call[0][0]["payload"].get("_anomaly_tag") == "A3"
 
-    def test_progressive_state_across_calls(self):
+    def test_emits_all_90_ticks_in_single_call(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a3(mock, t)
-        first_count = mock.send_metric.call_count
-        inject_a3(mock, t)
-        assert mock.send_metric.call_count == first_count + 3
+        # 90 ticks × 3 metrics per tick = 270 metric messages
+        assert mock.send_metric.call_count == 270
+        # 1 OOM_ERROR event
+        assert mock.send_event.call_count == 1
 
     def test_jvm_memory_metric_name_present(self):
         mock = _mock_producer()
@@ -119,20 +121,10 @@ class TestInjectA3:
         sources = {c[0][0]["source"] for c in mock.send_metric.call_args_list}
         assert sources == {"PROMETHEUS", "CLOUD"}
 
-    def test_no_oom_event_in_first_89_calls(self):
-        mock = _mock_producer()
-        t = datetime.now(timezone.utc)
-        for _ in range(88):
-            inject_a3(mock, t)
-        event_count = mock.send_event.call_count
-        assert event_count == 0
-
-    def test_oom_event_on_90th_call(self):
+    def test_oom_event_present(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a3(mock, t)
-        for _ in range(89):
-            inject_a3(mock, t)
         assert mock.send_event.call_count == 1
         call_args = mock.send_event.call_args[0][0]
         assert call_args["payload"].get("_anomaly_tag") == "A3"
@@ -194,18 +186,21 @@ class TestInjectA5:
 
 
 class TestInjectA6:
-    def test_first_call_sends_1_metric_message(self):
+    def test_emits_120_metric_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a6(mock, t)
-        assert mock.send_metric.call_count == 1
+        # 120 ticks × 1 metric per tick = 120 metric messages
+        assert mock.send_metric.call_count == 120
+        # 1 TIMEOUT event
+        assert mock.send_event.call_count == 1
 
-    def test_metric_name_windows_os_snapshot(self):
+    def test_metric_name_memory_usage_percent(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a6(mock, t)
         metric_name = mock.send_metric.call_args[0][0]["metric_name"]
-        assert metric_name == "windows_os_snapshot"
+        assert metric_name == "memory_usage_percent"
 
     def test_source_os(self):
         mock = _mock_producer()
@@ -214,19 +209,10 @@ class TestInjectA6:
         source = mock.send_metric.call_args[0][0]["source"]
         assert source == "OS"
 
-    def test_no_oom_event_in_first_119_calls(self):
-        mock = _mock_producer()
-        t = datetime.now(timezone.utc)
-        for _ in range(119):
-            inject_a6(mock, t)
-        assert mock.send_event.call_count == 0
-
-    def test_timeout_event_on_120th_call(self):
+    def test_timeout_event_present(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a6(mock, t)
-        for _ in range(119):
-            inject_a6(mock, t)
         assert mock.send_event.call_count == 1
         call_args = mock.send_event.call_args[0][0]
         assert call_args["payload"].get("_anomaly_tag") == "A6"
