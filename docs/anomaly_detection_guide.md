@@ -1,6 +1,7 @@
 # Anomaly Detection Guide — Synthetic Dataset
 
 ## A1: Network Timeout Cascade (ATM-GB-0003, 10:00)
+
 - **Sources:** ATM App Log, Kafka Stream, Terminal Handler Log
 - **Correlation ID:** `corr-0030-nnet-disc-0001`
 - **Detection signals:**
@@ -11,6 +12,7 @@
 - **Expected alert:** ATM offline due to network failure. Cross-source confirmation.
 
 ## A2: Cash Cassette Depletion → Out of Service (ATM-GB-0003, 09:00–09:59)
+
 - **Sources:** ATM Hardware Sensor Log, Kafka Stream
 - **Detection signals:**
   - Hardware Log: `CASSETTE_LOW` (severity=WARNING) × 2 cassettes
@@ -20,6 +22,7 @@
 - **Expected alert:** ATM out of service — cash cassettes exhausted. Escalating severity chain.
 
 ## A3: JVM Memory Leak → OOM (Terminal Handler, 08:00–09:30)
+
 - **Sources:** Prometheus Metrics, GCP Cloud Metrics, Terminal Handler App Log
 - **Detection signals:**
   - Prometheus: `jvm_memory_used_bytes` rising monotonically: 300MB → 1040MB over 90 mins
@@ -30,6 +33,7 @@
 - **Expected alert:** JVM heap leak detected. GC overhead climbing. OOM imminent.
 
 ## A4: Container Restart Loop (Terminal Handler, 09:30–09:34)
+
 - **Sources:** GCP Cloud Metrics, Terminal Handler App Log
 - **Detection signals:**
   - GCP: `container/restart_count` = 1, then 2 within 4 minutes
@@ -38,6 +42,7 @@
 - **Expected alert:** Container crash loop detected. 2 restarts in under 5 minutes.
 
 ## A5: High Response Time Spike + Success Rate Drop (ATM-GB-0001, 09:30)
+
 - **Sources:** Kafka Stream, ATM App Log
 - **Correlation IDs:** `corr-0010-xxyy-aabb-1234`, `corr-0011-xyzw-ccdd-5678`
 - **Detection signals:**
@@ -48,6 +53,7 @@
 - **Expected alert:** ATM-GB-0001 response time 10× above baseline. Success rate critically low.
 
 ## A6: OS Memory Pressure → Application Timeout (ATM-GB-0002, 09:45)
+
 - **Sources:** Windows OS Metrics, ATM App Log
 - **Detection signals:**
   - Windows OS Metrics: `memory_usage_percent` escalating: 46% → 98.75% over 2 hours
@@ -57,6 +63,7 @@
 - **Expected alert:** ATM host memory critically high. Application timeout correlated with OS pressure.
 
 ## A7: Malformed / Out-of-Order Kafka Events (ATM-GB-0004)
+
 - **Sources:** Kafka Stream, Prometheus Metrics
 - **Detection signals:**
   - Kafka offset 4050 has an earlier timestamp than expected (out-of-order)
@@ -65,6 +72,7 @@
 - **Expected alert:** Malformed event ingestion detected. Schema validation failure. Out-of-order sequence.
 
 ## Cross-Channel Correlation Opportunities
+
 | Event Window       | Correlated Sources                            | Link Field         |
 |--------------------|-----------------------------------------------|--------------------|
 | 10:00 ATM-GB-0003 offline | ATM App Log + Kafka + Terminal Handler   | `correlation_id`   |
