@@ -5,7 +5,7 @@
  */
 
 /* External Libraries */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { GoIssueDraft } from "react-icons/go";
 
 /* Internal Imports */
@@ -15,29 +15,53 @@ import { fetchAnomalies, fetchDetailedAnalysis, toggleStar, fetchMetrics } from 
 import "./AnomalyListPage.css";
 
 function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = false }) {
-    const [search, setSearch] = useState(""); // Search User Input Text
-    const [filterBy, setFilterBy] = useState("title"); // Filter Field
-    const [anomalies, setAnomalies] = useState([]); // Grouped Anomaly Data
-    const [loading, setLoading] = useState(true); // Loading Indicator
-    const [metrics, setMetrics] = useState(null); // Dashboard metrics
-    const [timeFilter, setTimeFilter] = useState("24h"); // Time range filter
-    const [logStream, setLogStream] = useState([]); // Log stream data
-    const [logSearch, setLogSearch] = useState(""); // Log stream search
+    const [search, setSearch] = useState("");
+    const [filterBy, setFilterBy] = useState("title");
+    const [anomalies, setAnomalies] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [metrics, setMetrics] = useState(null);
+    const [timeFilter, setTimeFilter] = useState("24h");
+    const [logStream, setLogStream] = useState([]);
+    const [logSearch, setLogSearch] = useState("");
+    const [now, setNow] = useState(() => Date.now());
+
+    const hours = timeFilter === "1h" ? 1 : timeFilter === "6h" ? 6 : timeFilter === "7d" ? 168 : 24;
+    const bucket = timeFilter === "1h" ? 5 : timeFilter === "6h" ? 30 : timeFilter === "7d" ? 360 : 60;
+
+    const loadMetrics = useCallback(async () => {
+        try {
+            const res = await fetchMetrics(hours, bucket);
+            setMetrics(res);
+        } catch (err) {
+            console.error("Failed to fetch metrics", err);
+        }
+    }, [hours, bucket]);
+
+    const loadLogStream = useCallback(async () => {
+        try {
+            const res = await fetchAnomalies(null, hours);
+            setLogStream(res.data || []);
+        } catch (err) {
+            console.error("Failed to fetch log stream", err);
+        }
+    }, [hours]);
 
     useEffect(() => {
-        // Fetch and Process Anomaly and Analysis Data
+        let cancelled = false;
         const load = async () => {
             try {
-                const [anomalyRes, analysisRes] = await Promise.all([fetchAnomalies(isActive), fetchDetailedAnalysis()]);
+                const [anomalyRes, analysisRes] = await Promise.all([
+                    fetchAnomalies(isActive, hours),
+                    fetchDetailedAnalysis(),
+                ]);
+                if (cancelled) return;
                 let anomaliesData = anomalyRes.data;
                 const analysisData = analysisRes.data;
 
-                // (Optional) Filter Data for Specific Page
                 if (filter) {
                     anomaliesData = anomaliesData.filter(filter);
                 }
 
-                // Order Anomalies by Analysis Algorithm
                 const orderMap = {};
                 analysisData.forEach((item, index) => {
                     orderMap[item.Anomaly] = index;
@@ -52,36 +76,25 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = 
             } catch (err) {
                 console.error("Failed to fetch anomalies.", err);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
         load();
 
         if (showMetrics) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- Data fetching on dep change is a legitimate useEffect use case
             loadMetrics();
             loadLogStream();
         }
-    }, [filter, isActive, showMetrics, timeFilter]);
 
-    const loadMetrics = async () => {
-        try {
-            const hours = timeFilter === "1h" ? 1 : timeFilter === "6h" ? 6 : timeFilter === "7d" ? 168 : 24;
-            const bucket = timeFilter === "1h" ? 5 : timeFilter === "6h" ? 30 : timeFilter === "7d" ? 360 : 60;
-            const res = await fetchMetrics(hours, bucket);
-            setMetrics(res);
-        } catch (err) {
-            console.error("Failed to fetch metrics", err);
-        }
-    };
+        return () => { cancelled = true; };
+    }, [filter, isActive, showMetrics, hours, loadMetrics, loadLogStream]);
 
-    const loadLogStream = async () => {
-        try {
-            const res = await fetchAnomalies(null);
-            setLogStream(res.data || []);
-        } catch (err) {
-            console.error("Failed to fetch log stream", err);
-        }
-    };
+    // Tick every 30s to refresh relative timestamps
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 30_000);
+        return () => clearInterval(timer);
+    }, []);
 
     /*
      * Toggles the "Starred" state if an anomaly
@@ -108,7 +121,7 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = 
      * @returns {string} - formatted time
      */
     const formatTime = (timestamp) => {
-        const diff = Math.floor((Date.now() - new Date(timestamp)) / 60000);
+        const diff = Math.floor((now - new Date(timestamp)) / 60000);
         if (diff < 1) return "Just now";
         if (diff < 60) return `${diff} mins ago`;
         const hours = Math.floor(diff / 60);
@@ -139,12 +152,6 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = 
                (a.severity || "").toLowerCase().includes(q);
     });
 
-    // Option B: Calculate severity counts
-    const severityCounts = anomalies.reduce((acc, a) => {
-        const sev = (a.severity || "UNKNOWN").toUpperCase();
-        acc[sev] = (acc[sev] || 0) + 1;
-        return acc;
-    }, {});
     const anomalyTypeCounts = anomalies.reduce((acc, a) => {
         acc[a.anomaly_type] = (acc[a.anomaly_type] || 0) + 1;
         return acc;
