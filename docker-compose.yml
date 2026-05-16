@@ -81,7 +81,7 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_CONSUMER_GROUP=atm-platform-consumer
-      - KAFKA_AUTO_OFFSET_RESET=earliest
+      - KAFKA_AUTO_OFFSET_RESET=latest
       - ANOMALY_TRIGGER_INTERVAL_S=30
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000

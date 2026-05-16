@@ -188,7 +188,6 @@ The continuous generator (`backend/generator/continuous_generator.py`) is a pure
 | Parameter | Default | Description |
 |---|---|---|
 | `TICK_SECONDS` | 1 | Interval between emission cycles |
-| `BACKFILL_MINUTES` | 60 | Historical data generated on startup |
 | `ANOMALY_PROB` | 0.02 (2%) | Live anomaly injection probability |
 | `BACKFILL_ANOMALY_PROB` | 0.01 (1%) | Backfill anomaly probability |
 | `ATMS` | 10 | `ATM-GB-0001` through `ATM-GB-0010` |
@@ -220,10 +219,10 @@ flowchart LR
   subgraph Injectors ["7 Anomaly Injectors"]
     I1["A1: Network Timeout\n(cooldown: 300s)"]
     I2["A2: Cassette Empty\n(cooldown: 600s)"]
-    I3["A3: JVM Memory Leak\n(90-tick progressive)"]
+    I3["A3: JVM Memory Leak\n(90-tick batch emission)"]
     I4["A4: Restart Loop\n(cooldown: 300s)"]
     I5["A5: RT Spike\n(cooldown: 300s)"]
-    I6["A6: OS Memory\n(120-tick progressive)"]
+    I6["A6: OS Memory\n(120-tick batch emission)"]
     I7["A7: Out-of-Order\n(cooldown: 300s)"]
   end
 
@@ -255,9 +254,9 @@ flowchart LR
 ### Key Design Decisions
 
 - **Pure Kafka producer:** No direct database writes. The generator only produces to Kafka topics. This decouples data generation from ingestion — if the consumer falls behind, data is safely buffered in Kafka (7-day retention).
-- **State-based progressive emission:** A3 (JVM Memory Leak) and A6 (OS Memory Pressure) use state machines that emit one message per tick over 90/120 ticks respectively, faithfully simulating real-time progressive degradation rather than unrealistic burst injection.
+- **Batch anomaly emission:** A3 (JVM Memory Leak) and A6 (OS Memory Pressure) emit all their historical ticks in a single call with timestamps spread over the past 90/120 minutes respectively. This ensures the full progressive degradation pattern is immediately available for detection rather than requiring multiple generator cycles to accumulate.
 - **Anomaly cooldowns:** Each anomaly type has a cooldown period (300s–600s) to prevent overlapping injections that would corrupt detection signals.
-- **Backfill mode:** On startup, generates 60 minutes of historical data (~3,610 ticks × 7 sources = ~25,000 messages) before entering live mode. Anomaly probability is halved during backfill (0.01 vs 0.02) to avoid flooding the initial window.
+- **Backfill mode:** On startup, generates historical data based on `BACKFILL_MINUTES` (default: 0 for production). When enabled, anomaly probability is halved during backfill (0.01 vs 0.02) to avoid flooding the initial window.
 - **Graceful shutdown:** Handles SIGTERM/SIGINT with producer flush before exit, ensuring no in-flight messages are lost.
 
 ### Anomaly Injector Details
@@ -266,10 +265,10 @@ flowchart LR
 |---|---|---|---|---|
 | A1 | Network Timeout Cascade | `NETWORK_DISCONNECT` + Kafka `Offline` + `NETWORK_ERROR` across 3+ sources | 300s | ~6-9 messages |
 | A2 | Cash Cassette Empty | `CASSETTE_EMPTY` + Kafka `OutOfService` | 600s | ~4-6 messages |
-| A3 | JVM Memory Leak | Progressive `jvm_memory_used_bytes` increase over 90 ticks | 90 ticks (progressive) | 1 message/tick × 90 |
+| A3 | JVM Memory Leak | Batch `jvm_memory_used_bytes` increase over 90 ticks + OOM_ERROR event | Single call (batch) | 270 metrics + 1 event |
 | A4 | Container Restart Loop | GCP `restart_count > 0` + Terminal Handler `STARTUP` × 2 | 300s | ~4-5 messages |
 | A5 | High Response Time Spike | Kafka `response_time_ms > 3000ms` + `success_rate < 90%` | 300s | ~4-6 messages |
-| A6 | OS Memory Pressure | Progressive `memory_usage_percent >= 90` + ATM_APP `TIMEOUT` over 120 ticks | 120 ticks (progressive) | 1 message/tick × 120 |
+| A6 | OS Memory Pressure | Batch `memory_usage_percent >= 90` + ATM_APP `TIMEOUT` over 120 ticks | Single call (batch) | 120 metrics + 1 event |
 | A7 | Out-of-Order Kafka | Malformed messages with `offset = -1` and missing fields | 300s | ~3-5 messages |
 
 ---
@@ -316,7 +315,7 @@ Thread-safe singleton `ATMProducer` wrapping `kafka.KafkaProducer`:
 | Parameter | Value | Rationale |
 |---|---|---|
 | `group_id` | `atm-platform-consumer` | Single consumer group for at-least-once delivery |
-| `auto_offset_reset` | `earliest` | Process all messages from beginning on first start |
+| `auto_offset_reset` | `latest` | Skip historical messages on restart — prevents data flood on consumer restart |
 | `enable_auto_commit` | `false` | Manual offset commit after successful batch processing |
 | `max_poll_records` | 500 | Max records per poll — balances throughput vs memory |
 | `session_timeout_ms` | 30,000 | Consumer considered dead after 30s without heartbeat |
@@ -641,7 +640,7 @@ A 3-layer hybrid detection engine that combines machine learning, statistical an
 
 ```mermaid
 flowchart TD
-  subgraph Window ["Data Window (600s)"]
+  subgraph Window ["Data Window (1800s, configurable via ML_WINDOW_SECONDS)"]
     Q["v_unified_analysis query\n≥5 rows required"]
     FE["Feature extraction\n47 features"]
     BU["RollingBaseline update\n20-vector history"]
@@ -651,8 +650,8 @@ flowchart TD
     IF["Isolation Forest\npredict(features)"]
     IF_ANOM{"IF anomaly?"}
     XGB["XGBoost\npredict_proba(features)"]
-    KNOWN{"XGB class != NORMAL\n&& confidence >= 0.60?"}
-    UNKNOWN{"IF score <= -0.1?"}
+    KNOWN{"XGB class != NORMAL\n&& confidence >= 0.50?"}
+    UNKNOWN{"IF score <= -0.75?"}
     SAVE1["Save anomaly\nsource=CLASSIFIER"]
   end
 
@@ -664,7 +663,7 @@ flowchart TD
 
   subgraph Layer3 ["Layer 3: SIGNAL_CORRELATOR (Fallback)"]
     HEUR["detect_anomalies_from_window()\nMulti-signal correlation"]
-    DEDUP{"_is_active() check\n5-min dedup window"}
+    DEDUP{"_is_active() check\n30-min dedup window"}
     SAVE3["Save anomaly\nsource=SIGNAL_CORRELATOR"]
   end
 
@@ -709,15 +708,15 @@ flowchart TD
 | **Isolation Forest** | 200 estimators, contamination=0.1 | Anomaly detection — flags windows with unusual feature patterns |
 | **XGBoost Classifier** | 100 estimators, max_depth=6, lr=0.1, subsample=0.8, colsample_bytree=0.8 | Classification — predicts anomaly type (A1–A7 + NORMAL) |
 | **Label Encoder** | 8 classes (A1–A7 + NORMAL) | Maps class indices to labels |
-| **Confidence threshold** | 0.60 | Minimum XGBoost confidence for known anomaly classification |
-| **UNKNOWN threshold** | IF score ≤ -0.1 (env: `ML_UNKNOWN_THRESHOLD`) | Isolation Forest score below which UNKNOWN anomaly is created |
+| **Confidence threshold** | 0.50 | Minimum XGBoost confidence for known anomaly classification |
+| **UNKNOWN threshold** | IF score ≤ -0.75 (env: `ML_UNKNOWN_THRESHOLD`) | Isolation Forest score below which UNKNOWN anomaly is created |
 
 **Decision logic:**
 
 1. Isolation Forest flags window as anomalous (`predict == -1`)
 2. XGBoost predicts class with probability distribution
-3. If `class != NORMAL` and `confidence >= 0.60` → save as known anomaly (A1–A7)
-4. If `class == NORMAL` but `IF score <= -0.1` → save as UNKNOWN anomaly (novel pattern)
+3. If `class != NORMAL` and `confidence >= 0.50` → save as known anomaly (A1–A7)
+4. If `class == NORMAL` but `IF score <= -0.75` → save as UNKNOWN anomaly (novel pattern)
 
 ### Layer 2: ZSCORE (Proactive)
 
@@ -746,8 +745,8 @@ Uses deterministic multi-signal correlation (`detect_anomalies_from_window()`) t
 
 | Mechanism | Window | Purpose |
 |---|---|---|
-| `_is_active()` | 5 minutes | Prevents duplicate writes when the kafka-consumer (30s trigger) fires on the same incident window |
-| Query | `SELECT 1 FROM anomalies WHERE anomaly_type = ? AND atm_id = ? AND is_active = 1 AND detected_at >= now() - 5min` | Returns true if active anomaly of same type+atm_id exists |
+| `_is_active()` | 10 minutes | Prevents duplicate writes when the kafka-consumer (30s trigger) fires on the same incident window |
+| Query | `SELECT 1 FROM anomalies WHERE anomaly_type = ? AND atm_id = ? AND is_active = 1 AND detected_at >= now() - 10min` | Returns true if active anomaly of same type+atm_id exists |
 
 ### Entity Attribution
 
@@ -755,9 +754,8 @@ The `_attribution_for()` method assigns the correct entity per anomaly type:
 
 | Anomaly Types | Attribution Target | Source |
 |---|---|---|
-| A1, A2, A5, A6 | `atm_id` | Most frequent ATM in window |
-| A3, A4 | `pod_name` / `entity_id` | Parsed from JSONB payload |
-| A7 | `pod_name` / `entity_id` | Parsed from JSONB payload |
+| A1, A2, A5, A6, A7 | `atm_id` | Most frequent ATM in window |
+| A3, A4 | `atm_id` (extracted from `pod_name` via regex) | Parsed from JSONB payload, falls back to mode |
 | UNKNOWN | Mode of ATMs in window | Fallback |
 
 ### 47 ML Features
@@ -779,7 +777,7 @@ The `kafka-consumer` service triggers anomaly detection every 30 seconds after p
 |---|---|---|---|
 | Kafka consumer | `consumer.py` `_trigger_anomaly_detection()` | 30s post-batch | Real-time detection as data arrives |
 
-The 5-minute dedup window in `_is_active()` prevents duplicate writes within the same detection cycle.
+The 10-minute dedup window in `_is_active()` prevents duplicate writes for the same anomaly incident across consecutive 30-second detection cycles.
 
 ---
 
@@ -1175,8 +1173,8 @@ make pytest        # runs all tests in Docker with isolated test DB
 | Connection pool exhausted under ML detector load | (runtime) | Pool bumped to `maxconn=50`, `minconn=5` |
 | Analysis endpoint 500 on `None` comparison | (runtime) | Added `or 0` guard on `frac_increase` in `analysis.py` |
 | Generator wrote directly to DB (violated Kafka-only pipeline) | `test_live_generator_emitters.py` | Emitters refactored to use Kafka producer; no psycopg2 imports remain |
-| Duplicate anomaly writes from concurrent detection | `test_ml_detector.py` | Removed APScheduler; anomaly detection now only via Kafka consumer; 5-minute dedup window in `_is_active()` |
-| A3/A6 anomaly injection burst behavior unrealistic | (design decision) | State-based progressive emission: one message per tick over 90/120 ticks |
+| Duplicate anomaly writes from concurrent detection | `test_ml_detector.py` | Removed APScheduler; anomaly detection now only via Kafka consumer; 30-minute dedup window in `_is_active()` |
+| A3/A6 anomaly injection burst behavior unrealistic | (design decision) | Batch emission: all 90/120 ticks emitted in a single call with historical timestamps |
 
 ---
 
