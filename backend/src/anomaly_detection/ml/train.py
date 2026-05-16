@@ -132,17 +132,30 @@ def train() -> None:
         window_delta = timedelta(seconds=WINDOW_SECONDS)
         step_delta   = timedelta(seconds=STEP_SECONDS)
 
+        # Group rows by atm_id for per-entity training (matches inference)
+        atm_groups: dict[str | None, list[dict]] = {}
+        for r in all_rows:
+            key = r.get("atm_id")
+            atm_groups.setdefault(key, []).append(r)
+
         X_list: list[np.ndarray] = []
         labels:  list[str | None] = []
-        t = start_ts
-        while t + window_delta <= end_ts + timedelta(seconds=1):
-            window_rows = [r for r in all_rows if t <= r["timestamp"] < t + window_delta]
-            if len(window_rows) >= 5:
-                feats = extract_features(window_rows)
-                if len(feats) == FEATURE_COUNT:
-                    X_list.append(feats)
-                    labels.append(extract_label(window_rows))
-            t += step_delta
+
+        for entity_id, entity_rows in atm_groups.items():
+            if len(entity_rows) < 5:
+                continue
+            entity_rows.sort(key=lambda r: r["timestamp"])
+            e_start = entity_rows[0]["timestamp"]
+            e_end = entity_rows[-1]["timestamp"]
+            t = e_start
+            while t + window_delta <= e_end + timedelta(seconds=1):
+                window_rows = [r for r in entity_rows if t <= r["timestamp"] < t + window_delta]
+                if len(window_rows) >= 5:
+                    feats = extract_features(window_rows)
+                    if len(feats) == FEATURE_COUNT:
+                        X_list.append(feats)
+                        labels.append(extract_label(window_rows))
+                t += step_delta
 
         if not X_list:
             log.error("No valid windows (need >=5 rows per window). Check feature engineering.")

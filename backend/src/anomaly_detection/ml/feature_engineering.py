@@ -156,7 +156,12 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
     cpu_p99  = _percentile(cpu_rows, 99)
     cpu_slope = _linear_slope(cpu_rows.sort_index()) if not cpu_rows.empty else 0.0
 
-    os_mem = metric_stats("windows_os_snapshot")
+    os_mem = metric_stats("memory_usage_percent")
+    if os_mem["mean"] == 0:
+        os_mem = metric_stats("windows_os_snapshot")
+
+    network_err = metric_stats("network_errors")
+    os_cpu = metric_stats("cpu_usage_percent")
 
     kafka_rt_payload = df.loc[df["source"] == "KAFKA", "raw_payload"].apply(
         lambda p: parse_payload(p).get("response_time_ms", 0)
@@ -188,7 +193,7 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
     atm_app_errors_all   = int(((atm_app["severity"] == "ERROR") | (atm_app["severity"] == "CRITICAL") | (atm_app["severity"] == "WARNING")).sum())
     th_fatals           = int((th["severity"] == "FATAL").sum())
     th_startups         = int((th["event_type"] == "STARTUP").sum())
-    th_oom              = int((th["event_type"] == "OOM_ERROR").sum())
+    th_oom              = int(((th["event_type"] == "OOM_ERROR") | (th["event_type"] == "OutOfMemoryError")).sum())
     hw_cassette_empty   = int((hw["event_type"] == "CASSETTE_EMPTY").sum())
     hw_cassette_low     = int((hw["event_type"] == "CASSETTE_LOW").sum())
 
@@ -210,7 +215,7 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
     if hw_cassette_empty > 0:  error_sources.add("HARDWARE")
     if kafka_offline > 0:       error_sources.add("KAFKA")
 
-    has_oom              = int((th["event_type"] == "OOM_ERROR").any())
+    has_oom              = int(((th["event_type"] == "OOM_ERROR") | (th["event_type"] == "OutOfMemoryError")).any())
     has_network_disconnect = int((atm_app["event_type"] == "NETWORK_DISCONNECT").any())
     has_timeout          = int((df["event_type"] == "TIMEOUT").any())
 
