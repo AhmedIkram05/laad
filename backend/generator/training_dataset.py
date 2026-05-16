@@ -61,6 +61,7 @@ def generate_baseline(t: datetime, atm: str, rng: random.Random) -> list[dict]:
     gc_pause = rng.uniform(0.01, 0.3)
     cpu = rng.uniform(15, 45)
     os_mem = rng.uniform(30, 65)
+    network_err = rng.randint(0, 2)
     kafka_rt = rng.uniform(50, 250)
     kafka_sr = rng.uniform(95, 100)
     rows.append(_metric("jvm_memory_used_bytes", jvm_mem, t, "PROMETHEUS", atm, _payload({"atm_id": atm, "location_code": loc})))
@@ -68,7 +69,9 @@ def generate_baseline(t: datetime, atm: str, rng: random.Random) -> list[dict]:
     rows.append(_metric("process_cpu_usage", cpu / 100, t, "PROMETHEUS", atm, _payload({"atm_id": atm})))
     rows.append(_metric("container/cpu/usage_time", cpu, t, "CLOUD", atm, _payload({"atm_id": atm, "location_code": loc})))
     rows.append(_metric("container/restart_count", rng.randint(0, 1), t, "CLOUD", atm, _payload({"atm_id": atm})))
-    rows.append(_metric("windows_os_snapshot", os_mem, t, "OS", atm, _payload({"atm_id": atm, "location_code": loc})))
+    rows.append(_metric("memory_usage_percent", os_mem, t, "OS", atm, _payload({"atm_id": atm, "location_code": loc})))
+    rows.append(_metric("network_errors", network_err, t, "OS", atm, _payload({"atm_id": atm})))
+    rows.append(_metric("cpu_usage_percent", cpu, t, "OS", atm, _payload({"atm_id": atm})))
     rows.append(_event(t, "ATM_APP", atm, "HEARTBEAT", "INFO", "ATM operational", _payload({"atm_id": atm, "location_code": loc})))
     rows.append(_event(t, "KAFKA", atm, "METRIC", "INFO", "Latency update", _payload({"atm_id": atm, "response_time_ms": round(kafka_rt, 1), "transaction_success_rate": round(kafka_sr, 2), "atm_id": atm})))
     rows.append(_event(t, "TERMINAL_HANDLER", atm, "HEARTBEAT", "INFO", "Pod healthy", _payload({"atm_id": atm, "pod_name": f"th-{atm.lower()}-1"})))
@@ -77,113 +80,131 @@ def generate_baseline(t: datetime, atm: str, rng: random.Random) -> list[dict]:
 
 def inject_a1(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
     loc = ATM_LOCATIONS.get(atm, "GB-LDN-001")
-    
-    # Variable timing for signals
-    timeout_delay = random.randint(3, 8)
-    kafka_delay = random.randint(8, 15) if random.random() < 0.7 else None
-    th_delay = random.randint(12, 20) if random.random() < 0.7 else None
-    
-    times = [t]
-    if timeout_delay is not None:
-        times.append(t + timedelta(seconds=timeout_delay))
-    if kafka_delay is not None:
-        times.append(t + timedelta(seconds=kafka_delay))
-    if th_delay is not None:
-        times.append(t + timedelta(seconds=th_delay))
-    
-    # Sort times to maintain chronological order
-    times.sort()
-    
-    signals = [
-        ("ATM_APP", "NETWORK_DISCONNECT", "ERROR", "Network connection lost", {"_anomaly_tag": "A1", "location_code": loc}),
-        ("ATM_APP", "TIMEOUT", "ERROR", "Request timed out", {"_anomaly_tag": "A1"}),
-    ]
-    
-    if kafka_delay is not None:
-        signals.append(("KAFKA", "STATUS", "INFO", "ATM Offline", {"_anomaly_tag": "A1", "atm_status": "Offline"}))
-    
-    if th_delay is not None:
-        signals.append(("TERMINAL_HANDLER", "NETWORK_ERROR", "FATAL", "Connection timed out", {"_anomaly_tag": "A1"}))
-    
-    # Ensure we have the right number of signals for the times
-    for i, (src, evt, sev, msg, p) in enumerate(signals[:len(times)]):
-        rows.append(_event(times[i], src, atm, evt, sev, msg, p | {"correlation_id": corr_id, "atm_id": atm}))
+    corr_id = "corr-0030-nnet-disc-0001"
+
+    rows.append(_event(t, "ATM_APP", atm, "NETWORK_DISCONNECT", "ERROR", "Network connection lost",
+        {"_anomaly_tag": "A1", "location_code": loc, "error_code": "ERR-0040", "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t + timedelta(seconds=5), "ATM_APP", atm, "TIMEOUT", "ERROR", "Request timed out",
+        {"_anomaly_tag": "A1", "error_code": "ERR-0040", "response_time_ms": 30000, "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t + timedelta(seconds=10), "KAFKA", atm, "STATUS", "INFO", "ATM Offline",
+        {"_anomaly_tag": "A1", "atm_status": "Offline", "transaction_failure_reason": "HOST_UNAVAILABLE", "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t + timedelta(seconds=15), "TERMINAL_HANDLER", atm, "NETWORK_TIMEOUT", "FATAL", "Connection timed out",
+        {"_anomaly_tag": "A1", "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a2(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
-    # Always include CASSETTE_LOW
-    rows.append(_event(t, "HARDWARE", atm, "CASSETTE_LOW", "WARNING", "Cash low in cassette 1", {"_anomaly_tag": "A2", "correlation_id": corr_id, "atm_id": atm}))
-    
-    # Variable delay for CASSETTE_EMPTY (3-8 minutes)
-    empty_delay = random.randint(3, 8)
-    rows.append(_event(t + timedelta(minutes=empty_delay), "HARDWARE", atm, "CASSETTE_EMPTY", "CRITICAL", "Cash empty in cassette 1", {"_anomaly_tag": "A2", "correlation_id": corr_id, "atm_id": atm}))
-    
-    # Randomly include KAFKA OutOfService signal (80% probability)
-    if random.random() < 0.8:
-        kafka_delay = empty_delay + random.randint(2, 5)  # 2-5 minutes after cassette empty
-        rows.append(_event(t + timedelta(minutes=kafka_delay), "KAFKA", atm, "STATUS", "INFO", "ATM Out of Service", {"_anomaly_tag": "A2", "atm_status": "OutOfService", "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t, "HARDWARE", atm, "CASSETTE_LOW", "WARNING", "Cash low in cassette 1",
+        {"_anomaly_tag": "A2", "cassette_id": 1, "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t, "HARDWARE", atm, "CASSETTE_LOW", "WARNING", "Cash low in cassette 2",
+        {"_anomaly_tag": "A2", "cassette_id": 2, "correlation_id": corr_id, "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(minutes=5), "HARDWARE", atm, "CASSETTE_EMPTY", "CRITICAL", "Cash empty in cassette 1",
+        {"_anomaly_tag": "A2", "cassette_id": 1, "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t + timedelta(minutes=5), "HARDWARE", atm, "CASSETTE_EMPTY", "CRITICAL", "Cash empty in cassette 2",
+        {"_anomaly_tag": "A2", "cassette_id": 2, "correlation_id": corr_id, "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(minutes=8), "KAFKA", atm, "STATUS", "INFO", "ATM Out of Service",
+        {"_anomaly_tag": "A2", "atm_status": "Out of Service", "transaction_failure_reason": "CASH_DISPENSE_ERROR",
+         "transaction_rate_tps": 0.0, "transaction_success_rate": 0.0, "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a3(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
     loc = ATM_LOCATIONS.get(atm, "GB-LDN-001")
+    pod_name = f"th-{atm.lower()}-1"
+
+    jvm_start = 300_000_000
+    jvm_end = 1_040_000_000
+    jvm_step = (jvm_end - jvm_start) / 90
+    gc_start = 0.45
+    gc_end = 24.7
+    gc_step = (gc_end - gc_start) / 90
+
     for i in range(90):
         tick_t = t + timedelta(minutes=i)
-        jvm_mem = 1e8 + (i * 1e7) + random.gauss(0, 1e6)
-        gc_pause = min(5.0, i * 0.05) + random.gauss(0, 0.1)
-        cpu_usage = min(95.0, 20 + (i * 0.8)) + random.gauss(0, 2)
-        rows.append(_metric("jvm_memory_used_bytes", jvm_mem, tick_t, "PROMETHEUS", atm, {"_anomaly_tag": "A3", "correlation_id": corr_id, "atm_id": atm, "location_code": loc}))
-        rows.append(_metric("jvm_gc_pause_seconds_sum", max(0, gc_pause), tick_t, "PROMETHEUS", atm, {"_anomaly_tag": "A3", "correlation_id": corr_id}))
-        rows.append(_metric("container/cpu/usage_time", max(0, cpu_usage), tick_t, "CLOUD", atm, {"_anomaly_tag": "A3", "correlation_id": corr_id, "atm_id": atm}))
-    rows.append(_event(t + timedelta(minutes=90), "TERMINAL_HANDLER", atm, "OOM_ERROR", "FATAL", "Java heap space", {"_anomaly_tag": "A3", "correlation_id": corr_id, "atm_id": atm}))
+        jvm_mem = jvm_start + (i * jvm_step)
+        gc_pause = gc_start + (i * gc_step)
+        rows.append(_metric("jvm_memory_used_bytes", jvm_mem, tick_t, "PROMETHEUS", atm,
+            {"_anomaly_tag": "A3", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm, "location_code": loc}))
+        rows.append(_metric("jvm_gc_pause_seconds_sum", gc_pause, tick_t, "PROMETHEUS", atm,
+            {"_anomaly_tag": "A3", "pod_name": pod_name, "correlation_id": corr_id}))
+        rows.append(_metric("process_cpu_usage", 0.94, tick_t, "PROMETHEUS", atm,
+            {"_anomaly_tag": "A3", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
+        rows.append(_metric("container/cpu/usage_time", 94.0, tick_t, "CLOUD", atm,
+            {"_anomaly_tag": "A3", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(minutes=90), "TERMINAL_HANDLER", atm, "OutOfMemoryError", "FATAL", "Java heap space",
+        {"_anomaly_tag": "A3", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a4(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
-    pod = f"th-{atm.lower()}-{random.randint(1,3)}"
-    for i, (evt, sev, msg) in enumerate([
-        ("STARTUP", "INFO", "Pod starting"),
-        ("CRASH", "ERROR", "Unexpected exit"),
-        ("STARTUP", "INFO", "Pod restarting"),
-        ("CRASH", "ERROR", "Unexpected exit"),
-    ]):
-        rows.append(_event(t + timedelta(seconds=i*30), "TERMINAL_HANDLER", atm, evt, sev, msg, {"_anomaly_tag": "A4", "correlation_id": corr_id, "atm_id": atm, "pod_name": pod}))
-    rows.append(_metric("container/restart_count", 2, t + timedelta(seconds=60), "CLOUD", atm, {"_anomaly_tag": "A4", "correlation_id": corr_id, "atm_id": atm}))
+    pod_name = f"th-{atm.lower()}-1"
+
+    rows.append(_event(t, "TERMINAL_HANDLER", atm, "STARTUP", "INFO", "Pod starting",
+        {"_anomaly_tag": "A4", "pod_name": pod_name, "container_id": "container-abc123", "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_metric("container/restart_count", 1, t + timedelta(minutes=2), "CLOUD", atm,
+        {"_anomaly_tag": "A4", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t + timedelta(minutes=2, seconds=30), "TERMINAL_HANDLER", atm, "OutOfMemoryError", "FATAL", "Java heap space",
+        {"_anomaly_tag": "A4", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(minutes=3), "TERMINAL_HANDLER", atm, "STARTUP", "INFO", "Pod restarting",
+        {"_anomaly_tag": "A4", "pod_name": pod_name, "container_id": "container-def456", "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_metric("container/restart_count", 2, t + timedelta(minutes=4), "CLOUD", atm,
+        {"_anomaly_tag": "A4", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t + timedelta(minutes=4), "TERMINAL_HANDLER", atm, "OutOfMemoryError", "FATAL", "Java heap space",
+        {"_anomaly_tag": "A4", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(minutes=4, seconds=30), "TERMINAL_HANDLER", atm, "STARTUP", "INFO", "Pod restarting",
+        {"_anomaly_tag": "A4", "pod_name": pod_name, "container_id": "container-ghi789", "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a5(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
-    # Variable number of messages (8-12) and duration (60-120 seconds)
-    num_messages = random.randint(8, 12)
-    duration = random.randint(60, 120)
-    interval = duration / num_messages
-    
-    success_rate = 1.0
-    for i in range(num_messages):
-        tick_t = t + timedelta(seconds=i * interval)
-        # Variable success rate drop (0.3 to 0.8)
-        success_rate = max(0.3, success_rate - random.uniform(0.02, 0.12))
-        # Variable response time threshold (3000-8000 ms)
-        rt = 3000 + random.randint(0, 5000)
-        rows.append(_event(tick_t, "KAFKA", atm, "METRIC", "INFO", "Latency update", {"_anomaly_tag": "A5", "response_time_ms": rt, "success_rate": round(success_rate, 3), "correlation_id": corr_id, "atm_id": atm}))
-        
-        # Occasionally add ATM_APP TIMEOUT for cross-source correlation (40% probability)
-        if random.random() < 0.4 and i > 0:
-            timeout_delay = random.randint(1, 5)
-            rows.append(_event((tick_t + timedelta(seconds=timeout_delay)), "ATM_APP", atm, "TIMEOUT", "ERROR", "Request timed out", {"_anomaly_tag": "A5", "error_code": "ERR-0012", "correlation_id": corr_id, "atm_id": atm}))
-    
-    # Final status message
-    rows.append(_event(t + timedelta(seconds=duration), "KAFKA", atm, "STATUS", "WARNING", "Success rate drop detected", {"_anomaly_tag": "A5", "success_rate": round(success_rate, 3), "correlation_id": corr_id, "atm_id": atm}))
+    corr_ids = ["corr-0010-xxyy-aabb-1234", "corr-0011-xyzw-ccdd-5678"]
+
+    rows.append(_event(t, "KAFKA", atm, "METRIC", "INFO", "Latency update",
+        {"_anomaly_tag": "A5", "response_time_ms": 3200, "transaction_success_rate": 100, "failure_count": 0, "correlation_id": corr_ids[0], "atm_id": atm}))
+    rows.append(_event(t + timedelta(seconds=10), "KAFKA", atm, "METRIC", "INFO", "Latency update",
+        {"_anomaly_tag": "A5", "response_time_ms": 4500, "transaction_success_rate": 72, "failure_count": 8, "correlation_id": corr_ids[0], "atm_id": atm}))
+    rows.append(_event(t + timedelta(seconds=20), "KAFKA", atm, "METRIC", "INFO", "Latency update",
+        {"_anomaly_tag": "A5", "response_time_ms": 30000, "transaction_success_rate": 50, "failure_count": 14, "correlation_id": corr_ids[1], "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(seconds=25), "ATM_APP", atm, "TIMEOUT", "ERROR", "Request timed out",
+        {"_anomaly_tag": "A5", "error_code": "ERR-0012", "correlation_id": corr_ids[1], "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(seconds=30), "KAFKA", atm, "STATUS", "WARNING", "Success rate drop detected",
+        {"_anomaly_tag": "A5", "transaction_success_rate": 50, "failure_count": 14, "correlation_id": corr_ids[1], "atm_id": atm}))
 
 def inject_a6(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
     loc = ATM_LOCATIONS.get(atm, "GB-LDN-001")
-    import random as _rng
+
+    mem_start = 46.0
+    mem_end = 98.75
+    mem_step = (mem_end - mem_start) / 120
+    net_err_start = 0
+    net_err_end = 22
+    net_err_step = (net_err_end - net_err_start) / 120
+
     for i in range(120):
-        tick_t = t + timedelta(minutes=i, seconds=_rng.randint(0, 30))
-        os_mem = 20 + (i * 1.2) + _rng.gauss(0, 1)
-        rows.append(_metric("windows_os_snapshot", max(0, os_mem), tick_t, "OS", atm, {"_anomaly_tag": "A6", "correlation_id": corr_id, "atm_id": atm, "location_code": loc}))
-        tick_t2 = t + timedelta(minutes=i, seconds=_rng.randint(31, 59))
-        os_mem2 = 20 + (i * 1.2) + _rng.gauss(0, 1)
-        rows.append(_metric("windows_os_snapshot", max(0, os_mem2), tick_t2, "OS", atm, {"_anomaly_tag": "A6", "correlation_id": corr_id, "atm_id": atm}))
-    rows.append(_event(t + timedelta(minutes=120), "ATM_APP", atm, "TIMEOUT", "ERROR", "OS resource timeout", {"_anomaly_tag": "A6", "correlation_id": corr_id, "atm_id": atm}))
+        tick_t = t + timedelta(minutes=i)
+        mem_val = mem_start + (i * mem_step)
+        net_err_val = net_err_start + (i * net_err_step)
+        cpu_val = 20 + (i * 0.596)
+
+        rows.append(_metric("memory_usage_percent", mem_val, tick_t, "OS", atm,
+            {"_anomaly_tag": "A6", "correlation_id": corr_id, "atm_id": atm, "location_code": loc}))
+        rows.append(_metric("network_errors", net_err_val, tick_t, "OS", atm,
+            {"_anomaly_tag": "A6", "correlation_id": corr_id}))
+        rows.append(_metric("cpu_usage_percent", cpu_val, tick_t, "OS", atm,
+            {"_anomaly_tag": "A6", "correlation_id": corr_id, "atm_id": atm}))
+
+    rows.append(_event(t + timedelta(minutes=120), "ATM_APP", atm, "TIMEOUT", "ERROR", "OS resource timeout - ThreadAbortException",
+        {"_anomaly_tag": "A6", "error_code": "ERR-MEM", "error_detail": "ThreadAbortException: Thread was being aborted due to memory pressure", "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a7(rows: list[dict], t: datetime, atm: str, corr_id: str = None) -> None:
-    for i in range(5):
-        offset = -1 if i % 2 == 0 else random.randint(1, 1000)
-        rows.append(_event(t + timedelta(seconds=i*5), "KAFKA", atm, "METRIC", "INFO", "Malformed event", {"_anomaly_tag": "A7_OUT_OF_ORDER", "offset": offset, "correlation_id": corr_id or str(uuid.uuid4()), "atm_id": atm}))
+    corr_id = corr_id or str(uuid.uuid4())
+
+    rows.append(_event(t - timedelta(minutes=5), "KAFKA", atm, "METRIC", "INFO", "Kafka metrics",
+        {"_anomaly_tag": "A7_OUT_OF_ORDER", "offset": 4050, "atm_status": "Online", "transaction_rate_tps": 15.5, "correlation_id": corr_id, "atm_id": atm}))
+    rows.append(_event(t, "KAFKA", atm, "METRIC", "INFO", "Kafka metrics - out of order",
+        {"_anomaly_tag": "A7_OUT_OF_ORDER", "offset": 4051, "atm_status": None, "transaction_rate_tps": None, "correlation_id": corr_id, "atm_id": atm}))
+
+    rows.append(_metric("jvm_memory_used_bytes", "890iembre", t, "PROMETHEUS", atm,
+        {"_anomaly_tag": "A7_MALFORMED", "correlation_id": corr_id, "atm_id": atm}))
 
 ANOMALY_INJECTORS = {
     "A1": inject_a1,
@@ -217,9 +238,10 @@ def generate(hours: int = 24) -> list[dict]:
     print(f"Scheduled anomalies: {len(schedule)}")
 
     while t < end:
-        atm = rng.choice(ATMS)
-        for r in generate_baseline(t, atm, rng):
-            rows.append(r)
+        # Generate baseline for ALL ATMs each tick (matches production distribution)
+        for atm in ATMS:
+            for r in generate_baseline(t, atm, rng):
+                rows.append(r)
         while schedule_idx < len(schedule) and schedule[schedule_idx][0] <= t:
             sched_t, a_type = schedule[schedule_idx]
             if (t - anomaly_last.get(a_type, datetime.min.replace(tzinfo=timezone.utc))).total_seconds() >= ANOMALY_COOLDOWNS[a_type]:

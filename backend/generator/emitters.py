@@ -108,6 +108,8 @@ def emit_prometheus_metrics(producer, t: datetime) -> None:
     """Emit Prometheus JVM memory metrics for all ATMs.
 
     Produces jvm_memory_used_bytes for ~50% of ATMs per tick.
+    Values centered around 80M with small Gaussian noise to match
+    training data baseline (80M ± 5M), preventing false A3 detections.
     """
     for atm in ATMS:
         if random.random() < 0.5:
@@ -116,16 +118,17 @@ def emit_prometheus_metrics(producer, t: datetime) -> None:
                 "source": "PROMETHEUS",
                 "entity_id": atm,
                 "metric_name": "jvm_memory_used_bytes",
-                "metric_value": random.uniform(1e8, 5e8),
+                "metric_value": 8e7 + random.gauss(0, 5e6),
                 "payload": {},
                 "message_id": str(uuid4()),
             })
 
 
 def emit_windows_os_metrics(producer, t: datetime) -> None:
-    """Emit Windows OS snapshot metrics for all ATMs.
+    """Emit Windows OS metrics for all ATMs.
 
-    Produces windows_os_snapshot for ~50% of ATMs per tick.
+    Produces memory_usage_percent, network_errors, and cpu_usage_percent
+    for ~50% of ATMs per tick. Ranges match training data baseline distribution.
     """
     for atm in ATMS:
         if random.random() < 0.5:
@@ -133,8 +136,28 @@ def emit_windows_os_metrics(producer, t: datetime) -> None:
                 "timestamp": t.isoformat(),
                 "source": "OS",
                 "entity_id": atm,
-                "metric_name": "windows_os_snapshot",
-                "metric_value": random.uniform(10, 90),
+                "metric_name": "memory_usage_percent",
+                "metric_value": random.uniform(30, 65),
+                "payload": {},
+                "message_id": str(uuid4()),
+            })
+        if random.random() < 0.3:
+            producer.send_metric({
+                "timestamp": t.isoformat(),
+                "source": "OS",
+                "entity_id": atm,
+                "metric_name": "network_errors",
+                "metric_value": random.randint(0, 2),
+                "payload": {},
+                "message_id": str(uuid4()),
+            })
+        if random.random() < 0.3:
+            producer.send_metric({
+                "timestamp": t.isoformat(),
+                "source": "OS",
+                "entity_id": atm,
+                "metric_name": "cpu_usage_percent",
+                "metric_value": random.uniform(15, 45),
                 "payload": {},
                 "message_id": str(uuid4()),
             })
@@ -144,6 +167,7 @@ def emit_gcp_metrics(producer, t: datetime) -> None:
     """Emit GCP container CPU metrics for all ATMs.
 
     Produces container/cpu/usage_time for ~50% of ATMs per tick.
+    Range 15-45 matches training data baseline distribution.
     """
     for atm in ATMS:
         if random.random() < 0.5:
@@ -152,7 +176,7 @@ def emit_gcp_metrics(producer, t: datetime) -> None:
                 "source": "CLOUD",
                 "entity_id": atm,
                 "metric_name": "container/cpu/usage_time",
-                "metric_value": random.uniform(0.1, 1.0),
+                "metric_value": random.uniform(15, 45),
                 "payload": {},
                 "message_id": str(uuid4()),
             })
