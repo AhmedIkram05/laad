@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import chromadb
@@ -58,11 +60,21 @@ class RAGRetriever:
         self,
         query: str,
         atm_id: Optional[str] = None,
-        top_k: int = config.retrieval_top_k,
+        top_k: Optional[int] = None,
+        anomaly_type: Optional[str] = None,
+        temporal_boost: bool = True,
     ) -> list[RetrievedChunk]:
         """Retrieve relevant chunks for a query."""
+        if top_k is None:
+            top_k = config.retrieval_top_k
         try:
-            where_filter = {"atm_id": atm_id} if atm_id else None
+            where_filter = None
+            if atm_id and anomaly_type:
+                where_filter = {"$and": [{"atm_id": atm_id}, {"_anomaly_tag": anomaly_type}]}
+            elif atm_id:
+                where_filter = {"atm_id": atm_id}
+            elif anomaly_type:
+                where_filter = {"_anomaly_tag": anomaly_type}
 
             results = self.collection.query(
                 query_texts=[query],
@@ -90,7 +102,10 @@ class RAGRetriever:
                         confidence_score=confidence,
                     ))
 
-            logger.info(f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id})")
+            if temporal_boost and chunks:
+                chunks = self._apply_temporal_boost(chunks)
+
+            logger.info(f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id}, anomaly_type={anomaly_type})")
             return chunks
 
         except Exception as e:
@@ -103,6 +118,35 @@ class RAGRetriever:
             return 0.5
         confidence = 1.0 - min(distance, 1.0)
         return round(confidence, 3)
+
+    def _apply_temporal_boost(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        """Boost relevance of recent chunks (last 6 hours).
+        
+        Applies decay scoring: newer chunks get lower distance (higher confidence).
+        """
+        now = datetime.now(timezone.utc)
+        six_hours_ago = now.timestamp() - 6 * 3600
+
+        for chunk in chunks:
+            if chunk.timestamp:
+                try:
+                    ts = chunk.timestamp
+                    if isinstance(ts, str):
+                        ts = ts.replace("Z", "+00:00")
+                        chunk_ts = datetime.fromisoformat(ts).timestamp()
+                    else:
+                        chunk_ts = float(ts)
+
+                    if chunk_ts >= six_hours_ago:
+                        age_hours = (now.timestamp() - chunk_ts) / 3600
+                        boost = max(0.0, 0.1 * (1 - age_hours / 6))
+                        chunk.distance = max(0.0, chunk.distance - boost)
+                        chunk.confidence_score = self._calculate_confidence(chunk.distance)
+                except (ValueError, TypeError):
+                    pass
+
+        chunks.sort(key=lambda c: c.distance)
+        return chunks
 
     def retrieve_by_atm(self, atm_id: str, limit: int = 10) -> list[RetrievedChunk]:
         """Retrieve recent chunks for a specific ATM."""

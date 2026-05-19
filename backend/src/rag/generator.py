@@ -8,6 +8,7 @@ from typing import Optional
 
 from backend.src.rag.llm_client import get_llm_client, LLMResponse
 from backend.src.rag.retriever import RetrievedChunk
+from backend.src.rag.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -98,16 +99,30 @@ class RAGGenerator:
         summary_parts = [
             f"I found {len(chunks)} relevant log entries for your query: \"{query}\"",
             "",
-            "**Key findings from the logs:**",
+            "**Pattern Detection:**",
             "",
         ]
         for i, chunk in enumerate(top_chunks, 1):
-            text = chunk.text[:300]
+            text = chunk.text[:200]
             atm = chunk.atm_id or "unknown"
             ts = chunk.timestamp or "unknown time"
-            summary_parts.append(f"{i}. **ATM {atm}** (at {ts}): {text}...")
+            anomaly_tag = _extract_anomaly_tag(chunk)
+            tag_label = f" [{anomaly_tag}]" if anomaly_tag else ""
+            summary_parts.append(f"{i}. **ATM {atm}**{tag_label} (at {ts}): {text}...")
 
         summary_parts.extend([
+            "",
+            "**Severity Assessment:**",
+            "",
+            f"- {len(chunks)} log entries found across {len(set(c.atm_id for c in chunks if c.atm_id))} ATM(s)",
+            f"- Most relevant entry distance: {chunks[0].distance:.3f} (lower = more relevant)",
+            "",
+            "**Recommended Actions:**",
+            "",
+            "1. Review the log entries above for error codes and timestamps",
+            "2. Check the ATM status dashboard for current operational state",
+            "3. Correlate events using the correlation_id if present in logs",
+            "4. Escalate to engineering team if critical errors (FATAL/OOM) are detected",
             "",
             "**Note:** The AI response generator is currently experiencing high demand. "
             "The analysis above is based on direct log extraction. "
@@ -117,9 +132,11 @@ class RAGGenerator:
 
     def _build_context(self, chunks: list[RetrievedChunk]) -> str:
         """Build context string from retrieved chunks."""
+        truncate_len = config.chunk_truncate_length
         context_parts = []
         for i, chunk in enumerate(chunks, 1):
-            context_parts.append(f"[Log Entry {i}]:\n{chunk.text}\n")
+            truncated_text = chunk.text[:truncate_len]
+            context_parts.append(f"[Log Entry {i}]:\n{truncated_text}\n")
 
         return "\n".join(context_parts)
 
@@ -133,6 +150,13 @@ Context:
 Question: {query}
 
 Provide a helpful diagnostic response based on the logs above."""
+
+
+def _extract_anomaly_tag(chunk: RetrievedChunk) -> Optional[str]:
+    """Extract anomaly tag from chunk text if present."""
+    import re
+    match = re.search(r'_anomaly_tag["\s:=]+([A-Z]\d+)', chunk.text)
+    return match.group(1) if match else None
 
 
 _generator: Optional[RAGGenerator] = None

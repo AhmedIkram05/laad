@@ -14,6 +14,13 @@ from backend.src.rag.config import config
 
 logger = logging.getLogger(__name__)
 
+FREE_MODEL_CHAIN = [
+    "deepseek/deepseek-v3-0327:free",   # Latest DeepSeek V3
+    "meta-llama/llama-4-maverick:free",  # Llama 4 Maverick
+    "qwen/qwen3-235b-a22b:free",         # Qwen 3 (largest)
+    "deepseek/deepseek-r1:free",         # DeepSeek R1 (reasoning)
+]
+
 RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX_REQUESTS = 20
 REQUEST_TIMEOUT = 90
@@ -329,6 +336,11 @@ class LLMClient:
             "max_tokens": max_tokens,
         }
 
+        # Use model fallback chain for automatic switching on rate limit
+        if provider["name"] == "openrouter" and "openrouter" in provider.get("base_url", ""):
+            payload["models"] = FREE_MODEL_CHAIN
+            logger.info(f"Using OpenRouter model fallback chain: {FREE_MODEL_CHAIN}")
+
         response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
@@ -345,10 +357,13 @@ class LLMClient:
         if not choice.get("message") or not choice["message"].get("content"):
             raise RuntimeError("OpenRouter returned empty message content")
 
+        # Extract actual model used from response (OpenRouter tells us which model succeeded)
+        actual_model = data.get("model", provider["model"])
+
         return LLMResponse(
             text=choice["message"]["content"],
             raw_response=data,
-            model=provider["model"],
+            model=actual_model,
             finish_reason=choice.get("finish_reason", "STOP"),
             prompt_tokens=data.get("usage", {}).get("prompt_tokens"),
             completion_tokens=data.get("usage", {}).get("completion_tokens"),

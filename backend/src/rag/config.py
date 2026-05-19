@@ -29,20 +29,28 @@ class RAGConfig:
         self.chroma_collection: str = os.getenv("CHROMA_COLLECTION", "atm_logs")
 
         try:
-            self.retrieval_top_k: int = int(os.getenv("RAG_TOP_K", "5"))
-            self.self_consistency_samples: int = int(os.getenv("RAG_SAMPLES", "3"))
+            self.retrieval_top_k: int = int(os.getenv("RAG_TOP_K", "3"))
+            self.self_consistency_samples: int = int(os.getenv("RAG_SAMPLES", "1"))
             self.temperature: float = float(os.getenv("RAG_TEMPERATURE", "0.6"))
             self.confidence_high_threshold: float = float(os.getenv("CONF_HIGH", "0.8"))
             self.confidence_medium_threshold: float = float(os.getenv("CONF_MEDIUM", "0.5"))
+            self.chunk_truncate_length: int = int(os.getenv("RAG_CHUNK_TRUNCATE", "200"))
         except (ValueError, TypeError):
             logger.warning("Invalid numeric config value, using defaults")
-            self.retrieval_top_k = 5
-            self.self_consistency_samples = 3
+            self.retrieval_top_k = 3
+            self.self_consistency_samples = 1
             self.temperature = 0.6
             self.confidence_high_threshold = 0.8
             self.confidence_medium_threshold = 0.5
+            self.chunk_truncate_length = 200
 
-        self.calibration_enabled: bool = os.getenv("RAG_CALIBRATION_ENABLED", "true").lower() == "true"
+        self.redis_host: str = os.getenv("REDIS_HOST", "localhost")
+        try:
+            self.redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
+        except (ValueError, TypeError):
+            logger.warning("Invalid REDIS_PORT, defaulting to 6379")
+            self.redis_port = 6379
+        self.cache_ttl: int = int(os.getenv("REDIS_CACHE_TTL", "300"))
 
         self._check_configured()
 
