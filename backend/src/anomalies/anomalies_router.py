@@ -34,13 +34,18 @@ def listAnomalies(
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
     group_by: Optional[str] = Query(None),
-    limit: int = Query(default=100, le=500),
+    detection_source: Optional[str] = Query(None, description="Filter by detection source: CLASSIFIER, ZSCORE, SIGNAL_CORRELATOR"),
+    is_starred: Optional[int] = Query(None, description="Filter by starred state: 1=starred, 0=unstarred"),
+    sort_by: Optional[str] = Query(default="score", description="Sort by: score (default, criticality), detected_at (most recent), severity"),
+    limit: int = Query(default=500, le=2000),
     offset: int = Query(default=0, ge=0),
     currentUser: dict = Depends(get_current_user),
     conn=Depends(get_db_connection)
 ):
     """Returns a paginated, filterable list of anomalies.
     Supports grouping modes: `atm`, `atm_anomaly`, `title_atm`.
+    Default sort is by criticality score (score), not by most recent.
+    Unknown anomalies (UNKNOWN type) are ranked lowest (score=0 + severity + age).
     """
     where_clauses = ["1=1"]
     params: list = []
@@ -63,6 +68,12 @@ def listAnomalies(
     if to_date:
         where_clauses.append("detected_at <= %s")
         params.append(to_date)
+    if detection_source:
+        where_clauses.append("(explanation::jsonb)->>'source' = %s")
+        params.append(detection_source.upper())
+    if is_starred is not None:
+        where_clauses.append("is_starred = %s")
+        params.append(is_starred)
 
     where_sql = " AND ".join(where_clauses)
 
@@ -253,7 +264,37 @@ def listAnomalies(
         countRow = cur.fetchone()
     total = countRow[0] if countRow else 0
 
-    query = f"SELECT * FROM anomalies WHERE {where_sql} ORDER BY detected_at DESC LIMIT %s OFFSET %s"
+    # Build ORDER BY clause based on sort_by parameter
+    # Score calculation: operation gravity (A1=7..A7=1, UNKNOWN=0) + severity (CRITICAL=3..) + age bonus
+    if sort_by == "detected_at":
+        order_clause = "detected_at DESC"
+    elif sort_by == "severity":
+        order_clause = """CASE UPPER(severity)
+            WHEN 'CRITICAL' THEN 4 WHEN 'HIGH' THEN 3
+            WHEN 'MAJOR' THEN 2 WHEN 'LOW' THEN 1 ELSE 0
+        END DESC, detected_at DESC"""
+    else:  # sort_by == "score" (default)
+        # Score = operation_gravity + severity_rank + age_score
+        # Age score: >48h=3, >24h=2, >6h=1, else=0
+        order_clause = """(
+            CASE anomaly_type
+                WHEN 'A1' THEN 7 WHEN 'A4' THEN 6 WHEN 'A3' THEN 5
+                WHEN 'A2' THEN 4 WHEN 'A6' THEN 3 WHEN 'A5' THEN 2
+                WHEN 'A7' THEN 1 ELSE 0
+            END +
+            CASE UPPER(severity)
+                WHEN 'CRITICAL' THEN 3 WHEN 'HIGH' THEN 2
+                WHEN 'MAJOR' THEN 1 ELSE 0
+            END +
+            CASE
+                WHEN detected_at < NOW() - INTERVAL '48 hours' THEN 3
+                WHEN detected_at < NOW() - INTERVAL '24 hours' THEN 2
+                WHEN detected_at < NOW() - INTERVAL '6 hours' THEN 1
+                ELSE 0
+            END
+        ) DESC, detected_at DESC"""
+
+    query = f"SELECT * FROM anomalies WHERE {where_sql} ORDER BY {order_clause} LIMIT %s OFFSET %s"
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(query, params + [limit, offset])
         rows = cur.fetchall()

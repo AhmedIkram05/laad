@@ -35,6 +35,7 @@
 | **Database Tables** | 10 tables + 3 views + 13 indexes |
 | **Connection Pool** | ThreadedConnectionPool (minconn=5, maxconn=50) with exponential backoff |
 | **API Endpoints** | 20+ across 6 routers (auth, anomalies, analysis, admin, events, metrics, RAG) |
+| **Anomaly List Limit** | 500 default, 2000 max (increased from 100) |
 | **Test Coverage** | 281 tests across 39 files, 9 tiers, isolated test DB |
 | **Docker Services** | 8 production + 2 test-only services |
 | **RAG Uncertainty** | Retrieval-only: distance + chunk count + source diversity |
@@ -1188,10 +1189,22 @@ Log data stored in ChromaDB never leaves the network — only retrieved log cont
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| GET | `/anomalies` | JWT | Paginated, filterable list. Supports `group_by`: `atm`, `atm_anomaly`, `title_atm` |
+| GET | `/anomalies` | JWT | Paginated, filterable list. Supports `group_by`: `atm`, `atm_anomaly`, `title_atm`. Supports `sort_by`, `detection_source`, `is_starred` |
 | PATCH | `/{anomalyId}/resolve` | JWT | Toggle active/inactive |
 | PATCH | `/{anomalyId}/star` | JWT | Toggle starred/unstarred |
 | PATCH | `/{anomalyId}/feedback` | JWT | Submit feedback (LIKE/DISLIKE false positive tracking) |
+
+**Query parameters for `GET /anomalies`:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `sort_by` | string | `score` | Sort order: `score` (criticality), `detected_at` (most recent), `severity` |
+| `limit` | int | 500 | Max results (max 2000) |
+| `detection_source` | string | - | Filter by source: `CLASSIFIER`, `ZSCORE`, `SIGNAL_CORRELATOR` |
+| `is_starred` | int | - | Filter by starred state: `1` = starred, `0` = unstarred |
+| `atm_id` | string | - | Filter by ATM ID |
+| `severity` | string | - | Filter by severity: `CRITICAL`, `HIGH`, `MAJOR`, `LOW` |
+| `anomaly_type` | string | - | Filter by type: `A1`–`A7`, `UNKNOWN` |
 
 ### Analysis — `/api/analysis`
 
@@ -1253,7 +1266,7 @@ React 19 + Vite 8 dashboard with 10 pages and 11 components.
 | `SideNavbar` | Primary navigation with active state highlighting |
 | `AnomalyCard` | Individual anomaly display with severity badge, toggle-complete, star |
 | `AnomalyListPage` | Reusable list layout for starred/completed pages |
-| `SearchBar` | Filter by title, type, ATM ID, severity |
+| `SearchBar` | Search by title |
 | `BackButton` | Navigation helper |
 | `ProtectedRoute` | Auth guard for protected pages |
 | `AdminRoute` | Admin-only route guard |
@@ -1272,6 +1285,34 @@ React 19 + Vite 8 dashboard with 10 pages and 11 components.
 | `lucide-react` | 1.7.0 | Icon set |
 | `react-icons` | 5.6.0 | Additional icons |
 | `vite` | 8.0.1 | Build tool, dev server |
+
+### Dashboard Features
+
+The main dashboard displays all anomalies with criticality-based ordering and filtering:
+
+**Sorting Options (default: Criticality Score):**
+
+| Option | Description |
+|---|---|
+| **Criticality Score** (default) | Ranked by operation gravity (A1=7 → A7=1, UNKNOWN=0) + severity (CRITICAL=3 → LOW=0) + age bonus (48h+=3, 24h+=2, 6h+=1) |
+| **Most Recent** | Chronological order (newest first) |
+| **Severity** | CRITICAL → HIGH → MAJOR → LOW |
+
+**Filters:**
+
+| Filter | Options | Description |
+|---|---|---|
+| **Detection Source** | All Sources, CLASSIFIER, ZSCORE, SIGNAL_CORRELATOR | Filter by detection layer |
+| **ATM ID** | All ATMs, ATM-GB-0001 through ATM-GB-0010 | Filter by specific ATM |
+| **Anomaly Type** | All Types, A1-A7, UNKNOWN | Filter by anomaly type |
+| **Severity** | All Severities, CRITICAL, HIGH, MAJOR, LOW | Filter by severity level |
+| **Search** | Title | Text search across anomaly titles |
+
+**Key Changes:**
+- Default limit increased from 100 to 500 (max 2000) — all anomalies now visible
+- Default sort changed from "Most Recent" to "Criticality Score"
+- UNKNOWN anomalies ranked at bottom (score=0 + severity + age)
+- Added ATM ID, Anomaly Type, and Severity dropdown filters
 
 ---
 

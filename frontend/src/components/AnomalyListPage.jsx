@@ -16,7 +16,6 @@ import "./AnomalyListPage.css";
 
 function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = false }) {
     const [search, setSearch] = useState("");
-    const [filterBy, setFilterBy] = useState("title");
     const [anomalies, setAnomalies] = useState([]);
     const [loading, setLoading] = useState(true);
     const [metrics, setMetrics] = useState(null);
@@ -24,6 +23,11 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = 
     const [logStream, setLogStream] = useState([]);
     const [logSearch, setLogSearch] = useState("");
     const [now, setNow] = useState(() => Date.now());
+    const [sortBy, setSortBy] = useState("score");
+    const [detectionSource, setDetectionSource] = useState("");
+    const [atmIdFilter, setAtmIdFilter] = useState("");
+    const [anomalyTypeFilter, setAnomalyTypeFilter] = useState("");
+    const [severityFilter, setSeverityFilter] = useState("");
 
     const hours = timeFilter === "1h" ? 1 : timeFilter === "6h" ? 6 : timeFilter === "7d" ? 168 : 24;
     const bucket = timeFilter === "1h" ? 5 : timeFilter === "6h" ? 30 : timeFilter === "7d" ? 360 : 60;
@@ -39,40 +43,28 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = 
 
     const loadLogStream = useCallback(async () => {
         try {
-            const res = await fetchAnomalies(null, hours);
+            const ds = detectionSource || null;
+            const res = await fetchAnomalies(null, hours, sortBy, ds, null, atmIdFilter || null, anomalyTypeFilter || null, severityFilter || null);
             setLogStream(res.data || []);
         } catch (err) {
             console.error("Failed to fetch log stream", err);
         }
-    }, [hours]);
+    }, [hours, sortBy, detectionSource, atmIdFilter, anomalyTypeFilter, severityFilter]);
 
-    useEffect(() => {
+useEffect(() => {
         let cancelled = false;
         const load = async () => {
             try {
-                const [anomalyRes, analysisRes] = await Promise.all([
-                    fetchAnomalies(isActive, hours),
-                    fetchDetailedAnalysis(),
-                ]);
+                const ds = detectionSource || null;
+                const anomalyRes = await fetchAnomalies(isActive, hours, sortBy, ds, null, atmIdFilter || null, anomalyTypeFilter || null, severityFilter || null);
                 if (cancelled) return;
                 let anomaliesData = anomalyRes.data;
-                const analysisData = analysisRes.data;
 
                 if (filter) {
                     anomaliesData = anomaliesData.filter(filter);
                 }
 
-                const orderMap = {};
-                analysisData.forEach((item, index) => {
-                    orderMap[item.Anomaly] = index;
-                });
-                const sorted = [...anomaliesData].sort((a, b) => {
-                    const orderA = orderMap[a.anomaly_type] ?? Infinity;
-                    const orderB = orderMap[b.anomaly_type] ?? Infinity;
-                    return orderA - orderB;
-                });
-
-                setAnomalies(sorted);
+                setAnomalies(anomaliesData);
             } catch (err) {
                 console.error("Failed to fetch anomalies.", err);
             } finally {
@@ -88,7 +80,7 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = 
         }
 
         return () => { cancelled = true; };
-    }, [filter, isActive, showMetrics, hours, loadMetrics, loadLogStream]);
+    }, [filter, isActive, showMetrics, hours, loadMetrics, loadLogStream, sortBy, detectionSource, atmIdFilter, anomalyTypeFilter, severityFilter]);
 
     // Tick every 30s to refresh relative timestamps
     useEffect(() => {
@@ -262,7 +254,68 @@ function AnomalyListPage({ title, subtitle, filter, isActive = 1, showMetrics = 
                 <p className="subtitleContainer">{subtitle ?? "Detected anomalies across ATM and server systems, prioritised by severity."}</p>
 
                 {/* Search and Filter Bar */}
-                <SearchBar search={search} setSearch={setSearch} filterBy={filterBy} setFilterBy={setFilterBy} />
+                <SearchBar search={search} setSearch={setSearch} />
+
+                {/* Advanced Filters and Sort */}
+                <div className="filterControls">
+                    <div className="filterGroup">
+                        <label>Sort by:</label>
+                        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                            <option value="score">Criticality Score</option>
+                            <option value="detected_at">Most Recent</option>
+                            <option value="severity">Severity</option>
+                        </select>
+                    </div>
+                    <div className="filterGroup">
+                        <label>Detection Source:</label>
+                        <select value={detectionSource} onChange={(e) => setDetectionSource(e.target.value)}>
+                            <option value="">All Sources</option>
+                            <option value="CLASSIFIER">CLASSIFIER</option>
+                            <option value="ZSCORE">ZSCORE</option>
+                            <option value="SIGNAL_CORRELATOR">SIGNAL_CORRELATOR</option>
+                        </select>
+                    </div>
+                    <div className="filterGroup">
+                        <label>ATM ID:</label>
+                        <select value={atmIdFilter} onChange={(e) => setAtmIdFilter(e.target.value)}>
+                            <option value="">All ATMs</option>
+                            <option value="ATM-GB-0001">ATM-GB-0001</option>
+                            <option value="ATM-GB-0002">ATM-GB-0002</option>
+                            <option value="ATM-GB-0003">ATM-GB-0003</option>
+                            <option value="ATM-GB-0004">ATM-GB-0004</option>
+                            <option value="ATM-GB-0005">ATM-GB-0005</option>
+                            <option value="ATM-GB-0006">ATM-GB-0006</option>
+                            <option value="ATM-GB-0007">ATM-GB-0007</option>
+                            <option value="ATM-GB-0008">ATM-GB-0008</option>
+                            <option value="ATM-GB-0009">ATM-GB-0009</option>
+                            <option value="ATM-GB-0010">ATM-GB-0010</option>
+                        </select>
+                    </div>
+                    <div className="filterGroup">
+                        <label>Anomaly Type:</label>
+                        <select value={anomalyTypeFilter} onChange={(e) => setAnomalyTypeFilter(e.target.value)}>
+                            <option value="">All Types</option>
+                            <option value="A1">A1 - Network Timeout</option>
+                            <option value="A2">A2 - Cash Cassette Empty</option>
+                            <option value="A3">A3 - JVM Memory Leak</option>
+                            <option value="A4">A4 - Container Restart</option>
+                            <option value="A5">A5 - Response Time Spike</option>
+                            <option value="A6">A6 - OS Memory Pressure</option>
+                            <option value="A7">A7 - Out-of-Order</option>
+                            <option value="UNKNOWN">UNKNOWN</option>
+                        </select>
+                    </div>
+                    <div className="filterGroup">
+                        <label>Severity:</label>
+                        <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)}>
+                            <option value="">All Severities</option>
+                            <option value="CRITICAL">CRITICAL</option>
+                            <option value="HIGH">HIGH</option>
+                            <option value="MAJOR">MAJOR</option>
+                            <option value="LOW">LOW</option>
+                        </select>
+                    </div>
+                </div>
 
                 {/* Anomaly Cards (and Loading) */}
                 <div className="anomalyContainer">

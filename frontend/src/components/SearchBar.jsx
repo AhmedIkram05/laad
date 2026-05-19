@@ -5,18 +5,12 @@
  */
 
 /* External Libraries */
-import { GoSearch, GoFilter } from "react-icons/go";
+import { GoSearch } from "react-icons/go";
 
 /* Internal Imports */
 import './SearchBar.css';
 
-function SearchBar({ search, setSearch, filterBy, setFilterBy }) {
-
-  // Filtering Options
-  const filterOptions = [
-    { label: "Title", value: "title" },
-    { label: "ATM ID", value: "atm_id" }
-  ];
+function SearchBar({ search, setSearch }) {
 
   return (
     <div className="barContainer">
@@ -26,26 +20,14 @@ function SearchBar({ search, setSearch, filterBy, setFilterBy }) {
         <GoSearch className="searchIcon" />
         <input
           type="text"
-          placeholder={`Search by ${filterBy}...`}
+          placeholder="Search by title..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="searchInput"
-      />
+        />
       </div>
 
-      {/* Filter Dropdown */}
-      <div className="filterContainer">
-        <GoFilter className="filterIcon" />
-        <select className="filterBox" value={filterBy} onChange={(e) => setFilterBy(e.target.value)}>
-          {filterOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      </div>
+    </div>
   );
 }
 

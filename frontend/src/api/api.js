@@ -31,13 +31,34 @@ const request = async (endpoint, options = {}) => {
 // Fetches a list of anomalies filtered by Completed state
 // is_active: 1 = active only, 0 = resolved only, undefined/null = all
 // hours: time range filter (default 24 hours)
-export const fetchAnomalies = (is_active = 1, hours = 24) => {
+// sort_by: 'score' (default, criticality), 'detected_at' (most recent), 'severity'
+// detection_source: 'CLASSIFIER', 'ZSCORE', 'SIGNAL_CORRELATOR'
+// atm_id: filter by specific ATM ID
+// anomaly_type: filter by anomaly type (A1-A7, UNKNOWN)
+// severity: filter by severity (CRITICAL, HIGH, MAJOR, LOW)
+export const fetchAnomalies = (is_active = 1, hours = 24, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null) => {
     const now = new Date();
     const from = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-    if (is_active === null || is_active === undefined) {
-        return request(`/anomalies?from_date=${encodeURIComponent(from)}`);
+    let params = `from_date=${encodeURIComponent(from)}&sort_by=${sort_by}`;
+    if (is_active !== null && is_active !== undefined) {
+        params += `&is_active=${is_active}`;
     }
-    return request(`/anomalies?is_active=${is_active}&from_date=${encodeURIComponent(from)}`);
+    if (detection_source) {
+        params += `&detection_source=${encodeURIComponent(detection_source)}`;
+    }
+    if (is_starred !== null && is_starred !== undefined) {
+        params += `&is_starred=${is_starred}`;
+    }
+    if (atm_id) {
+        params += `&atm_id=${encodeURIComponent(atm_id)}`;
+    }
+    if (anomaly_type) {
+        params += `&anomaly_type=${encodeURIComponent(anomaly_type)}`;
+    }
+    if (severity) {
+        params += `&severity=${encodeURIComponent(severity)}`;
+    }
+    return request(`/anomalies?${params}`);
 };
 
 // Fetches analysis data for a specific anomaly
