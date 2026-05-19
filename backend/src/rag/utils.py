@@ -66,7 +66,7 @@ def classify_query_type(query: str) -> QueryType:
     
     stats_keywords = [
         "how many", "how much", "count of", "number of", "total",
-        "list all", "show me the", "what is the total", "sum",
+        "list all", "what is the total", "sum",
         "quantity", "how many", "statistics", "stats", "dashboard",
     ]
     

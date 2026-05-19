@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Analysis & Diagnostics Platform (LAAD)
 
-> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by OpenRouter with confidence scoring and Redis caching.
+> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by Ollama Cloud with query classification, direct DB stats queries, and context-aware prompts.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&labelColor=000000&logo=redis">
   <img src="https://img.shields.io/badge/XGBoost-0052CC?style=for-the-badge&labelColor=000000&logo=xgboost">
   <img src="https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&labelColor=000000&logo=mlflow">
+  <img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&labelColor=FF6B35">
   <img src="https://img.shields.io/badge/OpenRouter-000000?style=for-the-badge&labelColor=FF6B35">
   <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&labelColor=000000&logo=docker">
 </p>
@@ -915,18 +916,28 @@ make generate-training-data # Generate 24h offline dataset (868,320 rows, ~260MB
 
 ## RAG Diagnostic Assistant
 
-An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with retrieval-based confidence scoring and Redis response caching. Uses OpenRouter free models as primary LLM provider with graceful degradation when models are rate-limited.
+An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with retrieval-based confidence scoring and Redis response caching. Uses Ollama Cloud as primary LLM provider with OpenRouter as emergency fallback, and features intelligent query classification that routes stats queries directly to the database for faster responses.
 
 ### Architecture
 
 ```mermaid
 flowchart TD
-  subgraph Retrieval ["Retrieval"]
+  subgraph QueryRouting ["Query Routing"]
     Q["User Query"]
+    CLASS["classify_query_type()\nstats / diagnostic / troubleshooting / general"]
+    ROUTE{"Query Type?"}
+  end
+
+  subgraph Retrieval ["Retrieval"]
     SAN["Query Sanitization\nprompt injection filter"]
     CDB[("ChromaDB\natm_logs collection\ncosine similarity")]
     TOPK["Top-K retrieval\nk=3 chunks, 800 chars each"]
     FILTER["Metadata Filter\nanomaly type, atm_id, severity, error_only, temporal boost"]
+  end
+
+  subgraph StatsQuery ["Stats Query (bypasses LLM)"]
+    DB["PostgreSQL\nanomalies table"]
+    STATS["Direct COUNT/GROUP BY\nstructured JSON response"]
   end
 
   subgraph Cache ["Response Cache"]
@@ -935,10 +946,17 @@ flowchart TD
   end
 
   subgraph Generation ["Generation"]
-    OPENR["OpenRouter (primary)\ngoogle/gemma-4-26b-a4b-it:free"]
-    FALLBACK["OpenRouter (fallback)\nnvidia/nemotron-nano-9b-v2:free"]
-    GRACEFUL["Graceful Degradation\nstructured log analysis"]
+    OLLAMA["Ollama Cloud (primary)\ngemma4:31b-cloud"]
+    FBACK["Ollama (fallback)\nnemotron-3-supercloud"]
+    EMERG["OpenRouter (emergency)\nfree models"]
+    GRACEFUL["Context-aware Fallback\nstats / troubleshooting / diagnostic"]
     GEN["Response generation\nmax_tokens=2048, temp=0.6"]
+  end
+
+  subgraph Prompting ["Query-Type Prompts"]
+    DIAG["Diagnostic prompt\nAnalysis, Root Cause, Actions"]
+    TROUB["Troubleshooting prompt\nNumbered steps, expected outcome"]
+    GENP["General prompt\nSummary, key points, context"]
   end
 
   subgraph Confidence ["Retrieval Confidence"]
@@ -956,44 +974,42 @@ flowchart TD
     RECAL["Recalibrate trigger\nEvery 20 new samples"]
   end
 
-  subgraph Protection ["Rate Limiting & Protection"]
-    RL["Per-user rate limit\n10 req/min on /query"]
-    RETRY["Retry with Retry-After\nup to 5 retries per provider"]
-    TIMEOUT["Request timeout\n90s per call"]
-  end
-
-  Q --> SAN --> CDB --> TOPK --> FILTER
+  Q --> CLASS
+  CLASS --> ROUTE
+  ROUTE -->|"stats"| DB --> STATS
+  ROUTE -->|"diagnostic|troubleshooting|general"| SAN --> CDB --> TOPK --> FILTER
   FILTER --> REDIS
   REDIS --> HIT
   HIT -->|"yes"| RESP["Return cached response"]
-  HIT -->|"no"| OPENR
-  OPENR --> GEN
-  OPENR --> FALLBACK
-  FALLBACK --> GEN
+  HIT -->|"no"| OLLAMA
+  OLLAMA --> FBACK --> EMERG --> GEN
+  GEN --> DIAG
+  GEN --> TROUB
+  GEN --> GENP
   GEN --> DIST
   GEN --> COUNT
   GEN --> DIVERSITY
   DIST & COUNT & DIVERSITY --> COMBINE --> LEVEL
   LEVEL --> FB
   FB --> PLATT --> ECE --> RECAL
-  OPENR -.-> RL
-  OPENR -.-> RETRY
-  OPENR -.-> TIMEOUT
-  GEN -.-> GRACEFUL
 
+  classDef routing fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
   classDef retrieval fill:#0f766e,stroke:#14b8a6,color:#ffffff;
+  classDef stats fill:#0f766e,stroke:#34d399,color:#ffffff;
   classDef cache fill:#7c2d12,stroke:#f59e0b,color:#ffffff;
   classDef gen fill:#581c87,stroke:#a78bfa,color:#ffffff;
+  classDef prompt fill:#7c2d12,stroke:#f97316,color:#ffffff;
   classDef conf fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
   classDef cal fill:#4a1d6a,stroke:#c084fc,color:#ffffff;
-  classDef prot fill:#2d1b4e,stroke:#a78bfa,color:#ffffff;
 
-  class Q,SAN,CDB,TOPK,FILTER retrieval;
+  class Q,CLASS,ROUTE routing;
+  class SAN,CDB,TOPK,FILTER retrieval;
+  class DB,STATS stats;
   class REDIS,HIT,RESP cache;
-  class OPENR,FALLBACK,GRACEFUL,GEN gen;
+  class OLLAMA,FBACK,EMERG,GRACEFUL,GEN gen;
+  class DIAG,TROUB,GENP prompt;
   class DIST,COUNT,DIVERSITY,COMBINE,LEVEL conf;
   class FB,PLATT,ECE,RECAL cal;
-  class RL,RETRY,TIMEOUT prot;
 ```
 
 ### Performance Improvements
@@ -1018,22 +1034,48 @@ flowchart TD
 
 | Provider | Model | Role | Rate Limit |
 |---|---|---|---|
-| **OpenRouter** | `google/gemma-4-26b-a4b-it:free` | Primary | Varies by upstream provider |
-| **OpenRouter** | `nvidia/nemotron-nano-9b-v2:free` | Fallback | Varies by upstream provider |
-| **OpenRouter** | `openrouter/free` | Auto-router (alternative) | 20 req/min, 200 req/day |
+| **Ollama Cloud** | `gemma4:31b-cloud` | Primary | Account-based |
+| **Ollama Cloud** | `nemotron-3-supercloud` | Fallback | Account-based |
+| **OpenRouter** | Free models | Emergency fallback | 20 req/min, 200 req/day |
 
-All models are free-tier models accessed via a single OpenRouter API key. The system implements graceful degradation — when all LLM providers are rate-limited, it extracts key findings directly from retrieved log chunks with structured sections (Pattern Detection, Severity Assessment, Recommended Actions).
+Ollama Cloud is the primary provider. When unavailable, it falls back to Ollama Cloud's alternative models, then OpenRouter as emergency. The system implements context-aware graceful degradation — when all LLM providers fail:
+- **Stats queries**: Returns approximate counts from retrieved log chunks
+- **Diagnostic queries**: Returns structured log analysis with Pattern Detection, Severity Assessment, Recommended Actions
+- **Troubleshooting queries**: Returns numbered steps based on retrieved chunks
+
+### Query Classification
+
+The RAG system automatically classifies incoming queries to route them appropriately:
+
+| Query Type | Keywords | Handler | Example |
+|---|---|---|---|
+| **Stats** | how many, count of, total, number of | Direct DB query → JSON | "how many anomalies are there" |
+| **Diagnostic** | what's wrong, why is, root cause, what caused | ChromaDB → LLM → natural language | "what's causing high response times on ATM 3" |
+| **Troubleshooting** | how to fix, what to do, steps to, solve | ChromaDB → LLM → numbered steps | "how to fix cassette empty error" |
+| **General** | Everything else | ChromaDB → LLM → summary | "tell me about recent ATM issues" |
+
+**Query-type-specific prompts:**
+- **Diagnostic**: Structured response with Analysis, Root Cause, Recommended Actions sections
+- **Troubleshooting**: Numbered steps the operator can follow with expected outcomes
+- **General**: Concise summary in plain language
+
+Stats queries bypass the LLM entirely and query the database directly, returning structured JSON with totals, by-type, by-ATM, and by-severity counts. This makes stats queries faster and more reliable.
 
 ### Configuration
 
 | Parameter | Default | Description |
 |---|---|---|
+| `OLLAMA_API_KEY` | (required) | Ollama Cloud API key from https://ollama.com |
+| `OLLAMA_BASE_URL` | https://ollama.com | Ollama API base URL |
+| `OLLAMA_MODEL` | gemma4:31b-cloud | Primary Ollama Cloud model |
+| `OLLAMA_FALLBACK_MODELS` | nemotron-3-supercloud | Comma-separated fallback models |
+| `OPENROUTER_API_KEY` | (optional) | Emergency fallback when Ollama unavailable |
 | `RAG_TOP_K` | 3 | Number of chunks to retrieve |
-| `RAG_CHUNK_TRUNCATE` | 800 | Characters per chunk (increased from 200 for better context) |
+| `RAG_CHUNK_TRUNCATE` | 800 | Characters per chunk |
 | `RAG_ERROR_ONLY` | true | Filter for ERROR/FATAL severity when querying about issues |
 | `RAG_ANOMALY_TYPES` | A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL | Comma-separated anomaly types to filter |
 | `RAG_MOST_RECENT_FIRST` | true | Sort by timestamp descending for "most recent" queries |
-| `RAG_SAMPLES` | 1 | Self-consistency samples (reduced from 3) |
+| `RAG_SAMPLES` | 1 | Self-consistency samples |
 | `CONF_HIGH` / `CONF_MEDIUM` | 0.8 / 0.5 | Confidence thresholds |
 
 ### Query Improvements
@@ -1117,7 +1159,8 @@ The retriever supports intelligent query parsing for targeted retrieval:
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/api/rag/query` | JWT | Query with uncertainty estimation (rate limited: 10 req/min) |
+| POST | `/api/rag/query` | JWT | Query with automatic routing (stats→DB, others→LLM), rate limited 10 req/min |
+| GET | `/api/rag/anomalies/stats` | JWT | Direct anomaly statistics (bypasses LLM, returns DB counts) |
 | POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
 | GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
 | GET | `/api/rag/stats` | JWT | Collection chunks, calibration status, total queries, calibration_samples, is_calibrated |
