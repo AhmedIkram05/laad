@@ -910,7 +910,7 @@ make generate-training-data # Generate 24h offline dataset (868,320 rows, ~260MB
 
 ## RAG Diagnostic Assistant
 
-An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with hybrid uncertainty quantification and Platt scaling calibration.
+An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with hybrid uncertainty quantification and Platt scaling calibration. Uses OpenRouter free models as primary LLM provider with graceful degradation when models are rate-limited.
 
 ### Architecture
 
@@ -918,71 +918,88 @@ An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM iss
 flowchart TD
   subgraph Retrieval ["Retrieval"]
     Q["User Query"]
-    EMB["Local Embedding\nnomic-embed-text"]
+    SAN["Query Sanitization\nprompt injection filter"]
     CDB[("ChromaDB\natm_logs collection\ncosine similarity")]
     TOPK["Top-K retrieval\nk=5 chunks"]
   end
 
   subgraph Generation ["Generation"]
-    GEM["Gemini (primary)\ngemini-2.0-flash"]
-    GROQ["Groq (fallback)\nllama-3.1-70b-versatile"]
-    OPENR["OpenRouter (fallback)\nfree models"]
+    OPENR["OpenRouter (primary)\ngoogle/gemma-4-26b-a4b-it:free"]
+    FALLBACK["OpenRouter (fallback)\nnvidia/nemotron-nano-9b-v2:free"]
+    GRACEFUL["Graceful Degradation\nextract log snippets from chunks"]
     GEN["Response generation\nmax_tokens=2048, temp=0.6"]
   end
 
   subgraph Uncertainty ["Uncertainty Quantification"]
-    SC["Self-Consistency\n3 samples, temp=0.6\nJaccard similarity"]
+    SC["Self-Consistency\n1 sample, temp=0.6\nJaccard similarity"]
     VC["Verbalized Confidence\nRegex extract from response"]
     RV["Response Variance\nLength variance (normalized)"]
+    RC["Retrieval Confidence\nfallback when LLM unavailable\nbased on avg chunk distance"]
     WEIGHT["Weighted combination\n[0.5, 0.3, 0.2]"]
     LEVEL["Confidence level\nHIGH ≥0.8, MED ≥0.5, LOW <0.5"]
   end
 
   subgraph Calibration ["Calibration"]
-    FB["User Feedback\nhelpful / not_helpful"]
+    FB["User Feedback\nhelpful / not_helpful / uncertain"]
     PLATT["Platt Scaling\nsigmoid(scale × conf + bias)\nscipy Nelder-Mead"]
     ECE["ECE computation\n5 bins, target < 0.10"]
     RECAL["Recalibrate trigger\nEvery 20 new samples"]
   end
 
-  Q --> EMB --> CDB --> TOPK
-  TOPK --> GEM
-  TOPK --> GROQ
+  subgraph Protection ["Rate Limiting & Protection"]
+    RL["Per-user rate limit\n10 req/min on /query"]
+    RETRY["Retry with Retry-After\nup to 5 retries per provider"]
+    TIMEOUT["Request timeout\n90s per call"]
+  end
+
+  Q --> SAN --> CDB --> TOPK
   TOPK --> OPENR
-  GEM & GROQ & OPENR --> GEN
+  TOPK --> FALLBACK
+  OPENR & FALLBACK --> GEN
   GEN --> SC
   GEN --> VC
   GEN --> RV
   SC & VC & RV --> WEIGHT --> LEVEL
   LEVEL --> FB
   FB --> PLATT --> ECE --> RECAL
+  OPENR -.-> RL
+  OPENR -.-> RETRY
+  OPENR -.-> TIMEOUT
+  GEN -.-> GRACEFUL
+  RC -.-> LEVEL
 
   classDef retrieval fill:#0f766e,stroke:#14b8a6,color:#ffffff;
   classDef gen fill:#581c87,stroke:#a78bfa,color:#ffffff;
   classDef unc fill:#7c2d12,stroke:#f59e0b,color:#ffffff;
   classDef cal fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
+  classDef prot fill:#4a1d6a,stroke:#c084fc,color:#ffffff;
 
-  class Q,EMB,CDB,TOPK retrieval;
-  class GEM,GROQ,OPENR,GEN gen;
-  class SC,VC,RV,WEIGHT,LEVEL unc;
+  class Q,SAN,CDB,TOPK retrieval;
+  class OPENR,FALLBACK,GRACEFUL,GEN gen;
+  class SC,VC,RV,RC,WEIGHT,LEVEL unc;
   class FB,PLATT,ECE,RECAL cal;
+  class RL,RETRY,TIMEOUT prot;
 ```
 
 ### LLM Providers
 
 | Provider | Model | Role | Rate Limit |
 |---|---|---|---|
-| **Gemini** | `gemini-2.0-flash` | Primary | ~1,500 req/day (free tier) |
-| **Groq** | `groq/llama-3.1-70b-versatile` | Fallback | ~30 RPM, 315 TPS |
-| **OpenRouter** | Free models (e.g., `google/gemma-4-26b-a4b-it:free`) | Secondary fallback | Varies by model |
+| **OpenRouter** | `google/gemma-4-26b-a4b-it:free` | Primary | Varies by upstream provider |
+| **OpenRouter** | `nvidia/nemotron-nano-9b-v2:free` | Fallback | Varies by upstream provider |
+| **OpenRouter** | `openrouter/free` | Auto-router (alternative) | 20 req/min, 200 req/day |
+
+All models are free-tier models accessed via a single OpenRouter API key. The system implements graceful degradation — when all LLM providers are rate-limited, it extracts key findings directly from retrieved log chunks rather than returning an error.
 
 ### Uncertainty Quantification
 
 | Signal | Method | Weight | Description |
 |---|---|---|---|
-| **Self-Consistency** | Jaccard similarity across 3 samples | 50% | Generate 3 responses at temperature=0.6, measure semantic overlap |
+| **Self-Consistency** | Jaccard similarity across 1 sample | 50% | Generate 1 response at temperature=0.6, measure semantic overlap |
 | **Verbalized Confidence** | Regex extraction from response | 30% | Model outputs explicit confidence score (0-1) in text |
 | **Response Variance** | Length variance (normalized) | 20% | Variance in response lengths across samples |
+
+**Fallback:** When LLM is unavailable, uncertainty uses retrieval-based confidence derived from average ChromaDB chunk distance (`1.0 - min(avg_distance, 1.0)`).
 
 **Final score:** `0.5 × consistency + 0.3 × verbalized + 0.2 × (1 - normalized_variance)`
 
@@ -992,7 +1009,7 @@ flowchart TD
 |---|---|---|
 | **HIGH** | ≥ 0.8 | Auto-respond — 80%+ confidence in answer quality |
 | **MEDIUM** | 0.5–0.8 | Verify — moderate confidence, review before presenting |
-| **LOW** | < 0.5 | Escalate — route to human expert |
+| **LOW** | < 0.5 | Escalate — low confidence, route to human expert |
 
 ### Calibration System
 
@@ -1007,19 +1024,28 @@ flowchart TD
 | **Recalibration trigger** | Every 20 new feedback samples |
 | **Debounce** | `maybe_fit()` prevents refitting on every single feedback |
 
+### Rate Limiting & Protection
+
+| Feature | Value | Purpose |
+|---|---|---|
+| **Per-user rate limit** | 10 requests/minute on `/api/rag/query` | Prevent abuse and LLM cost explosion |
+| **LLM retry with Retry-After** | Up to 5 retries respecting upstream `Retry-After` header | Handle transient rate limits gracefully |
+| **Request timeout** | 90 seconds per LLM call | Prevent hanging requests |
+| **Graceful degradation** | Extracts log snippets when LLM unavailable | Ensures UI always returns useful data |
+
 ### RAG API Endpoints
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/api/rag/query` | JWT | Query with uncertainty estimation |
-| POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful) |
-| GET | `/api/rag/history` | JWT | Query history (paginated) |
-| GET | `/api/rag/stats` | JWT | Collection chunks, calibration status, total queries |
+| POST | `/api/rag/query` | JWT | Query with uncertainty estimation (rate limited: 10 req/min) |
+| POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
+| GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
+| GET | `/api/rag/stats` | JWT | Collection chunks, calibration status, total queries, calibration_samples, is_calibrated |
 | POST | `/api/rag/recalibrate` | Admin JWT | Manual recalibration trigger |
 
 ### Data Privacy
 
-Log data stored in ChromaDB never leaves the network — only generated responses are sent to the LLM API. Embeddings are created locally. The LLM receives only the retrieved log context and user query, not raw ATM data.
+Log data stored in ChromaDB never leaves the network — only retrieved log context and user queries are sent to the LLM API. The LLM receives only the retrieved log snippets and user query, not raw ATM data. When LLM providers are unavailable, the system falls back to local log extraction without making any external API calls.
 
 ---
 
@@ -1063,10 +1089,10 @@ Log data stored in ChromaDB never leaves the network — only generated response
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/api/rag/query` | JWT | Query with uncertainty estimation |
-| POST | `/api/rag/feedback` | JWT | Submit feedback |
-| GET | `/api/rag/history` | JWT | Query history (paginated) |
-| GET | `/api/rag/stats` | JWT | System statistics |
+| POST | `/api/rag/query` | JWT | Query with uncertainty estimation (rate limited: 10 req/min per user) |
+| POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
+| GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
+| GET | `/api/rag/stats` | JWT | System statistics (includes `calibration_samples`, `is_calibrated`) |
 | POST | `/api/rag/recalibrate` | Admin JWT | Trigger recalibration |
 
 ### Health
@@ -1202,7 +1228,7 @@ Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regard
 CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The Kafka consumer triggers detection every 30 seconds after processing messages. A 5-minute dedup window in `_is_active()` prevents duplicate writes within that window. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display.
 
 **RAG Data Privacy**
-Log data stored in ChromaDB never leaves the network — only generated responses are sent to the LLM API. Embeddings are created locally using `nomic-embed-text`. The LLM receives only the retrieved log context and user query, not raw ATM data.
+Log data stored in ChromaDB never leaves the network — only retrieved log context and user queries are sent to the LLM API. The LLM receives only the retrieved log snippets and user query, not raw ATM data. When LLM providers are rate-limited or unavailable, the system falls back to local log extraction without making any external API calls, ensuring zero data leakage.
 
 ---
 
@@ -1365,14 +1391,14 @@ cp .env.example .env   # edit POSTGRES_* values as needed
 
 ### 1a. Configure RAG (Optional - enables AI diagnostic assistant)
 
-To enable the RAG diagnostic assistant, get a free API key from [Google AI Studio](https://aistudio.google.com/app) and add it to your `.env`:
+To enable the RAG diagnostic assistant, get a free API key from [OpenRouter](https://openrouter.ai) and add it to your `.env`:
 
 ```bash
 # Add to .env file
-GEMINI_API_KEY=your_google_ai_studio_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 ```
 
-The diagnostic assistant will automatically use Gemini with Groq and OpenRouter fallback for high availability.
+The system uses free OpenRouter models by default (`google/gemma-4-26b-a4b-it:free` as primary, `nvidia/nemotron-nano-9b-v2:free` as fallback). When all LLM providers are rate-limited, the system gracefully degrades to extracting log snippets directly from retrieved chunks.
 
 ### 2. Start all backend services
 
@@ -1444,12 +1470,12 @@ make rebuild
 | Scheduler | APScheduler | Cleanup every 1h, auto-retrain on startup (if models missing/corrupted) |
 | Log generator | Python + `kafka-python` | Backfill + live loop, SIGTERM/SIGINT handling, pure Kafka producer (no direct DB writes), 7 emitters + 7 anomaly injectors |
 | Kafka consumer | Python + `kafka-python` | Manual offset commit, LRU deduplication (10k IDs), writes to PostgreSQL + ChromaDB, triggers anomaly detector every 30s |
-| ChromaDB | ChromaDB HTTP client | Per-ATM 10-event buffer, SemanticChunker with `nomic-embed-text`, `atm_logs` collection on Docker named volume |
+| ChromaDB | ChromaDB HTTP client | Per-ATM 10-event buffer, SemanticChunker with `nomic-embed-text` (Ollama) or simple text chunking fallback, `atm_logs` collection on Docker named volume |
 | Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain on startup (if models missing/corrupted), inference logged to MLflow. Detection triggered by Kafka consumer every 30s with 5-min dedup window |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React 19 + Vite 8 | 10 pages, 11 components, Recharts for visualization, React Router for navigation |
-| RAG | Gemini + Groq + OpenRouter + ChromaDB | Uncertainty-aware RAG with self-consistency sampling (50%), verbalized confidence (30%), response variance (20%), Platt scaling calibration. ChromaDB populated by Kafka consumer |
+| RAG | OpenRouter + ChromaDB | Uncertainty-aware RAG with self-consistency sampling (1 sample), verbalized confidence (30%), response variance (20%), retrieval confidence fallback, Platt scaling calibration. Graceful degradation when LLM unavailable. ChromaDB populated by Kafka consumer. Per-user rate limiting (10 req/min), retry with Retry-After, 90s timeouts |
 | Testing | Pytest | 281 tests across 39 files, 9 tiers, isolated test DB in Docker |
 
 ---
