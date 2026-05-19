@@ -69,7 +69,7 @@ class TestRetrievedChunk:
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
             with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
                 retriever = RAGRetriever()
-                chunks = retriever.retrieve(query="test", top_k=2)
+                chunks = retriever.retrieve(query="test", top_k=2, temporal_boost=False, most_recent_first=False)
 
         assert len(chunks) == 2
         assert chunks[0].text == "log entry 1"
@@ -149,7 +149,7 @@ class TestRetrievedChunk:
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
             with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
                 retriever = RAGRetriever()
-                chunks = retriever.retrieve(query="network timeout", anomaly_type="A1")
+                chunks = retriever.retrieve(query="network timeout", anomaly_type="A1", error_only=False)
 
         assert len(chunks) == 1
         mock_collection.query.assert_called_once()
@@ -175,10 +175,11 @@ class TestRetrievedChunk:
                     query="test",
                     atm_id="ATM-GB-0001",
                     anomaly_type="A3",
+                    error_only=False,
                 )
 
         call_kwargs = mock_collection.query.call_args[1]
-        assert call_kwargs["where"] == {"atm_id": "ATM-GB-0001", "_anomaly_tag": "A3"}
+        assert call_kwargs["where"] == {"$and": [{"atm_id": "ATM-GB-0001"}, {"_anomaly_tag": "A3"}]}
 
     def test_retrieve_with_temporal_boost(self):
         """Test that temporal boost is applied when enabled."""
