@@ -121,8 +121,8 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - RAG_PRIMARY_MODEL=${RAG_PRIMARY_MODEL:-gemini-2.0-flash}
-      - RAG_FALLBACK_MODEL=${RAG_FALLBACK_MODEL:-groq/llama-3.1-70b-versatile}
+      - RAG_PRIMARY_MODEL=${RAG_PRIMARY_MODEL:-google/gemma-4-26b-a4b-it:free}
+      - RAG_FALLBACK_MODEL=${RAG_FALLBACK_MODEL:-nvidia/nemotron-nano-9b-v2:free}
       - RAG_TOP_K=${RAG_TOP_K:-5}
       - RAG_SAMPLES=${RAG_SAMPLES:-3}
       - RAG_TEMPERATURE=${RAG_TEMPERATURE:-0.6}
