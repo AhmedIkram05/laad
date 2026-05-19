@@ -9,7 +9,7 @@ class RAGQueryRequest(BaseModel):
     """Request body for RAG query."""
     query: str = Field(..., min_length=1, max_length=1000, description="User query")
     atm_id: Optional[str] = Field(None, description="Filter by specific ATM ID")
-    top_k: int = Field(5, ge=1, le=20, description="Number of chunks to retrieve")
+    top_k: int = Field(3, ge=1, le=20, description="Number of chunks to retrieve")
     include_uncertainty: bool = Field(True, description="Include uncertainty estimation")
 
 
@@ -29,7 +29,6 @@ class RAGQueryResponse(BaseModel):
     sources: list[SourceChunk]
     uncertainty_score: float
     confidence_level: str
-    is_calibrated: bool
     is_uncertain: bool
     recommendation: str
     model_used: str
@@ -65,7 +64,4 @@ class RAGHistoryResponse(BaseModel):
 class RAGStatsResponse(BaseModel):
     """RAG system statistics."""
     collection_chunks: int
-    calibration_status: dict
     total_queries: int
-    calibration_samples: int = 0
-    is_calibrated: bool = False

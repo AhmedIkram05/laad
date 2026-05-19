@@ -23,9 +23,9 @@ from backend.src.rag.schemas import (
 from backend.src.rag.retriever import get_retriever
 from backend.src.rag.generator import get_generator
 from backend.src.rag.uncertainty import get_uncertainty_estimator
-from backend.src.rag.calibration import get_calibration_manager
+from backend.src.rag.cache import get_cached_response, set_cached_response
 from backend.src.rag.utils import sanitize_query, extract_atm_id_from_query
-from backend.src.auth.auth_router import get_current_user, require_admin
+from backend.src.auth.auth_router import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -60,18 +60,43 @@ async def query(
         user_key = current_user.get("sub", "anonymous")
         _check_rate_limit(user_key)
 
+        sanitized_query = sanitize_query(request.query)
+        atm_id = request.atm_id or extract_atm_id_from_query(request.query)
+        anomaly_type = _extract_anomaly_type_from_query(request.query)
+
+        cached = get_cached_response(sanitized_query)
+        if cached:
+            return RAGQueryResponse(
+                query_id=cached.get("query_id", 0),
+                answer=cached["answer"],
+                sources=[
+                    SourceChunk(
+                        text=s["text"],
+                        chunk_id=s["chunk_id"],
+                        atm_id=s["atm_id"],
+                        timestamp=s["timestamp"],
+                        confidence_score=s["confidence_score"],
+                    )
+                    for s in cached.get("sources", [])
+                ],
+                uncertainty_score=cached.get("uncertainty_score", 0.5),
+                confidence_level=cached.get("confidence_level", "medium"),
+                is_calibrated=cached.get("is_calibrated", False),
+                is_uncertain=cached.get("is_uncertain", False),
+                recommendation=cached.get("recommendation", "Review recommended"),
+                model_used="cache",
+            )
+
         retriever = get_retriever()
         generator = get_generator()
         uncertainty_estimator = get_uncertainty_estimator()
-        calibration_manager = get_calibration_manager()
-
-        sanitized_query = sanitize_query(request.query)
-        atm_id = request.atm_id or extract_atm_id_from_query(request.query)
 
         chunks = retriever.retrieve(
             query=sanitized_query,
             atm_id=atm_id,
             top_k=request.top_k,
+            anomaly_type=anomaly_type,
+            temporal_boost=True,
         )
 
         if not chunks:
@@ -92,16 +117,6 @@ async def query(
                 chunks=chunks,
             )
 
-            if calibration_manager.params.is_fitted:
-                calibrated = calibration_manager.apply(uncertainty.final_confidence)
-                uncertainty.final_confidence = calibrated.calibrated_confidence
-                uncertainty.is_uncertain = uncertainty.final_confidence < 0.5
-                uncertainty.confidence_level = (
-                    "high" if uncertainty.final_confidence >= 0.8
-                    else "medium" if uncertainty.final_confidence >= 0.5
-                    else "low"
-                )
-
         user_id = _get_user_id_from_username(current_user.get("sub", ""))
         query_id = _save_query_history(
             user_id=user_id,
@@ -117,7 +132,7 @@ async def query(
                 uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
             )
 
-        return RAGQueryResponse(
+        result = RAGQueryResponse(
             query_id=query_id,
             answer=response.text,
             sources=[
@@ -132,11 +147,33 @@ async def query(
             ],
             uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
             confidence_level=uncertainty.confidence_level if uncertainty else "medium",
-            is_calibrated=calibration_manager.params.is_fitted,
             is_uncertain=uncertainty.is_uncertain if uncertainty else False,
             recommendation=uncertainty.recommendation if uncertainty else "Review recommended",
             model_used=response.model,
         )
+
+        cache_payload = {
+            "query_id": query_id,
+            "answer": response.text,
+            "sources": [
+                {
+                    "text": c.text,
+                    "chunk_id": c.chunk_id,
+                    "atm_id": c.atm_id,
+                    "timestamp": c.timestamp,
+                    "confidence_score": c.confidence_score,
+                }
+                for c in response.sources
+            ],
+            "uncertainty_score": uncertainty.final_confidence if uncertainty else 0.5,
+            "confidence_level": uncertainty.confidence_level if uncertainty else "medium",
+            "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
+            "recommendation": uncertainty.recommendation if uncertainty else "Review recommended",
+            "model_used": response.model,
+        }
+        set_cached_response(sanitized_query, cache_payload)
+
+        return result
 
     except HTTPException:
         raise
@@ -155,8 +192,6 @@ async def provide_feedback(
 ):
     """Provide feedback on a RAG response for calibration."""
     try:
-        calibration_manager = get_calibration_manager()
-
         user_id = _get_user_id_from_username(current_user.get("sub", ""))
         query_row = _get_query_by_id(request.query_id, user_id)
         if not query_row:
@@ -165,23 +200,7 @@ async def provide_feedback(
                 detail="Query not found",
             )
 
-        if request.feedback == "helpful":
-            is_correct = True
-        elif request.feedback == "not_helpful":
-            is_correct = False
-        elif request.feedback == "uncertain":
-            is_correct = None
-            logger.info(f"User marked query {request.query_id} as uncertain")
-        else:
-            is_correct = None
-
-        if is_correct is not None:
-            calibration_manager.add_feedback(
-                raw_confidence=query_row["uncertainty_score"],
-                is_correct=is_correct,
-            )
-
-            calibration_manager.maybe_fit()
+        logger.info(f"User feedback for query {request.query_id}: {request.feedback}")
 
         return RAGFeedbackResponse(
             success=True,
@@ -254,10 +273,8 @@ async def get_stats(
     """Get RAG system statistics."""
     try:
         retriever = get_retriever()
-        calibration_manager = get_calibration_manager()
 
         collection_stats = retriever.get_collection_stats()
-        calibration_status = calibration_manager.get_status()
 
         with get_cursor() as cur:
             cur.execute("SELECT COUNT(*) as total FROM rag_queries")
@@ -265,10 +282,7 @@ async def get_stats(
 
         return RAGStatsResponse(
             collection_chunks=collection_stats.get("total_chunks", 0),
-            calibration_status=calibration_status,
             total_queries=total_queries,
-            calibration_samples=calibration_status.get("sample_size", 0),
-            is_calibrated=calibration_status.get("is_calibrated", False),
         )
 
     except Exception as e:
@@ -276,30 +290,6 @@ async def get_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve stats",
-        )
-
-
-@router.post("/recalibrate")
-async def recalibrate(
-    current_user: dict = Depends(require_admin),
-):
-    """Trigger recalibration of confidence scores. Admin only."""
-    try:
-        calibration_manager = get_calibration_manager()
-        result = calibration_manager.fit(min_samples=10)
-
-        return {
-            "success": True,
-            "is_calibrated": result.is_calibrated,
-            "ece_score": result.calibration_params.ece_score,
-            "sample_size": result.calibration_params.sample_size,
-        }
-
-    except Exception as e:
-        logger.error(f"Recalibration failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Recalibration failed",
         )
 
 
@@ -402,3 +392,27 @@ def _get_query_by_id(query_id: int, user_id: Optional[int]) -> Optional[dict]:
             return dict(row) if row else None
     except Exception:
         return None
+
+
+def _extract_anomaly_type_from_query(query: str) -> Optional[str]:
+    """Extract anomaly type (A1-A7) from query text if mentioned."""
+    import re
+    match = re.search(r'\b(A[1-7])\b', query, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    anomaly_keywords = {
+        "network timeout": "A1",
+        "cassette": "A2",
+        "jvm memory": "A3",
+        "oom": "A3",
+        "restart": "A4",
+        "response time": "A5",
+        "os memory": "A6",
+        "malformed": "A7",
+        "out-of-order": "A7",
+    }
+    query_lower = query.lower()
+    for keyword, anomaly_type in anomaly_keywords.items():
+        if keyword in query_lower:
+            return anomaly_type
+    return None
