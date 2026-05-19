@@ -198,6 +198,27 @@
     color: #1a1a1a;
 }
 
+.message-content .markdown-content {
+    margin: 0;
+}
+
+.message-content .markdown-content .md-h {
+    margin: 16px 0 8px 0;
+}
+
+.message-content .markdown-content .md-h:first-child {
+    margin-top: 0;
+}
+
+.message-content .markdown-content .md-p {
+    margin: 8px 0;
+}
+
+.message-content .markdown-content .md-list {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
 .message-row.user .message-content {
     background: #f0f0f0;
     padding: 10px 14px;

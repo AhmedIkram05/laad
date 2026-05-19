@@ -75,5 +75,3 @@ export const getRAGHistory = (limit = 20, offset = 0) =>
     request(`/api/rag/history?limit=${limit}&offset=${offset}`);
 
 export const getRAGStats = () => request("/api/rag/stats");
-
-export const recalibrateRAG = () => request("/api/rag/recalibrate", {method: "POST"});

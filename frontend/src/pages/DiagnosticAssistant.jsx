@@ -6,38 +6,66 @@
  */
 
 import {useState, useRef, useEffect} from "react";
-import {queryRAG, submitRAGFeedback, getRAGStats, recalibrateRAG, getRAGHistory} from "../api/api";
+import {queryRAG, submitRAGFeedback, getRAGStats, getRAGHistory} from "../api/api";
 import {useAuth} from "../auth/AuthProvider";
 import UncertaintyBadge from "../components/UncertaintyBadge";
 import SourceList from "../components/SourceList";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 import "./DiagnosticAssistant.css";
 
 function DiagnosticAssistant() {
-    const [messages, setMessages] = useState([
-        {
+    const [messages, setMessages] = useState(() => {
+        try {
+            const saved = localStorage.getItem("rag_chat_messages");
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed;
+                }
+            }
+        } catch (e) {
+            // ignore
+        }
+        return [{
             id: 0,
             role: "assistant",
             content: "Hello! I'm your ATM diagnostic assistant. Ask me about any ATM issues, error messages, or anomalies. I'll analyze the log data and provide recommendations.",
             uncertainty: null,
             sources: [],
-        },
-    ]);
-    const [input, setInput] = useState("");
+        }];
+    });
+    const [input, setInput] = useState(() => {
+        try {
+            return localStorage.getItem("rag_chat_input") || "";
+        } catch {
+            return "";
+        }
+    });
     const [loading, setLoading] = useState(false);
     const [feedbackSubmitted, setFeedbackSubmitted] = useState({});
     const [stats, setStats] = useState(null);
-    const [recalibrating, setRecalibrating] = useState(false);
-    const [recalibrateMsg, setRecalibrateMsg] = useState("");
     const [activeTab, setActiveTab] = useState("chat");
     const [history, setHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyPage, setHistoryPage] = useState(0);
     const [historyTotal, setHistoryTotal] = useState(0);
-    const [showSettings, setShowSettings] = useState(false);
     const messagesEndRef = useRef(null);
     const {user} = useAuth();
     const isAdmin = user && user.role === "admin";
     const HISTORY_LIMIT = 20;
+
+    const STORAGE_KEY_MESSAGES = "rag_chat_messages";
+    const STORAGE_KEY_INPUT = "rag_chat_input";
+
+    useEffect(() => {
+        if (messages.length > 0) {
+            localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages));
+        }
+    }, [messages]);
+
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY_INPUT, input);
+    }, [input]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -73,21 +101,6 @@ function DiagnosticAssistant() {
             setHistory([]);
         } finally {
             setHistoryLoading(false);
-        }
-    };
-
-    const handleRecalibrate = async () => {
-        setRecalibrating(true);
-        setRecalibrateMsg("");
-        try {
-            await recalibrateRAG();
-            setRecalibrateMsg("Recalibration complete!");
-            const data = await getRAGStats();
-            setStats(data);
-        } catch (err) {
-            setRecalibrateMsg(`Error: ${err.message}`);
-        } finally {
-            setRecalibrating(false);
         }
     };
 
@@ -155,15 +168,16 @@ function DiagnosticAssistant() {
     };
 
     const handleNewChat = () => {
-        setMessages([
-            {
-                id: Date.now(),
-                role: "assistant",
-                content: "Hello! I'm your ATM diagnostic assistant. Ask me about any ATM issues, error messages, or anomalies. I'll analyze the log data and provide recommendations.",
-                uncertainty: null,
-                sources: [],
-            },
-        ]);
+        localStorage.removeItem(STORAGE_KEY_MESSAGES);
+        localStorage.removeItem(STORAGE_KEY_INPUT);
+        setMessages({
+            id: 0,
+            role: "assistant",
+            content: "Hello! I'm your ATM diagnostic assistant. Ask me about any ATM issues, error messages, or anomalies. I'll analyze the log data and provide recommendations.",
+            uncertainty: null,
+            sources: [],
+        });
+        setInput("");
         setFeedbackSubmitted({});
     };
 
@@ -212,22 +226,6 @@ function DiagnosticAssistant() {
                         <span className="stat-label">Total Queries</span>
                         <span className="stat-value">{stats.total_queries}</span>
                     </div>
-                    <div className="stats-row">
-                        <span className="stat-label">Feedback Samples</span>
-                        <span className="stat-value">{stats.calibration_samples}</span>
-                    </div>
-                    <div className="stats-row">
-                        <span className="stat-label">Calibrated</span>
-                        <span className="stat-value">{stats.is_calibrated ? "Yes" : "No"}</span>
-                    </div>
-                    <button
-                        className="recalibrate-btn"
-                        onClick={handleRecalibrate}
-                        disabled={recalibrating || stats.calibration_samples < 20}
-                    >
-                        {recalibrating ? "Recalibrating..." : "Recalibrate"}
-                    </button>
-                    {recalibrateMsg && <span className="recalibrate-msg">{recalibrateMsg}</span>}
                 </div>
             )}
 
@@ -240,14 +238,15 @@ function DiagnosticAssistant() {
                                     {msg.role === "user" ? "You" : "AI"}
                                 </div>
                                 <div className="message-bubble">
-                                    <div className="message-content">{msg.content}</div>
+                                    <div className="message-content">
+                                    <MarkdownRenderer content={msg.content} />
+                                </div>
 
                                     {msg.role === "assistant" && msg.uncertainty && (
                                         <div className="message-meta">
                                             <UncertaintyBadge
                                                 level={msg.uncertainty.level}
                                                 score={msg.uncertainty.score}
-                                                isCalibrated={msg.uncertainty.is_calibrated}
                                             />
                                             <span className="recommendation">
                                                 {msg.uncertainty.recommendation}
