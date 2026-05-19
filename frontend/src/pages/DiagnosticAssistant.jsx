@@ -6,7 +6,7 @@
  */
 
 import {useState, useRef, useEffect} from "react";
-import {queryRAG, submitRAGFeedback, getRAGStats, getRAGHistory} from "../api/api";
+import {queryRAG, getRAGStats, getRAGHistory} from "../api/api";
 import UncertaintyBadge from "../components/UncertaintyBadge";
 import SourceList from "../components/SourceList";
 import MarkdownRenderer from "../components/MarkdownRenderer";
@@ -41,7 +41,6 @@ function DiagnosticAssistant() {
         }
     });
     const [loading, setLoading] = useState(false);
-    const [feedbackSubmitted, setFeedbackSubmitted] = useState({});
     const [stats, setStats] = useState(null);
     const [activeTab, setActiveTab] = useState("chat");
     const [history, setHistory] = useState([]);
@@ -167,16 +166,6 @@ function DiagnosticAssistant() {
         }
     };
 
-    const handleFeedback = async (queryId, feedback) => {
-        if (feedbackSubmitted[queryId]) return;
-        try {
-            await submitRAGFeedback(queryId, feedback);
-            setFeedbackSubmitted((prev) => ({ ...prev, [queryId]: true }));
-        } catch (err) {
-            console.error("Failed to submit feedback:", err);
-        }
-    };
-
     const handleRetryQuery = async (queryText) => {
         setInput(queryText);
         setActiveTab("chat");
@@ -193,7 +182,6 @@ function DiagnosticAssistant() {
             sources: [],
         }]);
         setInput("");
-        setFeedbackSubmitted({});
     };
 
     const isWelcomeScreen = messages.length <= 1;
@@ -266,25 +254,6 @@ function DiagnosticAssistant() {
 
                                     {msg.role === "assistant" && msg.sources?.length > 0 && (
                                         <SourceList sources={msg.sources} />
-                                    )}
-
-                                    {msg.role === "assistant" && msg.query_id && (
-                                        <div className="feedback-buttons">
-                                            <button
-                                                onClick={() => handleFeedback(msg.query_id, "helpful")}
-                                                title="This was helpful"
-                                                disabled={feedbackSubmitted[msg.query_id]}
-                                            >
-                                                Helpful
-                                            </button>
-                                            <button
-                                                onClick={() => handleFeedback(msg.query_id, "not_helpful")}
-                                                title="This wasn't helpful"
-                                                disabled={feedbackSubmitted[msg.query_id]}
-                                            >
-                                                Not helpful
-                                            </button>
-                                        </div>
                                     )}
                                 </div>
                             </div>

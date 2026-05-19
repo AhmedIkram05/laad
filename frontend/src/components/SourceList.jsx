@@ -1,7 +1,7 @@
 /*
  * SourceList Component
  * --------------------
- * Displays retrieved log sources with confidence scores.
+ * Displays retrieved log sources with per-item expand/collapse and expand-all control.
  */
 
 import {useState} from "react";
@@ -9,27 +9,51 @@ import "./SourceList.css";
 
 function SourceList({sources}) {
     const [expanded, setExpanded] = useState({});
+    const [allExpanded, setAllExpanded] = useState(false);
 
     const toggleExpand = (index) => {
         setExpanded((prev) => ({...prev, [index]: !prev[index]}));
     };
 
+    const toggleAll = () => {
+        const next = !allExpanded;
+        setAllExpanded(next);
+        const allStates = {};
+        sources.forEach((_, i) => {
+            allStates[i] = next;
+        });
+        setExpanded(allStates);
+    };
+
     if (!sources || sources.length === 0) return null;
+
+    const allAreExpanded = sources.length > 0 && sources.every((_, i) => expanded[i]);
+    const anyExpanded = sources.some((_, i) => expanded[i]);
 
     return (
         <div className="source-list">
             <div className="source-header">
                 <span className="source-title">Retrieved Context</span>
-                <span className="source-count">{sources.length} sources</span>
+                <div className="source-header-right">
+                    <span className="source-count">{sources.length} sources</span>
+                    {sources.length > 1 && (
+                        <button className="expand-all-btn" onClick={toggleAll}>
+                            {allAreExpanded ? "Collapse All" : "Expand All"}
+                        </button>
+                    )}
+                </div>
             </div>
             <div className="sources">
                 {sources.map((source, index) => (
                     <div
                         key={source.chunk_id || index}
-                        className="source-item"
-                        onClick={() => toggleExpand(index)}
+                        className={`source-item ${expanded[index] ? "expanded" : ""}`}
                     >
-                        <div className="source-summary">
+                        <button
+                            className="source-summary"
+                            onClick={() => toggleExpand(index)}
+                            aria-expanded={!!expanded[index]}
+                        >
                             <span className="source-atm">
                                 {source.atm_id || "Unknown ATM"}
                             </span>
@@ -51,19 +75,13 @@ function SourceList({sources}) {
                             >
                                 {(source.confidence_score * 100).toFixed(0)}% match
                             </span>
-                        </div>
-                        <div
-                            className={`source-text ${expanded[index] ? "expanded" : ""}`}
-                        >
-                            {source.text.length > 200 && !expanded[index]
-                                ? source.text.substring(0, 200) + "..."
-                                : source.text}
-                        </div>
-                        {source.text.length > 200 && (
                             <span className="expand-hint">
-                                {expanded[index] ? "Show less" : "Show more"}
+                                {expanded[index] ? "▲" : "▼"}
                             </span>
-                        )}
+                        </button>
+                        <div className={`source-text ${expanded[index] ? "expanded" : ""}`}>
+                            {source.text}
+                        </div>
                     </div>
                 ))}
             </div>

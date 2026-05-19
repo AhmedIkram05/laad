@@ -31,12 +31,35 @@
     border-radius: 2px;
 }
 
+.source-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .source-count {
     font-size: 11px;
     color: #9ca3af;
     background: #f3f4f6;
     padding: 2px 8px;
     border-radius: 4px;
+}
+
+.expand-all-btn {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6366f1;
+    background: transparent;
+    border: 1px solid #6366f133;
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.expand-all-btn:hover {
+    background: #6366f111;
+    border-color: #6366f155;
 }
 
 .sources {
@@ -46,28 +69,35 @@
 }
 
 .source-item {
-    padding: 14px;
-    background: linear-gradient(to bottom, #fafbfc, #f8f9fa);
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    cursor: pointer;
+    overflow: hidden;
     transition: all 0.2s ease;
+    background: #fafbfc;
 }
 
 .source-item:hover {
-    background: linear-gradient(to bottom, #f5f6f8, #f0f1f3);
     border-color: #d1d5db;
-    transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.source-item.expanded {
+    background: #f5f6f8;
 }
 
 .source-summary {
     display: flex;
     gap: 10px;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 0;
     font-size: 12px;
     flex-wrap: wrap;
+    padding: 12px 14px;
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
 }
 
 .source-atm {
@@ -89,7 +119,16 @@
     margin-left: auto;
 }
 
+.expand-hint {
+    font-size: 10px;
+    color: #6b7280;
+    font-weight: 600;
+    margin-left: 4px;
+}
+
 .source-text {
+    max-height: 0;
+    overflow: hidden;
     font-size: 12px;
     color: #4b5563;
     line-height: 1.5;
@@ -97,15 +136,13 @@
     word-break: break-word;
     font-family: "SF Mono", Monaco, "Consolas", monospace;
     background: #fff;
-    padding: 10px;
-    border-radius: 6px;
-    border: 1px solid #f3f4f6;
+    border-top: 1px solid transparent;
+    transition: max-height 0.25s ease, border-color 0.2s ease, padding 0.25s ease;
+    padding: 0 14px;
 }
 
-.expand-hint {
-    display: inline-block;
-    margin-top: 8px;
-    font-size: 11px;
-    color: #6366f1;
-    font-weight: 500;
+.source-text.expanded {
+    max-height: 600px;
+    border-top-color: #f3f4f6;
+    padding: 12px 14px;
 }
