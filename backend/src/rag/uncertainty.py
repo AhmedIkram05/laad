@@ -32,7 +32,7 @@ class UncertaintyEstimator:
     def __init__(self):
         self.llm_client = get_llm_client()
         self.generator = get_generator()
-        self.num_samples = 3
+        self.num_samples = 1
 
     def estimate(
         self,
@@ -51,17 +51,23 @@ class UncertaintyEstimator:
                 recommendation="Insufficient context - escalate to human review",
             )
 
-        responses = self._self_consistency_sample(query, chunks)
+        avg_distance = sum(c.distance for c in chunks) / len(chunks)
+        retrieval_confidence = max(0.0, 1.0 - min(avg_distance, 1.0))
+
+        try:
+            responses = self._self_consistency_sample(query, chunks)
+        except Exception:
+            responses = []
 
         if not responses:
             return UncertaintyEstimate(
-                final_confidence=0.3,
-                confidence_level="low",
+                final_confidence=round(retrieval_confidence, 3),
+                confidence_level=self._classify_confidence(retrieval_confidence),
                 self_consistency_score=0.0,
                 verbalized_confidence=None,
                 generation_variance=None,
-                is_uncertain=True,
-                recommendation="LLM generation failed - escalate to human review",
+                is_uncertain=retrieval_confidence < 0.5,
+                recommendation=self._get_recommendation(retrieval_confidence, self._classify_confidence(retrieval_confidence)),
             )
 
         consistency_score = self._calculate_consistency(responses)

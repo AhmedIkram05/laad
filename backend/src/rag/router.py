@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.src.database.connection import get_cursor
 from backend.src.rag.schemas import (
@@ -29,14 +31,35 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/rag", tags=["RAG"])
 
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX_REQUESTS = 10
+_query_timestamps: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_rate_limit(user_key: str) -> None:
+    """Check if user has exceeded rate limit. Raises 429 if so."""
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW
+    _query_timestamps[user_key] = [t for t in _query_timestamps[user_key] if t > cutoff]
+    if len(_query_timestamps[user_key]) >= RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded ({RATE_LIMIT_MAX_REQUESTS} requests per minute). Please wait before trying again.",
+        )
+    _query_timestamps[user_key].append(now)
+
 
 @router.post("/query", response_model=RAGQueryResponse)
 async def query(
     request: RAGQueryRequest,
+    req: Request,
     current_user: dict = Depends(get_current_user),
 ):
     """Query the diagnostic assistant with uncertainty estimation."""
     try:
+        user_key = current_user.get("sub", "anonymous")
+        _check_rate_limit(user_key)
+
         retriever = get_retriever()
         generator = get_generator()
         uncertainty_estimator = get_uncertainty_estimator()
@@ -54,7 +77,7 @@ async def query(
         if not chunks:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No relevant logs found for your query",
+                detail="No relevant logs found for your query. Try rephrasing or check if the data generator is running.",
             )
 
         response = generator.generate(
@@ -86,6 +109,13 @@ async def query(
             answer=response.text,
             uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
         )
+
+        if query_id is None:
+            query_id = _save_query_history_fallback(
+                query=request.query,
+                answer=response.text,
+                uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
+            )
 
         return RAGQueryResponse(
             query_id=query_id,
@@ -139,6 +169,9 @@ async def provide_feedback(
             is_correct = True
         elif request.feedback == "not_helpful":
             is_correct = False
+        elif request.feedback == "uncertain":
+            is_correct = None
+            logger.info(f"User marked query {request.query_id} as uncertain")
         else:
             is_correct = None
 
@@ -234,6 +267,8 @@ async def get_stats(
             collection_chunks=collection_stats.get("total_chunks", 0),
             calibration_status=calibration_status,
             total_queries=total_queries,
+            calibration_samples=calibration_status.get("sample_size", 0),
+            is_calibrated=calibration_status.get("is_calibrated", False),
         )
 
     except Exception as e:
@@ -302,26 +337,67 @@ def _save_query_history(
                 (user_id, query, answer, uncertainty_score),
             )
             row = cur.fetchone()
-            return row[0] if row else None
+            return row["id"] if row else None
     except Exception as e:
         logger.warning(f"Failed to save query history: {e}")
         return None
 
 
+def _save_query_history_fallback(
+    query: str,
+    answer: str,
+    uncertainty_score: float,
+) -> Optional[int]:
+    """Save query history without user_id (fallback for anonymous/unresolved users)."""
+    try:
+        with get_cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE username = 'admin' LIMIT 1")
+            row = cur.fetchone()
+            user_id = row["id"] if row else None
+
+        if user_id is None:
+            return None
+
+        with get_cursor(commit=True) as cur:
+            cur.execute(
+                """
+                INSERT INTO rag_queries (user_id, query_text, answer_text, uncertainty_score)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (user_id, query, answer, uncertainty_score),
+            )
+            row = cur.fetchone()
+            return row["id"] if row else None
+    except Exception as e:
+        logger.warning(f"Fallback query history save failed: {e}")
+        return None
+
+
 def _get_query_by_id(query_id: int, user_id: Optional[int]) -> Optional[dict]:
-    """Get query by ID for user."""
-    if user_id is None:
+    """Get query by ID. Falls back to global lookup if user_id is None."""
+    if query_id is None:
         return None
     try:
         with get_cursor() as cur:
-            cur.execute(
-                """
-                SELECT id, query_text, answer_text, uncertainty_score
-                FROM rag_queries
-                WHERE id = %s AND user_id = %s
-                """,
-                (query_id, user_id),
-            )
+            if user_id is not None:
+                cur.execute(
+                    """
+                    SELECT id, query_text, answer_text, uncertainty_score
+                    FROM rag_queries
+                    WHERE id = %s AND user_id = %s
+                    """,
+                    (query_id, user_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, query_text, answer_text, uncertainty_score
+                    FROM rag_queries
+                    WHERE id = %s
+                    """,
+                    (query_id,),
+                )
             row = cur.fetchone()
             return dict(row) if row else None
     except Exception:

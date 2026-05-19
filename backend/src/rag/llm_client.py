@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -12,6 +13,40 @@ import requests
 from backend.src.rag.config import config
 
 logger = logging.getLogger(__name__)
+
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX_REQUESTS = 20
+REQUEST_TIMEOUT = 90
+MAX_RETRIES = 2
+MAX_RATE_LIMIT_RETRIES = 5
+RETRY_DELAY = 2.0
+
+
+class RateLimiter:
+    """Simple in-memory token bucket rate limiter."""
+
+    def __init__(self, max_requests: int = RATE_LIMIT_MAX_REQUESTS, window_seconds: int = RATE_LIMIT_WINDOW):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._requests: dict[str, list[float]] = defaultdict(list)
+
+    def is_rate_limited(self, key: str = "global") -> bool:
+        now = time.time()
+        cutoff = now - self.window_seconds
+        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
+        if len(self._requests[key]) >= self.max_requests:
+            return True
+        self._requests[key].append(now)
+        return False
+
+    def wait_time(self, key: str = "global") -> float:
+        if not self._requests[key]:
+            return 0.0
+        oldest = min(self._requests[key])
+        return max(0.0, (oldest + self.window_seconds) - time.time())
+
+
+_rate_limiter = RateLimiter()
 
 
 @dataclass
@@ -36,39 +71,43 @@ class LLMClient:
             self.providers = self._initialize_providers()
 
     def _initialize_providers(self) -> list[dict]:
-        """Initialize available providers in priority order."""
+        """Initialize available providers in priority order: OpenRouter first, then Gemini, then Groq."""
         providers = []
+
+        if config.openrouter_api_key:
+            primary = config.primary_model
+            if primary.startswith("openrouter/"):
+                primary = primary.replace("openrouter/", "")
+            providers.append({
+                "name": "openrouter",
+                "model": primary,
+                "api_key": config.openrouter_api_key,
+                "base_url": "https://openrouter.ai/api/v1",
+            })
+
+        fallback = config.fallback_model
+        if fallback.startswith("openrouter/"):
+            fallback = fallback.replace("openrouter/", "")
 
         if config.gemini_api_key:
             providers.append({
                 "name": "gemini",
-                "model": config.primary_model,
+                "model": config.primary_model if not config.openrouter_api_key else fallback,
                 "api_key": config.gemini_api_key,
                 "base_url": "https://generativelanguage.googleapis.com/v1beta",
             })
 
         if config.groq_api_key:
-            fallback = config.fallback_model
-            if fallback.startswith("groq/"):
-                fallback = fallback.replace("groq/", "")
+            groq_model = fallback
+            if groq_model.startswith("groq/"):
+                groq_model = groq_model.replace("groq/", "")
+            elif groq_model.startswith("meta-llama/"):
+                groq_model = groq_model.split("/")[-1]
             providers.append({
                 "name": "groq",
-                "model": fallback,
+                "model": groq_model,
                 "api_key": config.groq_api_key,
                 "base_url": "https://api.groq.com/openai/v1",
-            })
-
-        if config.openrouter_api_key:
-            fallback = config.fallback_model
-            if fallback.startswith("openrouter/"):
-                fallback = fallback.replace("openrouter/", "")
-            elif fallback.startswith("groq/"):
-                fallback = fallback.replace("groq/", "")
-            providers.append({
-                "name": "openrouter",
-                "model": fallback,
-                "api_key": config.openrouter_api_key,
-                "base_url": "https://openrouter.ai/api/v1",
             })
 
         if not providers:
@@ -86,26 +125,57 @@ class LLMClient:
     ) -> LLMResponse:
         """Generate response with automatic fallback to next provider on failure."""
         if not self.providers:
-            raise RuntimeError("No LLM providers configured. Set GEMINI_API_KEY environment variable.")
+            raise RuntimeError("No LLM providers configured. Set OPENROUTER_API_KEY environment variable.")
+
+        if _rate_limiter.is_rate_limited():
+            wait = _rate_limiter.wait_time()
+            raise RuntimeError(f"Rate limit exceeded. Please wait {wait:.0f}s before retrying.")
 
         last_error = None
 
         for provider in self.providers:
-            try:
-                response = self._call_provider(
-                    provider=provider,
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-                logger.info(f"Successfully generated response using {provider['name']}")
-                return response
-            except Exception as e:
-                logger.warning(f"Provider {provider['name']} failed: {e}")
-                last_error = e
-                time.sleep(0.5)
-                continue
+            rate_limit_retries = 0
+            for attempt in range(MAX_RETRIES + 1):
+                try:
+                    response = self._call_provider(
+                        provider=provider,
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    logger.info(f"Successfully generated response using {provider['name']} (attempt {attempt+1})")
+                    return response
+                except requests.exceptions.Timeout:
+                    logger.warning(f"Provider {provider['name']} timed out (attempt {attempt+1}/{MAX_RETRIES+1})")
+                    last_error = RuntimeError(f"Request timed out after {REQUEST_TIMEOUT}s")
+                except requests.exceptions.HTTPError as e:
+                    if e.response is not None and e.response.status_code == 429:
+                        retry_after = 5
+                        if e.response.headers.get("Retry-After"):
+                            try:
+                                retry_after = int(e.response.headers["Retry-After"])
+                            except (ValueError, TypeError):
+                                pass
+                        rate_limit_retries += 1
+                        if rate_limit_retries > MAX_RATE_LIMIT_RETRIES:
+                            logger.warning(f"Provider {provider['name']} rate limit retries exhausted")
+                            last_error = e
+                            break
+                        logger.warning(f"Provider {provider['name']} rate limited, waiting {retry_after+1}s (retry {rate_limit_retries}/{MAX_RATE_LIMIT_RETRIES})")
+                        last_error = e
+                        time.sleep(retry_after + 1)
+                        continue
+                    logger.warning(f"Provider {provider['name']} HTTP error: {e}")
+                    last_error = e
+                    break
+                except Exception as e:
+                    logger.warning(f"Provider {provider['name']} failed: {e}")
+                    last_error = e
+                    if attempt < MAX_RETRIES:
+                        time.sleep(RETRY_DELAY * (attempt + 1))
+                        continue
+                    break
 
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
@@ -163,7 +233,7 @@ class LLMClient:
                 "parts": [{"text": system_prompt}]
             }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         data = response.json()
@@ -214,7 +284,7 @@ class LLMClient:
             "max_tokens": max_tokens,
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         data = response.json()
@@ -259,12 +329,22 @@ class LLMClient:
             "max_tokens": max_tokens,
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         data = response.json()
 
+        if "error" in data:
+            error_detail = data["error"].get("message", "Unknown error")
+            raise RuntimeError(f"OpenRouter API error: {error_detail}")
+
+        if not data.get("choices"):
+            raise RuntimeError(f"OpenRouter returned empty response: {data}")
+
         choice = data["choices"][0]
+        if not choice.get("message") or not choice["message"].get("content"):
+            raise RuntimeError("OpenRouter returned empty message content")
+
         return LLMResponse(
             text=choice["message"]["content"],
             raw_response=data,

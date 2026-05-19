@@ -67,3 +67,5 @@ class RAGStatsResponse(BaseModel):
     collection_chunks: int
     calibration_status: dict
     total_queries: int
+    calibration_samples: int = 0
+    is_calibrated: bool = False

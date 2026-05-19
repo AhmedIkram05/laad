@@ -84,12 +84,36 @@ class RAGGenerator:
 
         except Exception as e:
             logger.error(f"Generation failed: {e}")
+            fallback = self._generate_fallback(query, chunks)
             return GeneratedResponse(
-                text="I encountered an error generating your response. Please try again.",
+                text=fallback,
                 sources=chunks[:5],
-                model="error",
+                model="fallback-template",
                 raw_response={},
             )
+
+    def _generate_fallback(self, query: str, chunks: list[RetrievedChunk]) -> str:
+        """Generate a basic response from chunks when LLM is unavailable."""
+        top_chunks = chunks[:3]
+        summary_parts = [
+            f"I found {len(chunks)} relevant log entries for your query: \"{query}\"",
+            "",
+            "**Key findings from the logs:**",
+            "",
+        ]
+        for i, chunk in enumerate(top_chunks, 1):
+            text = chunk.text[:300]
+            atm = chunk.atm_id or "unknown"
+            ts = chunk.timestamp or "unknown time"
+            summary_parts.append(f"{i}. **ATM {atm}** (at {ts}): {text}...")
+
+        summary_parts.extend([
+            "",
+            "**Note:** The AI response generator is currently experiencing high demand. "
+            "The analysis above is based on direct log extraction. "
+            "Please try again later for a full AI-generated diagnostic response.",
+        ])
+        return "\n".join(summary_parts)
 
     def _build_context(self, chunks: list[RetrievedChunk]) -> str:
         """Build context string from retrieved chunks."""

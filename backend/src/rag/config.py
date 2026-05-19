@@ -48,8 +48,8 @@ class RAGConfig:
 
     def _check_configured(self) -> None:
         """Log warning if RAG is not fully configured."""
-        if not self.gemini_api_key:
-            logger.warning("GEMINI_API_KEY not set - RAG diagnostic assistant will not be available")
+        if not self.openrouter_api_key:
+            logger.warning("OPENROUTER_API_KEY not set - RAG diagnostic assistant will not be available")
 
     @property
     def is_configured(self) -> bool:
