@@ -57,19 +57,12 @@ export const fetchMetrics = (hours = 24, bucket_minutes = 60) =>
     request(`/analysis/metrics?hours=${hours}&bucket_minutes=${bucket_minutes}`);
 
 // RAG Diagnostic Assistant API
-export const queryRAG = (query, atm_id = null, top_k = 5, include_uncertainty = true) => {
-    const params = new URLSearchParams({
-        query,
-        top_k,
-        include_uncertainty,
-    });
-    if (atm_id) params.append("atm_id", atm_id);
-    return request(`/api/rag/query?${params}`, {
+export const queryRAG = (query, atm_id = null, top_k = 5, include_uncertainty = true) =>
+    request("/api/rag/query", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({query, atm_id, top_k, include_uncertainty}),
     });
-};
 
 export const submitRAGFeedback = (query_id, feedback) =>
     request("/api/rag/feedback", {

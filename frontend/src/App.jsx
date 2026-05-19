@@ -13,7 +13,6 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import AdminSettings from "./pages/AdminSettings";
 import DiagnosticAssistant from "./pages/DiagnosticAssistant";
-import RAGHistory from "./pages/RAGHistory";
 import AdminRoute from "./components/AdminRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -37,7 +36,6 @@ function App() {
                         <Route path="/completed" element={<Completed />} />
                         <Route path="/data/:anomaly_type" element={<AnomalyData />} />
                         <Route path="/diagnostic" element={<DiagnosticAssistant />} />
-                        <Route path="/rag-history" element={<RAGHistory />} />
                         <Route element={<AdminRoute />}>
                             <Route path="/admin/settings" element={<AdminSettings />} />
                         </Route>
