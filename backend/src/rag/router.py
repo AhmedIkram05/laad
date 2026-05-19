@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
+import redis
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.src.database.connection import get_cursor
@@ -35,10 +36,50 @@ RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX_REQUESTS = 10
 _query_timestamps: dict[str, list[float]] = defaultdict(list)
 
+_redis_rate_limit_client: Optional[redis.Redis] = None
+
+
+def _get_redis_client() -> Optional[redis.Redis]:
+    """Get Redis client for distributed rate limiting."""
+    global _redis_rate_limit_client
+    if _redis_rate_limit_client is None:
+        try:
+            _redis_rate_limit_client = redis.Redis(
+                host=config.redis_host,
+                port=config.redis_port,
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+            )
+            _redis_rate_limit_client.ping()
+        except Exception:
+            _redis_rate_limit_client = None
+    return _redis_rate_limit_client
+
 
 def _check_rate_limit(user_key: str) -> None:
-    """Check if user has exceeded rate limit. Raises 429 if so."""
+    """Check if user has exceeded rate limit. Uses Redis if available, falls back to in-memory."""
+    client = _get_redis_client()
     now = time.time()
+
+    if client is not None:
+        try:
+            key = f"rag:ratelimit:{user_key}"
+            count = client.incr(key)
+            if count == 1:
+                client.expire(key, RATE_LIMIT_WINDOW)
+            if count > RATE_LIMIT_MAX_REQUESTS:
+                ttl = client.ttl(key)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Rate limit exceeded ({RATE_LIMIT_MAX_REQUESTS} requests per minute). Please wait {ttl}s before trying again.",
+                )
+            return
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
     cutoff = now - RATE_LIMIT_WINDOW
     _query_timestamps[user_key] = [t for t in _query_timestamps[user_key] if t > cutoff]
     if len(_query_timestamps[user_key]) >= RATE_LIMIT_MAX_REQUESTS:

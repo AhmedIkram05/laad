@@ -85,9 +85,9 @@ class RAGGenerator:
 
         except Exception as e:
             logger.error(f"Generation failed: {e}")
-            fallback = self._generate_fallback(query, chunks)
+            fallback_text = self._generate_fallback(query, chunks)
             return GeneratedResponse(
-                text=fallback,
+                text=fallback_text,
                 sources=chunks[:5],
                 model="fallback-template",
                 raw_response={},

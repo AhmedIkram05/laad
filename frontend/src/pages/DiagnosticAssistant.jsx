@@ -7,7 +7,6 @@
 
 import {useState, useRef, useEffect} from "react";
 import {queryRAG, submitRAGFeedback, getRAGStats, getRAGHistory} from "../api/api";
-import {useAuth} from "../auth/AuthProvider";
 import UncertaintyBadge from "../components/UncertaintyBadge";
 import SourceList from "../components/SourceList";
 import MarkdownRenderer from "../components/MarkdownRenderer";
@@ -23,7 +22,7 @@ function DiagnosticAssistant() {
                     return parsed;
                 }
             }
-        } catch (e) {
+        } catch {
             // ignore
         }
         return [{
@@ -50,21 +49,38 @@ function DiagnosticAssistant() {
     const [historyPage, setHistoryPage] = useState(0);
     const [historyTotal, setHistoryTotal] = useState(0);
     const messagesEndRef = useRef(null);
-    const {user} = useAuth();
-    const isAdmin = user && user.role === "admin";
     const HISTORY_LIMIT = 20;
 
     const STORAGE_KEY_MESSAGES = "rag_chat_messages";
     const STORAGE_KEY_INPUT = "rag_chat_input";
+    const MAX_STORAGE_SIZE = 4 * 1024 * 1024;
 
     useEffect(() => {
         if (messages.length > 0) {
-            localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages));
+            try {
+                const jsonStr = JSON.stringify(messages);
+                if (jsonStr.length > MAX_STORAGE_SIZE) {
+                    const trimmed = messages.slice(-50);
+                    const trimmedJson = JSON.stringify(trimmed);
+                    localStorage.setItem(STORAGE_KEY_MESSAGES, trimmedJson);
+                } else {
+                    localStorage.setItem(STORAGE_KEY_MESSAGES, jsonStr);
+                }
+            } catch (e) {
+                if (e.name === "QuotaExceededError") {
+                    const trimmed = messages.slice(-20);
+                    localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(trimmed));
+                }
+            }
         }
-    }, [messages]);
+    }, [messages, MAX_STORAGE_SIZE]);
 
     useEffect(() => {
-        localStorage.setItem(STORAGE_KEY_INPUT, input);
+        try {
+            localStorage.setItem(STORAGE_KEY_INPUT, input);
+        } catch {
+            // Ignore storage errors
+        }
     }, [input]);
 
     useEffect(() => {
@@ -127,7 +143,6 @@ function DiagnosticAssistant() {
                 uncertainty: {
                     score: response.uncertainty_score,
                     level: response.confidence_level,
-                    is_calibrated: response.is_calibrated,
                     is_uncertain: response.is_uncertain,
                     recommendation: response.recommendation,
                 },
@@ -170,13 +185,13 @@ function DiagnosticAssistant() {
     const handleNewChat = () => {
         localStorage.removeItem(STORAGE_KEY_MESSAGES);
         localStorage.removeItem(STORAGE_KEY_INPUT);
-        setMessages({
+        setMessages([{
             id: 0,
             role: "assistant",
             content: "Hello! I'm your ATM diagnostic assistant. Ask me about any ATM issues, error messages, or anomalies. I'll analyze the log data and provide recommendations.",
             uncertainty: null,
             sources: [],
-        });
+        }]);
         setInput("");
         setFeedbackSubmitted({});
     };
@@ -208,15 +223,10 @@ function DiagnosticAssistant() {
                             + New
                         </button>
                     )}
-                    {isAdmin && (
-                        <button className="settings-btn" onClick={() => setShowSettings(!showSettings)} title="Settings">
-                            {showSettings ? "Close" : "Settings"}
-                        </button>
-                    )}
                 </div>
             </div>
 
-            {activeTab === "chat" && showSettings && stats && (
+            {stats && (
                 <div className="settings-panel">
                     <div className="stats-row">
                         <span className="stat-label">Indexed Chunks</span>

@@ -123,11 +123,16 @@ class RAGRetriever:
         """Boost relevance of recent chunks (last 6 hours).
         
         Applies decay scoring: newer chunks get lower distance (higher confidence).
+        Returns a new list to avoid mutating original chunks.
         """
         now = datetime.now(timezone.utc)
         six_hours_ago = now.timestamp() - 6 * 3600
 
+        boosted_chunks = []
         for chunk in chunks:
+            new_distance = chunk.distance
+            new_confidence = chunk.confidence_score
+
             if chunk.timestamp:
                 try:
                     ts = chunk.timestamp
@@ -140,13 +145,20 @@ class RAGRetriever:
                     if chunk_ts >= six_hours_ago:
                         age_hours = (now.timestamp() - chunk_ts) / 3600
                         boost = max(0.0, 0.1 * (1 - age_hours / 6))
-                        chunk.distance = max(0.0, chunk.distance - boost)
-                        chunk.confidence_score = self._calculate_confidence(chunk.distance)
+                        new_distance = max(0.0, chunk.distance - boost)
+                        new_confidence = self._calculate_confidence(new_distance)
                 except (ValueError, TypeError):
                     pass
 
-        chunks.sort(key=lambda c: c.distance)
-        return chunks
+            from dataclasses import replace
+            boosted_chunks.append(replace(
+                chunk,
+                distance=new_distance,
+                confidence_score=new_confidence,
+            ))
+
+        boosted_chunks.sort(key=lambda c: c.distance)
+        return boosted_chunks
 
     def retrieve_by_atm(self, atm_id: str, limit: int = 10) -> list[RetrievedChunk]:
         """Retrieve recent chunks for a specific ATM."""
