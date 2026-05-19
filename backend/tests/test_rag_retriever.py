@@ -133,3 +133,90 @@ class TestRetrievedChunk:
                 stats = retriever.get_collection_stats()
 
         assert "error" in stats
+
+    def test_retrieve_with_anomaly_type_filter(self):
+        """Test retrieval filtered by anomaly type."""
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.query.return_value = {
+            "documents": [["log entry with A1 tag"]],
+            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z", "_anomaly_tag": "A1"}]],
+            "distances": [[0.2]],
+            "ids": [["doc_1"]],
+        }
+
+        with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
+            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+                retriever = RAGRetriever()
+                chunks = retriever.retrieve(query="network timeout", anomaly_type="A1")
+
+        assert len(chunks) == 1
+        mock_collection.query.assert_called_once()
+        call_kwargs = mock_collection.query.call_args[1]
+        assert call_kwargs["where"] == {"_anomaly_tag": "A1"}
+
+    def test_retrieve_with_combined_filters(self):
+        """Test retrieval with both atm_id and anomaly_type filters."""
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.query.return_value = {
+            "documents": [["log entry"]],
+            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]],
+            "distances": [[0.3]],
+            "ids": [["doc_1"]],
+        }
+
+        with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
+            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+                retriever = RAGRetriever()
+                chunks = retriever.retrieve(
+                    query="test",
+                    atm_id="ATM-GB-0001",
+                    anomaly_type="A3",
+                )
+
+        call_kwargs = mock_collection.query.call_args[1]
+        assert call_kwargs["where"] == {"atm_id": "ATM-GB-0001", "_anomaly_tag": "A3"}
+
+    def test_retrieve_with_temporal_boost(self):
+        """Test that temporal boost is applied when enabled."""
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.query.return_value = {
+            "documents": [["recent log", "old log"]],
+            "metadatas": [
+                [{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-19T10:00:00Z"},
+                 {"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-18T10:00:00Z"}]
+            ],
+            "distances": [[0.5, 0.5]],
+            "ids": [["doc_1", "doc_2"]],
+        }
+
+        with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
+            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+                retriever = RAGRetriever()
+                chunks = retriever.retrieve(query="test", temporal_boost=True)
+
+        assert len(chunks) == 2
+
+    def test_retrieve_without_temporal_boost(self):
+        """Test that temporal boost is skipped when disabled."""
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.query.return_value = {
+            "documents": [["log entry"]],
+            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]],
+            "distances": [[0.3]],
+            "ids": [["doc_1"]],
+        }
+
+        with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
+            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+                retriever = RAGRetriever()
+                chunks = retriever.retrieve(query="test", temporal_boost=False)
+
+        assert len(chunks) == 1

@@ -10,10 +10,8 @@ class TestRAGEndToEnd:
     @patch("backend.src.rag.retriever.get_retriever")
     @patch("backend.src.rag.generator.get_generator")
     @patch("backend.src.rag.uncertainty.get_uncertainty_estimator")
-    @patch("backend.src.rag.calibration.get_calibration_manager")
     def test_full_pipeline_execution(
         self,
-        mock_calibration,
         mock_uncertainty,
         mock_generator,
         mock_retriever,
@@ -22,7 +20,6 @@ class TestRAGEndToEnd:
         from backend.src.rag.retriever import RetrievedChunk
         from backend.src.rag.generator import GeneratedResponse
         from backend.src.rag.uncertainty import UncertaintyEstimate
-        from backend.src.rag.calibration import CalibrationParams
 
         mock_retriever.return_value.retrieve.return_value = [
             RetrievedChunk(
@@ -45,15 +42,11 @@ class TestRAGEndToEnd:
         mock_uncertainty.return_value.estimate.return_value = UncertaintyEstimate(
             final_confidence=0.85,
             confidence_level="high",
-            self_consistency_score=0.9,
-            verbalized_confidence=0.8,
-            generation_variance=0.1,
+            self_consistency_score=0.85,
+            verbalized_confidence=None,
+            generation_variance=None,
             is_uncertain=False,
             recommendation="Auto-respond",
-        )
-
-        mock_calibration.return_value.params = CalibrationParams(
-            is_fitted=False,
         )
 
         from backend.src.rag.rag_pipeline import process_query
@@ -90,7 +83,7 @@ class TestRAGWithAnomaly:
         chunks = retriever.retrieve(
             query="network error",
             atm_id="ATM-GB-0001",
-            top_k=5,
+            top_k=3,
         )
 
         for chunk in chunks:

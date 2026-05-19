@@ -14,13 +14,13 @@ class TestRAGSchemas:
         request = RAGQueryRequest(
             query="What is error A1?",
             atm_id="ATM-GB-0001",
-            top_k=5,
+            top_k=3,
             include_uncertainty=True,
         )
 
         assert request.query == "What is error A1?"
         assert request.atm_id == "ATM-GB-0001"
-        assert request.top_k == 5
+        assert request.top_k == 3
         assert request.include_uncertainty is True
 
     def test_rag_query_request_defaults(self):
@@ -29,7 +29,7 @@ class TestRAGSchemas:
         request = RAGQueryRequest(query="Test query")
 
         assert request.atm_id is None
-        assert request.top_k == 5
+        assert request.top_k == 3
         assert request.include_uncertainty is True
 
     def test_rag_query_request_validation(self):
@@ -158,9 +158,8 @@ class TestRAGRouter:
     @patch("backend.src.rag.router.get_retriever")
     @patch("backend.src.rag.router.get_generator")
     @patch("backend.src.rag.router.get_uncertainty_estimator")
-    @patch("backend.src.rag.router.get_calibration_manager")
     @patch("backend.src.rag.router._get_user_id_from_username")
-    def test_query_returns_404_no_chunks(self, mock_user_id, mock_cal, mock_unc, mock_gen, mock_ret, client):
+    def test_query_returns_404_no_chunks(self, mock_user_id, mock_unc, mock_gen, mock_ret, client):
         mock_user_id.return_value = 1
         mock_ret.return_value.retrieve.return_value = []
 
@@ -175,33 +174,21 @@ class TestRAGRouter:
         assert resp.status_code == 404
 
     @patch("backend.src.rag.router._get_user_id_from_username")
-    def test_recalibrate_requires_admin(self, mock_user_id, client):
-        mock_user_id.return_value = 1
-
-        token_resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
-        token = token_resp.json()["access_token"]
-
-        resp = client.post(
-            "/api/rag/recalibrate",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 200
-
-    @patch("backend.src.rag.router._get_user_id_from_username")
     @patch("backend.src.rag.router.get_retriever")
     @patch("backend.src.rag.router.get_generator")
     @patch("backend.src.rag.router.get_uncertainty_estimator")
-    @patch("backend.src.rag.router.get_calibration_manager")
-    def test_query_rate_limiting(self, mock_cal, mock_unc, mock_gen, mock_ret, mock_user_id, client):
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.router.set_cached_response")
+    def test_query_rate_limiting(self, mock_set_cache, mock_get_cache, mock_unc, mock_gen, mock_ret, mock_user_id, client):
         from backend.src.rag.retriever import RetrievedChunk
         from backend.src.rag.generator import GeneratedResponse
         from backend.src.rag.uncertainty import UncertaintyEstimate
-        from backend.src.rag.calibration import CalibrationParams
         from backend.src.rag import router as rag_router
 
         rag_router._query_timestamps.clear()
 
         mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
         mock_ret.return_value.retrieve.return_value = [
             RetrievedChunk(
                 text="Network timeout at ATM-GB-0001",
@@ -221,13 +208,12 @@ class TestRAGRouter:
         mock_unc.return_value.estimate.return_value = UncertaintyEstimate(
             final_confidence=0.85,
             confidence_level="high",
-            self_consistency_score=0.9,
-            verbalized_confidence=0.8,
-            generation_variance=0.1,
+            self_consistency_score=0.85,
+            verbalized_confidence=None,
+            generation_variance=None,
             is_uncertain=False,
             recommendation="Auto-respond",
         )
-        mock_cal.return_value.params = CalibrationParams(is_fitted=False)
 
         token_resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
         token = token_resp.json()["access_token"]
