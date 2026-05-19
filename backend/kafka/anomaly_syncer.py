@@ -56,14 +56,16 @@ class AnomalySyncer:
             SELECT id, detected_at, anomaly_type, atm_id, severity, title, explanation
             FROM anomalies
             WHERE anomaly_type IN ('UNKNOWN', 'NORMAL')
-              AND id NOT IN (%s)
-            ORDER BY detected_at DESC
-            LIMIT 100
-        """ % (",".join(map(str, self._synced_ids)) if self._synced_ids else "0")
+        """
+        params = []
+        if self._synced_ids:
+            query += " AND id NOT IN %s"
+            params.append(tuple(self._synced_ids))
+        query += " ORDER BY detected_at DESC LIMIT 100"
         
         try:
             with get_cursor(commit=True) as cur:
-                cur.execute(query)
+                cur.execute(query, tuple(params))
                 rows = cur.fetchall()
                 return [
                     {

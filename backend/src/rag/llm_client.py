@@ -148,7 +148,7 @@ class LLMClient:
     ) -> LLMResponse:
         """Generate response with automatic fallback to next provider on failure."""
         if not self.providers:
-            raise RuntimeError("No LLM providers configured. Set OPENROUTER_API_KEY environment variable.")
+                raise RuntimeError("No LLM providers configured. Set at least one of OLLAMA_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY environment variables.")
 
         if _rate_limiter.is_rate_limited():
             wait = _rate_limiter.wait_time()

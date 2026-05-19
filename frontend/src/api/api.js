@@ -57,7 +57,7 @@ export const fetchMetrics = (hours = 24, bucket_minutes = 60) =>
     request(`/analysis/metrics?hours=${hours}&bucket_minutes=${bucket_minutes}`);
 
 // RAG Diagnostic Assistant API
-export const queryRAG = (query, atm_id = null, top_k = 5, include_uncertainty = true) =>
+export const queryRAG = (query, atm_id = null, top_k = 3, include_uncertainty = true) =>
     request("/api/rag/query", {
         method: "POST",
         headers: {"Content-Type": "application/json"},

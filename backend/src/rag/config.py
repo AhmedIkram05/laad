@@ -20,7 +20,8 @@ class RAGConfig:
         self.ollama_api_key: Optional[str] = os.getenv("OLLAMA_API_KEY")
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
-        self.ollama_fallback_models: list[str] = os.getenv("OLLAMA_FALLBACK_MODELS", "nemotron-3-supercloud").split(",")
+        self.ollama_fallback_models: list[str] = [m.strip() for m in os.getenv("OLLAMA_FALLBACK_MODELS", "nemotron-3-supercloud").split(",") if m.strip()]
+
 
         self.primary_model: str = os.getenv("RAG_PRIMARY_MODEL", "gemma4:31b-cloud")
         self.fallback_model: str = os.getenv("RAG_FALLBACK_MODEL", "nemotron-3-supercloud")
@@ -41,7 +42,7 @@ class RAGConfig:
             self.confidence_medium_threshold: float = float(os.getenv("CONF_MEDIUM", "0.5"))
             self.chunk_truncate_length: int = int(os.getenv("RAG_CHUNK_TRUNCATE", "800"))
             self.error_only: bool = os.getenv("RAG_ERROR_ONLY", "true").lower() == "true"
-            self.anomaly_types: list[str] = os.getenv("RAG_ANOMALY_TYPES", "A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL").split(",")
+            self.anomaly_types: list[str] = [t.strip() for t in os.getenv("RAG_ANOMALY_TYPES", "A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL").split(",") if t.strip()]
             self.most_recent_first: bool = os.getenv("RAG_MOST_RECENT_FIRST", "true").lower() == "true"
         except (ValueError, TypeError):
             logger.warning("Invalid numeric config value, using defaults")

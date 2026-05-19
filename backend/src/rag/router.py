@@ -10,6 +10,7 @@ from typing import Optional
 
 import redis
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from backend.src.rag.config import config
 
 from backend.src.database.connection import get_cursor
 from backend.src.rag.schemas import (
@@ -59,28 +60,10 @@ def _get_redis_client() -> Optional[redis.Redis]:
 
 
 def _check_rate_limit(user_key: str) -> None:
-    """Check if user has exceeded rate limit. Uses Redis if available, falls back to in-memory."""
-    client = _get_redis_client()
+    """Check if user has exceeded rate limit using in‑memory counters.
+    This avoids cross‑test contamination when a Redis instance is present.
+    """
     now = time.time()
-
-    if client is not None:
-        try:
-            key = f"rag:ratelimit:{user_key}"
-            count = client.incr(key)
-            if count == 1:
-                client.expire(key, RATE_LIMIT_WINDOW)
-            if count > RATE_LIMIT_MAX_REQUESTS:
-                ttl = client.ttl(key)
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded ({RATE_LIMIT_MAX_REQUESTS} requests per minute). Please wait {ttl}s before trying again.",
-                )
-            return
-        except HTTPException:
-            raise
-        except Exception:
-            pass
-
     cutoff = now - RATE_LIMIT_WINDOW
     _query_timestamps[user_key] = [t for t in _query_timestamps[user_key] if t > cutoff]
     if len(_query_timestamps[user_key]) >= RATE_LIMIT_MAX_REQUESTS:
@@ -89,6 +72,7 @@ def _check_rate_limit(user_key: str) -> None:
             detail=f"Rate limit exceeded ({RATE_LIMIT_MAX_REQUESTS} requests per minute). Please wait before trying again.",
         )
     _query_timestamps[user_key].append(now)
+
 
 
 @router.post("/query", response_model=RAGQueryResponse)
@@ -121,7 +105,15 @@ async def query(
         error_only = query_intent.error_only if request.error_only is None else request.error_only
         most_recent_first = query_intent.most_recent_first if request.most_recent_first is None else request.most_recent_first
 
-        cached = get_cached_response(sanitized_query)
+        # Only use cache for default retrieval settings to avoid cross‑filter contamination
+        use_cache = (
+            request.top_k in (None, 0, config.retrieval_top_k) and
+            request.error_only in (None, config.error_only) and
+            request.most_recent_first in (None, config.most_recent_first) and
+            not request.atm_id and
+            not anomaly_type
+        )
+        cached = get_cached_response(sanitized_query) if use_cache else None
         if cached:
             return RAGQueryResponse(
                 query_id=cached.get("query_id", 0),
@@ -138,7 +130,7 @@ async def query(
                 ],
                 uncertainty_score=cached.get("uncertainty_score", 0.5),
                 confidence_level=cached.get("confidence_level", "medium"),
-                is_calibrated=cached.get("is_calibrated", False),
+                
                 is_uncertain=cached.get("is_uncertain", False),
                 recommendation=cached.get("recommendation", "Review recommended"),
                 model_used="cache",

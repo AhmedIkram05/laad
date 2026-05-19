@@ -1,8 +1,9 @@
-/*
- * MarkdownRenderer Component
- * --------------------
- * Renders markdown-formatted text with proper styling.
- */
+import React from 'react';
+import "./MarkdownRenderer.css";
+
+
+
+
 
 function MarkdownRenderer({content}) {
     if (!content) return null;
@@ -14,18 +15,21 @@ function MarkdownRenderer({content}) {
         let codeContent = [];
         let listItems = [];
         let inList = false;
+        let listOrdered = false;
 
         const flushList = () => {
             if (listItems.length > 0) {
+                const ListTag = listOrdered ? 'ol' : 'ul';
                 elements.push(
-                    <ul key={`list-${elements.length}`} className="md-list">
-                        {listItems.map((item, i) => (
+                    React.createElement(ListTag, { key: `list-${elements.length}`, className: "md-list" },
+                        listItems.map((item, i) => (
                             <li key={i} className="md-list-item">{item}</li>
-                        ))}
-                    </ul>
+                        ))
+                    )
                 );
                 listItems = [];
                 inList = false;
+                listOrdered = false;
             }
         };
 
@@ -57,24 +61,29 @@ function MarkdownRenderer({content}) {
                 flushList();
                 const level = line.match(/^#+/)[0].length;
                 const text = line.replace(/^#+\s*/, "");
+                const HeadingTag = `h${level}`;
                 elements.push(
-                    <h key={`h-${elements.length}`} className={`md-h md-h${level}`}>
-                        {text}
-                    </h>
+                    React.createElement(HeadingTag, { key: `h-${elements.length}`, className: `md-h md-h${level}` }, text)
                 );
             } else if (line.match(/^(\d+)\.\s/)) {
-                if (!inList) {
+                // Ordered list item
+                if (!inList || !listOrdered) {
+                    flushList();
                     inList = true;
+                    listOrdered = true;
+                    listItems = [];
                 }
                 const text = line.replace(/^\d+\.\s*/, "");
                 listItems.push(renderInline(text));
             } else if (line.match(/^[-*]\s/)) {
-                flushList();
-                const text = line.replace(/^[-*]\s*/, "");
-                if (!inList) {
+                // Unordered list item
+                if (!inList || listOrdered) {
+                    flushList();
                     inList = true;
+                    listOrdered = false;
                     listItems = [];
                 }
+                const text = line.replace(/^[-*]\s*/, "");
                 listItems.push(renderInline(text));
             } else if (line.trim() === "") {
                 flushList();

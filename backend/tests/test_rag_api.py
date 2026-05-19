@@ -75,7 +75,7 @@ class TestRAGSchemas:
             sources=sources,
             uncertainty_score=0.85,
             confidence_level="high",
-            is_calibrated=True,
+    
             is_uncertain=False,
             recommendation="Auto-respond",
             model_used="google/gemma-4-26b-a4b-it:free",
@@ -104,7 +104,7 @@ class TestRAGSchemas:
             sources=sources,
             uncertainty_score=0.6,
             confidence_level="medium",
-            is_calibrated=False,
+
             is_uncertain=False,
             recommendation="Verify - moderate confidence",
             model_used="fallback-template",

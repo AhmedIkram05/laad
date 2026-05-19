@@ -1018,7 +1018,7 @@ flowchart TD
 |---|---|---|
 | Response time | 30-90s | <10s (uncached), <100ms (cached) |
 | LLM calls/query | 2 | 1 |
-| Context size | 5 chunks × full | 3 chunks × 200 chars |
+| Context size | 5 chunks × full | 3 chunks × 800 chars |
 | Confidence method | LLM self-consistency | Retrieval-based |
 
 ### Response Caching
@@ -1163,7 +1163,7 @@ The retriever supports intelligent query parsing for targeted retrieval:
 | GET | `/api/rag/anomalies/stats` | JWT | Direct anomaly statistics (bypasses LLM, returns DB counts) |
 | POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
 | GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
-| GET | `/api/rag/stats` | JWT | Collection chunks, calibration status, total queries, calibration_samples, is_calibrated |
+| GET | `/api/rag/stats` | JWT | Collection chunks, total queries |
 | POST | `/api/rag/recalibrate` | Admin JWT | Manual recalibration trigger |
 
 ### Data Privacy
@@ -1215,7 +1215,7 @@ Log data stored in ChromaDB never leaves the network — only retrieved log cont
 | POST | `/api/rag/query` | JWT | Query with uncertainty estimation (rate limited: 10 req/min per user) |
 | POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
 | GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
-| GET | `/api/rag/stats` | JWT | System statistics (includes `calibration_samples`, `is_calibrated`) |
+| GET | `/api/rag/stats` | JWT | System statistics |
 | POST | `/api/rag/recalibrate` | Admin JWT | Trigger recalibration |
 
 ### Health
