@@ -5,9 +5,18 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+class QueryType(Enum):
+    """Types of queries the RAG system can handle."""
+    STATS = "stats"
+    DIAGNOSTIC = "diagnostic"
+    TROUBLESHOOTING = "troubleshooting"
+    GENERAL = "general"
 
 
 @dataclass
@@ -42,6 +51,52 @@ def detect_query_intent(query: str) -> QueryIntent:
     most_recent_first = any(kw in query_lower for kw in recent_keywords)
     
     return QueryIntent(error_only=error_only, most_recent_first=most_recent_first)
+
+
+def classify_query_type(query: str) -> QueryType:
+    """Classify query type to route to appropriate handler.
+    
+    Detects:
+    - stats: Questions asking for counts, totals, numbers (how many, count, total, list all)
+    - diagnostic: Questions asking about what's wrong, why, root cause analysis
+    - troubleshooting: Questions asking how to fix, what to do, solutions
+    - general: Everything else (summaries, explanations, casual queries)
+    """
+    query_lower = query.lower()
+    
+    stats_keywords = [
+        "how many", "how much", "count of", "number of", "total",
+        "list all", "show me the", "what is the total", "sum",
+        "quantity", "how many", "statistics", "stats", "dashboard",
+    ]
+    
+    troubleshooting_keywords = [
+        "how to fix", "how to resolve", "what to do", "how do i",
+        "fix the", "solve the", "solution for", "resolve",
+        "repair", "recover", "restore", "troubleshoot",
+        "steps to", "guide", "instructions",
+    ]
+    
+    diagnostic_keywords = [
+        "what's wrong", "what is wrong", "why is", "why are",
+        "what caused", "root cause", "reason for", "what's causing",
+        "diagnose", "analysis", "investigate", "find the issue",
+        "what issue", "what problem", "issue with", "problem with",
+    ]
+    
+    for kw in stats_keywords:
+        if kw in query_lower:
+            return QueryType.STATS
+    
+    for kw in troubleshooting_keywords:
+        if kw in query_lower:
+            return QueryType.TROUBLESHOOTING
+    
+    for kw in diagnostic_keywords:
+        if kw in query_lower:
+            return QueryType.DIAGNOSTIC
+    
+    return QueryType.GENERAL
 
 
 def sanitize_query(query: str) -> str:

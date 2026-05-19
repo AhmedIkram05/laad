@@ -67,3 +67,13 @@ class RAGStatsResponse(BaseModel):
     """RAG system statistics."""
     collection_chunks: int
     total_queries: int
+
+
+class AnomalyStatsResponse(BaseModel):
+    """Response for anomaly statistics queries."""
+    total: int
+    by_type: dict[str, int] = Field(default_factory=dict)
+    by_atm: dict[str, int] = Field(default_factory=dict)
+    by_severity: dict[str, int] = Field(default_factory=dict)
+    active: int = 0
+    resolved: int = 0

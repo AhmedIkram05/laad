@@ -17,8 +17,13 @@ class RAGConfig:
         self.groq_api_key: Optional[str] = os.getenv("GROQ_API_KEY")
         self.openrouter_api_key: Optional[str] = os.getenv("OPENROUTER_API_KEY")
 
-        self.primary_model: str = os.getenv("RAG_PRIMARY_MODEL", "gemini-2.0-flash")
-        self.fallback_model: str = os.getenv("RAG_FALLBACK_MODEL", "groq/llama-3.1-70b-versatile")
+        self.ollama_api_key: Optional[str] = os.getenv("OLLAMA_API_KEY")
+        self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
+        self.ollama_model: str = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
+        self.ollama_fallback_models: list[str] = os.getenv("OLLAMA_FALLBACK_MODELS", "nemotron-3-supercloud").split(",")
+
+        self.primary_model: str = os.getenv("RAG_PRIMARY_MODEL", "gemma4:31b-cloud")
+        self.fallback_model: str = os.getenv("RAG_FALLBACK_MODEL", "nemotron-3-supercloud")
 
         self.chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
         try:
@@ -62,13 +67,13 @@ class RAGConfig:
 
     def _check_configured(self) -> None:
         """Log warning if RAG is not fully configured."""
-        if not self.openrouter_api_key:
-            logger.warning("OPENROUTER_API_KEY not set - RAG diagnostic assistant will not be available")
+        if not (self.ollama_api_key or self.openrouter_api_key or self.gemini_api_key or self.groq_api_key):
+            logger.warning("No LLM API keys set - RAG diagnostic assistant will not be available")
 
     @property
     def is_configured(self) -> bool:
         """Check if RAG is configured with at least one API key."""
-        return bool(self.gemini_api_key or self.groq_api_key or self.openrouter_api_key)
+        return bool(self.ollama_api_key or self.gemini_api_key or self.groq_api_key or self.openrouter_api_key)
 
     @property
     def is_production(self) -> bool:

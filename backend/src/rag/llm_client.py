@@ -78,8 +78,24 @@ class LLMClient:
             self.providers = self._initialize_providers()
 
     def _initialize_providers(self) -> list[dict]:
-        """Initialize available providers in priority order: OpenRouter first, then Gemini, then Groq."""
+        """Initialize available providers in priority order: Ollama first, then OpenRouter, then Gemini, then Groq."""
         providers = []
+
+        if config.ollama_api_key:
+            providers.append({
+                "name": "ollama",
+                "model": config.ollama_model,
+                "api_key": config.ollama_api_key,
+                "base_url": config.ollama_base_url,
+            })
+            for fallback_model in config.ollama_fallback_models:
+                if fallback_model.strip():
+                    providers.append({
+                        "name": "ollama",
+                        "model": fallback_model.strip(),
+                        "api_key": config.ollama_api_key,
+                        "base_url": config.ollama_base_url,
+                    })
 
         if config.openrouter_api_key:
             primary = config.primary_model
@@ -197,7 +213,9 @@ class LLMClient:
         """Call a specific LLM provider."""
         provider_name = provider["name"]
 
-        if provider_name == "gemini":
+        if provider_name == "ollama":
+            return self._call_ollama(provider, prompt, system_prompt, temperature, max_tokens)
+        elif provider_name == "gemini":
             return self._call_gemini(provider, prompt, system_prompt, temperature, max_tokens)
         elif provider_name == "groq":
             return self._call_groq(provider, prompt, system_prompt, temperature, max_tokens)
@@ -205,6 +223,59 @@ class LLMClient:
             return self._call_openrouter(provider, prompt, system_prompt, temperature, max_tokens)
         else:
             raise ValueError(f"Unknown provider: {provider_name}")
+
+    def _call_ollama(
+        self,
+        provider: dict,
+        prompt: str,
+        system_prompt: Optional[str],
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMResponse:
+        """Call Ollama Cloud API."""
+        url = f"{provider['base_url']}/api/chat"
+
+        headers = {
+            "Authorization": f"Bearer {provider['api_key']}",
+            "Content-Type": "application/json",
+        }
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": provider["model"],
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+
+        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+
+        data = response.json()
+
+        if "error" in data:
+            error_detail = data["error"].get("message", "Unknown error")
+            raise RuntimeError(f"Ollama API error: {error_detail}")
+
+        message = data.get("message", {})
+        text = message.get("content", "")
+
+        if not text:
+            raise RuntimeError(f"Ollama returned empty response: {data}")
+
+        return LLMResponse(
+            text=text,
+            raw_response=data,
+            model=provider["model"],
+            finish_reason=data.get("done_reason", "STOP"),
+            prompt_tokens=data.get("prompt_tokens"),
+            completion_tokens=data.get("eval_tokens"),
+        )
 
     def _call_gemini(
         self,

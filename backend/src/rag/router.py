@@ -19,13 +19,14 @@ from backend.src.rag.schemas import (
     RAGFeedbackResponse,
     RAGHistoryResponse,
     RAGStatsResponse,
+    AnomalyStatsResponse,
     SourceChunk,
 )
 from backend.src.rag.retriever import get_retriever
 from backend.src.rag.generator import get_generator
 from backend.src.rag.uncertainty import get_uncertainty_estimator
 from backend.src.rag.cache import get_cached_response, set_cached_response
-from backend.src.rag.utils import sanitize_query, extract_atm_id_from_query, detect_query_intent
+from backend.src.rag.utils import sanitize_query, extract_atm_id_from_query, detect_query_intent, classify_query_type, QueryType
 from backend.src.auth.auth_router import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,17 @@ async def query(
         _check_rate_limit(user_key)
 
         sanitized_query = sanitize_query(request.query)
+        
+        query_type = classify_query_type(request.query)
+        
+        if query_type == QueryType.STATS:
+            return await _handle_stats_query(
+                query=request.query,
+                atm_id=request.atm_id or extract_atm_id_from_query(request.query),
+                anomaly_type=_extract_anomaly_type_from_query(request.query),
+                current_user=current_user,
+            )
+
         atm_id = request.atm_id or extract_atm_id_from_query(request.query)
         anomaly_type = _extract_anomaly_type_from_query(request.query)
         
@@ -155,6 +167,7 @@ async def query(
         response = generator.generate(
             query=request.query,
             chunks=chunks,
+            query_type=query_type,
         )
 
         uncertainty = None
@@ -340,6 +353,72 @@ async def get_stats(
         )
 
 
+@router.get("/anomalies/stats", response_model=AnomalyStatsResponse)
+async def get_anomaly_stats(
+    atm_id: Optional[str] = None,
+    anomaly_type: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get anomaly statistics from database - direct DB query for stats queries."""
+    try:
+        with get_cursor() as cur:
+            base_where = "WHERE 1=1"
+            params = []
+
+            if atm_id:
+                base_where += " AND atm_id = %s"
+                params.append(atm_id)
+            if anomaly_type:
+                base_where += " AND anomaly_type = %s"
+                params.append(anomaly_type)
+
+            cur.execute(f"SELECT COUNT(*) as total FROM anomalies {base_where}", params)
+            total = cur.fetchone()["total"]
+
+            cur.execute(
+                f"""SELECT anomaly_type, COUNT(*) as count FROM anomalies {base_where}
+                    AND anomaly_type IS NOT NULL GROUP BY anomaly_type""",
+                params,
+            )
+            by_type = {row["anomaly_type"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(
+                f"""SELECT atm_id, COUNT(*) as count FROM anomalies {base_where}
+                    AND atm_id IS NOT NULL GROUP BY atm_id""",
+                params,
+            )
+            by_atm = {row["atm_id"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(
+                f"""SELECT severity, COUNT(*) as count FROM anomalies {base_where}
+                    AND severity IS NOT NULL GROUP BY severity""",
+                params,
+            )
+            by_severity = {row["severity"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1", params)
+            active = cur.fetchone()["active"]
+
+            cur.execute(f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0", params)
+            resolved = cur.fetchone()["resolved"]
+
+        return AnomalyStatsResponse(
+            total=total,
+            by_type=by_type,
+            by_atm=by_atm,
+            by_severity=by_severity,
+            active=active,
+            resolved=resolved,
+        )
+
+    except Exception as e:
+        logger.error(f"Anomaly stats retrieval failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve anomaly stats",
+        )
+
+
 def _get_user_id_from_username(username: str) -> Optional[int]:
     """Look up the database user ID from a username."""
     if not username:
@@ -463,3 +542,94 @@ def _extract_anomaly_type_from_query(query: str) -> Optional[str]:
         if keyword in query_lower:
             return anomaly_type
     return None
+
+
+async def _handle_stats_query(
+    query: str,
+    atm_id: Optional[str],
+    anomaly_type: Optional[str],
+    current_user: dict,
+) -> RAGQueryResponse:
+    """Handle stats queries by directly querying the database."""
+    try:
+        base_where = "WHERE 1=1"
+        params = []
+
+        if atm_id:
+            base_where += " AND atm_id = %s"
+            params.append(atm_id)
+        if anomaly_type:
+            base_where += " AND anomaly_type = %s"
+            params.append(anomaly_type)
+
+        with get_cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) as total FROM anomalies {base_where}", params)
+            total = cur.fetchone()["total"]
+
+            cur.execute(
+                f"""SELECT anomaly_type, COUNT(*) as count FROM anomalies {base_where}
+                    AND anomaly_type IS NOT NULL GROUP BY anomaly_type ORDER BY count DESC""",
+                params,
+            )
+            by_type = {row["anomaly_type"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(
+                f"""SELECT atm_id, COUNT(*) as count FROM anomalies {base_where}
+                    AND atm_id IS NOT NULL GROUP BY atm_id ORDER BY count DESC""",
+                params,
+            )
+            by_atm = {row["atm_id"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(
+                f"""SELECT severity, COUNT(*) as count FROM anomalies {base_where}
+                    AND severity IS NOT NULL GROUP BY severity""",
+                params,
+            )
+            by_severity = {row["severity"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1", params)
+            active = cur.fetchone()["active"]
+
+            cur.execute(f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0", params)
+            resolved = cur.fetchone()["resolved"]
+
+        answer_lines = [
+            f"Total anomalies: {total}",
+            f"Active: {active}",
+            f"Resolved: {resolved}",
+            "",
+            "By Type:",
+        ]
+        for atype, count in sorted(by_type.items(), key=lambda x: -x[1]):
+            answer_lines.append(f"  {atype}: {count}")
+
+        if by_atm:
+            answer_lines.append("")
+            answer_lines.append("By ATM:")
+            for atm, count in sorted(by_atm.items(), key=lambda x: -x[1]):
+                answer_lines.append(f"  {atm}: {count}")
+
+        if by_severity:
+            answer_lines.append("")
+            answer_lines.append("By Severity:")
+            for severity, count in sorted(by_severity.items(), key=lambda x: -x[1]):
+                answer_lines.append(f"  {severity}: {count}")
+
+        answer = "\n".join(answer_lines)
+
+        return RAGQueryResponse(
+            answer=answer,
+            sources=[],
+            uncertainty_score=1.0,
+            confidence_level="high",
+            is_uncertain=False,
+            recommendation="Stats query - no uncertainty",
+            model_used="db_stats",
+        )
+
+    except Exception as e:
+        logger.error(f"Stats query handling failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process stats query: {str(e)}",
+        )
