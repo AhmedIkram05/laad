@@ -63,22 +63,53 @@ class RAGRetriever:
         top_k: Optional[int] = None,
         anomaly_type: Optional[str] = None,
         temporal_boost: bool = True,
+        error_only: Optional[bool] = None,
+        most_recent_first: Optional[bool] = None,
     ) -> list[RetrievedChunk]:
-        """Retrieve relevant chunks for a query."""
+        """Retrieve relevant chunks for a query.
+        
+        Args:
+            query: The search query
+            atm_id: Filter by specific ATM ID
+            top_k: Number of results to return
+            anomaly_type: Filter by anomaly type (A1-A7)
+            temporal_boost: Boost recent chunks
+            error_only: If True, filter for ERROR/FATAL severity or anomaly types
+            most_recent_first: If True, sort by timestamp descending (for "most recent" queries)
+        """
         if top_k is None:
             top_k = config.retrieval_top_k
+        if error_only is None:
+            error_only = config.error_only
+        if most_recent_first is None:
+            most_recent_first = config.most_recent_first
+        
         try:
             where_filter = None
-            if atm_id and anomaly_type:
-                where_filter = {"$and": [{"atm_id": atm_id}, {"_anomaly_tag": anomaly_type}]}
-            elif atm_id:
-                where_filter = {"atm_id": atm_id}
-            elif anomaly_type:
-                where_filter = {"_anomaly_tag": anomaly_type}
+            filter_parts = []
+            
+            if atm_id:
+                filter_parts.append({"atm_id": atm_id})
+            
+            if anomaly_type:
+                filter_parts.append({"_anomaly_tag": anomaly_type})
+            
+            if error_only:
+                severity_filter = {"$or": [
+                    {"severity": "ERROR"},
+                    {"severity": "FATAL"},
+                    {"_anomaly_tag": {"$in": config.anomaly_types}}
+                ]}
+                filter_parts.append(severity_filter)
+            
+            if len(filter_parts) > 1:
+                where_filter = {"$and": filter_parts}
+            elif len(filter_parts) == 1:
+                where_filter = filter_parts[0]
 
             results = self.collection.query(
                 query_texts=[query],
-                n_results=top_k,
+                n_results=top_k * 3,
                 where=where_filter,
                 include=["documents", "metadatas", "distances"],
             )
@@ -105,7 +136,12 @@ class RAGRetriever:
             if temporal_boost and chunks:
                 chunks = self._apply_temporal_boost(chunks)
 
-            logger.info(f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id}, anomaly_type={anomaly_type})")
+            if most_recent_first and chunks:
+                chunks = self._sort_by_most_recent(chunks)
+            
+            chunks = chunks[:top_k]
+
+            logger.info(f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id}, anomaly_type={anomaly_type}, error_only={error_only}, most_recent_first={most_recent_first})")
             return chunks
 
         except Exception as e:
@@ -160,6 +196,26 @@ class RAGRetriever:
         boosted_chunks.sort(key=lambda c: c.distance)
         return boosted_chunks
 
+    def _sort_by_most_recent(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        """Sort chunks by timestamp descending (most recent first).
+        
+        Chunks without valid timestamps are placed at the end.
+        """
+        def get_timestamp_key(chunk: RetrievedChunk) -> float:
+            if not chunk.timestamp:
+                return 0.0
+            try:
+                ts = chunk.timestamp
+                if isinstance(ts, str):
+                    ts = ts.replace("Z", "+00:00")
+                    return datetime.fromisoformat(ts).timestamp()
+                return float(ts)
+            except (ValueError, TypeError):
+                return 0.0
+        
+        sorted_chunks = sorted(chunks, key=get_timestamp_key, reverse=True)
+        return sorted_chunks
+
     def retrieve_by_atm(self, atm_id: str, limit: int = 10) -> list[RetrievedChunk]:
         """Retrieve recent chunks for a specific ATM."""
         try:
@@ -197,7 +253,42 @@ class RAGRetriever:
                 "collection_name": config.chroma_collection,
             }
         except Exception as e:
-            logger.error(f"Failed to get collection stats: {e}")
+            logger.error(f"Failed to get collection stats: %s", str(e))
+            return {"error": str(e)}
+
+    def clear_collection(self) -> dict[str, Any]:
+        """Clear all documents from the collection."""
+        try:
+            self.client.delete_collection(config.chroma_collection)
+            self.collection = self.client.create_collection(
+                name=config.chroma_collection,
+                metadata={"hnsw:space": "cosine"},
+            )
+            logger.warning("Cleared and recreated ChromaDB collection: %s", config.chroma_collection)
+            return {"success": True, "message": f"Cleared collection: {config.chroma_collection}"}
+        except Exception as e:
+            logger.error(f"Failed to clear collection: %s", str(e))
+            return {"error": str(e)}
+
+    def rebuild_collection(self, new_client: bool = False) -> dict[str, Any]:
+        """Rebuild the collection (clear and reinitialize).
+        
+        Args:
+            new_client: If True, creates a new client (useful when ChromaDB was restarted)
+        """
+        global _retriever
+        try:
+            if new_client:
+                self.client = self._build_client()
+            self.client.delete_collection(config.chroma_collection)
+            self.collection = self.client.create_collection(
+                name=config.chroma_collection,
+                metadata={"hnsw:space": "cosine"},
+            )
+            logger.info("Rebuilt ChromaDB collection: %s", config.chroma_collection)
+            return {"success": True, "message": f"Rebuilt collection: {config.chroma_collection}"}
+        except Exception as e:
+            logger.error(f"Failed to rebuild collection: %s", str(e))
             return {"error": str(e)}
 
 
@@ -210,3 +301,9 @@ def get_retriever() -> RAGRetriever:
     if _retriever is None:
         _retriever = RAGRetriever()
     return _retriever
+
+
+def reset_retriever() -> None:
+    """Reset the retriever singleton (useful for testing or after ChromaDB restart)."""
+    global _retriever
+    _retriever = None

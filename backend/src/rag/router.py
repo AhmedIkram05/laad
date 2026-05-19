@@ -25,7 +25,7 @@ from backend.src.rag.retriever import get_retriever
 from backend.src.rag.generator import get_generator
 from backend.src.rag.uncertainty import get_uncertainty_estimator
 from backend.src.rag.cache import get_cached_response, set_cached_response
-from backend.src.rag.utils import sanitize_query, extract_atm_id_from_query
+from backend.src.rag.utils import sanitize_query, extract_atm_id_from_query, detect_query_intent
 from backend.src.auth.auth_router import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,10 @@ async def query(
         sanitized_query = sanitize_query(request.query)
         atm_id = request.atm_id or extract_atm_id_from_query(request.query)
         anomaly_type = _extract_anomaly_type_from_query(request.query)
+        
+        query_intent = detect_query_intent(request.query)
+        error_only = query_intent.error_only if request.error_only is None else request.error_only
+        most_recent_first = query_intent.most_recent_first if request.most_recent_first is None else request.most_recent_first
 
         cached = get_cached_response(sanitized_query)
         if cached:
@@ -138,6 +142,8 @@ async def query(
             top_k=request.top_k,
             anomaly_type=anomaly_type,
             temporal_boost=True,
+            error_only=error_only,
+            most_recent_first=most_recent_first,
         )
 
         if not chunks:

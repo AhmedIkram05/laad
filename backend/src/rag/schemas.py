@@ -11,6 +11,8 @@ class RAGQueryRequest(BaseModel):
     atm_id: Optional[str] = Field(None, description="Filter by specific ATM ID")
     top_k: int = Field(3, ge=1, le=20, description="Number of chunks to retrieve")
     include_uncertainty: bool = Field(True, description="Include uncertainty estimation")
+    error_only: Optional[bool] = Field(None, description="Filter for ERROR/FATAL severity only")
+    most_recent_first: Optional[bool] = Field(None, description="Sort by timestamp descending")
 
 
 class SourceChunk(BaseModel):

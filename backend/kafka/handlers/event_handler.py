@@ -74,7 +74,16 @@ def handle_event(msg: dict, chroma_buffer: ChromaBuffer) -> bool:
     if atm_id:
         text = format_event_text(msg)
         ts_str = msg["timestamp"] if isinstance(msg["timestamp"], str) else ts.isoformat()
-        chroma_buffer.add_event(atm_id=atm_id, text=text, timestamp=ts_str)
+        severity = msg.get("severity")
+        payload = msg.get("payload") or {}
+        anomaly_tag = payload.get("_anomaly_tag") if isinstance(payload, dict) else None
+        chroma_buffer.add_event(
+            atm_id=atm_id,
+            text=text,
+            timestamp=ts_str,
+            severity=severity,
+            anomaly_tag=anomaly_tag,
+        )
 
     return True
 

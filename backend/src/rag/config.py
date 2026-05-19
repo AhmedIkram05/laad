@@ -34,7 +34,10 @@ class RAGConfig:
             self.temperature: float = float(os.getenv("RAG_TEMPERATURE", "0.6"))
             self.confidence_high_threshold: float = float(os.getenv("CONF_HIGH", "0.8"))
             self.confidence_medium_threshold: float = float(os.getenv("CONF_MEDIUM", "0.5"))
-            self.chunk_truncate_length: int = int(os.getenv("RAG_CHUNK_TRUNCATE", "200"))
+            self.chunk_truncate_length: int = int(os.getenv("RAG_CHUNK_TRUNCATE", "800"))
+            self.error_only: bool = os.getenv("RAG_ERROR_ONLY", "true").lower() == "true"
+            self.anomaly_types: list[str] = os.getenv("RAG_ANOMALY_TYPES", "A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL").split(",")
+            self.most_recent_first: bool = os.getenv("RAG_MOST_RECENT_FIRST", "true").lower() == "true"
         except (ValueError, TypeError):
             logger.warning("Invalid numeric config value, using defaults")
             self.retrieval_top_k = 3
@@ -42,7 +45,10 @@ class RAGConfig:
             self.temperature = 0.6
             self.confidence_high_threshold = 0.8
             self.confidence_medium_threshold = 0.5
-            self.chunk_truncate_length = 200
+            self.chunk_truncate_length = 800
+            self.error_only = True
+            self.anomaly_types = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "UNKNOWN", "NORMAL"]
+            self.most_recent_first = True
 
         self.redis_host: str = os.getenv("REDIS_HOST", "localhost")
         try:
