@@ -58,8 +58,13 @@ class ChromaBuffer:
     def _init(self) -> None:
         try:
             self._client     = _build_chroma_client()
-            self._embeddings = _build_embeddings()
-            self._chunker    = _build_chunker(self._embeddings)
+            try:
+                self._embeddings = _build_embeddings()
+                self._chunker    = _build_chunker(self._embeddings)
+            except Exception as embed_exc:
+                log.warning("Ollama embeddings unavailable, using simple chunking fallback: %s", embed_exc)
+                self._embeddings = None
+                self._chunker    = None
             self._collection = self._client.get_or_create_collection(
                 name=COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine"},
@@ -84,15 +89,29 @@ class ChromaBuffer:
         try:
             text = "\n".join(t for t, _ in events)
             last_ts = events[-1][1]
-            chunks = self._chunker.create_documents([text])
-            if not chunks:
-                return
+
+            if self._chunker:
+                chunks = self._chunker.create_documents([text])
+                if not chunks:
+                    return
+                documents = [c.page_content for c in chunks]
+            else:
+                max_chunk = 500
+                words = text.split()
+                documents = []
+                for i in range(0, len(words), max_chunk):
+                    chunk = " ".join(words[i:i + max_chunk])
+                    if chunk.strip():
+                        documents.append(chunk)
+                if not documents:
+                    return
+
             self._collection.upsert(
-                documents=[c.page_content for c in chunks],
-                ids=[f"{atm_id}_{uuid4()}" for _ in chunks],
-                metadatas=[{"atm_id": atm_id, "last_timestamp": last_ts} for _ in chunks],
+                documents=documents,
+                ids=[f"{atm_id}_{uuid4()}" for _ in documents],
+                metadatas=[{"atm_id": atm_id, "last_timestamp": last_ts} for _ in documents],
             )
-            log.debug("Flushed %d chunks to ChromaDB for %s", len(chunks), atm_id)
+            log.debug("Flushed %d chunks to ChromaDB for %s", len(documents), atm_id)
         except Exception as exc:
             log.warning("ChromaDB flush failed for %s: %s", atm_id, exc)
 

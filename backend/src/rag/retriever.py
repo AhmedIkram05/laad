@@ -44,9 +44,11 @@ class RAGRetriever:
     def _get_collection(self) -> chromadb.Collection:
         """Get or create the ATM logs collection."""
         try:
-            return self.client.get_collection(name=config.chroma_collection)
+            collection = self.client.get_collection(name=config.chroma_collection)
+            logger.info(f"Found existing ChromaDB collection: {config.chroma_collection}")
+            return collection
         except Exception as e:
-            logger.warning(f"Collection {config.chroma_collection} not found: {e}")
+            logger.warning(f"Collection {config.chroma_collection} not found, creating: {e}")
             return self.client.create_collection(
                 name=config.chroma_collection,
                 metadata={"hnsw:space": "cosine"},
