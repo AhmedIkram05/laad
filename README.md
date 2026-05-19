@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Analysis & Diagnostics Platform (LAAD)
 
-> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by Gemini with confidence scoring and Platt scaling calibration.
+> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by OpenRouter with confidence scoring and Redis caching.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
@@ -8,9 +8,13 @@
   <img src="https://img.shields.io/badge/PostgreSQL-003B57?style=for-the-badge&labelColor=000000&logo=postgresql">
   <img src="https://img.shields.io/badge/Kafka-231F20?style=for-the-badge&labelColor=000000&logo=apachekafka">
   <img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&labelColor=000000&logo=react">
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&labelColor=000000&logo=vite">
+  <img src="https://img.shields.io/badge/ChromaDB-000000?style=for-the-badge&labelColor=5F3DC8">
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&labelColor=000000&logo=redis">
   <img src="https://img.shields.io/badge/XGBoost-0052CC?style=for-the-badge&labelColor=000000&logo=xgboost">
   <img src="https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&labelColor=000000&logo=mlflow">
-  <img src="https://img.shields.io/badge/Gemini-4285F4?style=for-the-badge&labelColor=000000&logo=google">
+  <img src="https://img.shields.io/badge/OpenRouter-000000?style=for-the-badge&labelColor=FF6B35">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&labelColor=000000&logo=docker">
 </p>
 
 ---
@@ -32,7 +36,8 @@
 | **API Endpoints** | 20+ across 6 routers (auth, anomalies, analysis, admin, events, metrics, RAG) |
 | **Test Coverage** | 281 tests across 39 files, 9 tiers, isolated test DB |
 | **Docker Services** | 8 production + 2 test-only services |
-| **RAG Uncertainty** | Hybrid: self-consistency (50%) + verbalized (30%) + variance (20%) |
+| **RAG Uncertainty** | Retrieval-only: distance + chunk count + source diversity |
+| **RAG Response Time** | <10s (uncached), <100ms (cached) |
 | **Calibration** | Platt scaling, ECE < 0.10 target, 20-sample minimum |
 | **MLflow Tracking** | All training runs + inference cycles logged, 2 registered models with "champion" alias |
 | **Frontend Pages** | 10 pages, 11 components (React 19 + Vite 8 + Recharts) |
@@ -910,7 +915,7 @@ make generate-training-data # Generate 24h offline dataset (868,320 rows, ~260MB
 
 ## RAG Diagnostic Assistant
 
-An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with hybrid uncertainty quantification and Platt scaling calibration. Uses OpenRouter free models as primary LLM provider with graceful degradation when models are rate-limited.
+An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with retrieval-based confidence scoring and Redis response caching. Uses OpenRouter free models as primary LLM provider with graceful degradation when models are rate-limited.
 
 ### Architecture
 
@@ -920,22 +925,27 @@ flowchart TD
     Q["User Query"]
     SAN["Query Sanitization\nprompt injection filter"]
     CDB[("ChromaDB\natm_logs collection\ncosine similarity")]
-    TOPK["Top-K retrieval\nk=5 chunks"]
+    TOPK["Top-K retrieval\nk=3 chunks, 200 chars each"]
+    FILTER["Metadata Filter\nanomaly type, atm_id, temporal boost"]
+  end
+
+  subgraph Cache ["Response Cache"]
+    REDIS[("Redis\n5 min TTL\nSHA256 query hash")]
+    HIT["Cache Hit?"]
   end
 
   subgraph Generation ["Generation"]
     OPENR["OpenRouter (primary)\ngoogle/gemma-4-26b-a4b-it:free"]
     FALLBACK["OpenRouter (fallback)\nnvidia/nemotron-nano-9b-v2:free"]
-    GRACEFUL["Graceful Degradation\nextract log snippets from chunks"]
+    GRACEFUL["Graceful Degradation\nstructured log analysis"]
     GEN["Response generation\nmax_tokens=2048, temp=0.6"]
   end
 
-  subgraph Uncertainty ["Uncertainty Quantification"]
-    SC["Self-Consistency\n1 sample, temp=0.6\nJaccard similarity"]
-    VC["Verbalized Confidence\nRegex extract from response"]
-    RV["Response Variance\nLength variance (normalized)"]
-    RC["Retrieval Confidence\nfallback when LLM unavailable\nbased on avg chunk distance"]
-    WEIGHT["Weighted combination\n[0.5, 0.3, 0.2]"]
+  subgraph Confidence ["Retrieval Confidence"]
+    DIST["Distance Score\n1.0 - avg_distance"]
+    COUNT["Chunk Count Bonus\nmin(chunks/5, 0.1)"]
+    DIVERSITY["Source Diversity\nmin(unique_atms-1, 0.1)"]
+    COMBINE["Combine: distance + count + diversity"]
     LEVEL["Confidence level\nHIGH ≥0.8, MED ≥0.5, LOW <0.5"]
   end
 
@@ -952,34 +962,57 @@ flowchart TD
     TIMEOUT["Request timeout\n90s per call"]
   end
 
-  Q --> SAN --> CDB --> TOPK
-  TOPK --> OPENR
-  TOPK --> FALLBACK
-  OPENR & FALLBACK --> GEN
-  GEN --> SC
-  GEN --> VC
-  GEN --> RV
-  SC & VC & RV --> WEIGHT --> LEVEL
+  Q --> SAN --> CDB --> TOPK --> FILTER
+  FILTER --> REDIS
+  REDIS --> HIT
+  HIT -->|"yes"| RESP["Return cached response"]
+  HIT -->|"no"| OPENR
+  OPENR --> GEN
+  OPENR --> FALLBACK
+  FALLBACK --> GEN
+  GEN --> DIST
+  GEN --> COUNT
+  GEN --> DIVERSITY
+  DIST & COUNT & DIVERSITY --> COMBINE --> LEVEL
   LEVEL --> FB
   FB --> PLATT --> ECE --> RECAL
   OPENR -.-> RL
   OPENR -.-> RETRY
   OPENR -.-> TIMEOUT
   GEN -.-> GRACEFUL
-  RC -.-> LEVEL
 
   classDef retrieval fill:#0f766e,stroke:#14b8a6,color:#ffffff;
+  classDef cache fill:#7c2d12,stroke:#f59e0b,color:#ffffff;
   classDef gen fill:#581c87,stroke:#a78bfa,color:#ffffff;
-  classDef unc fill:#7c2d12,stroke:#f59e0b,color:#ffffff;
-  classDef cal fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
-  classDef prot fill:#4a1d6a,stroke:#c084fc,color:#ffffff;
+  classDef conf fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
+  classDef cal fill:#4a1d6a,stroke:#c084fc,color:#ffffff;
+  classDef prot fill:#2d1b4e,stroke:#a78bfa,color:#ffffff;
 
-  class Q,SAN,CDB,TOPK retrieval;
+  class Q,SAN,CDB,TOPK,FILTER retrieval;
+  class REDIS,HIT,RESP cache;
   class OPENR,FALLBACK,GRACEFUL,GEN gen;
-  class SC,VC,RV,RC,WEIGHT,LEVEL unc;
+  class DIST,COUNT,DIVERSITY,COMBINE,LEVEL conf;
   class FB,PLATT,ECE,RECAL cal;
   class RL,RETRY,TIMEOUT prot;
 ```
+
+### Performance Improvements
+
+| Metric | Before | After |
+|---|---|---|
+| Response time | 30-90s | <10s (uncached), <100ms (cached) |
+| LLM calls/query | 2 | 1 |
+| Context size | 5 chunks × full | 3 chunks × 200 chars |
+| Confidence method | LLM self-consistency | Retrieval-based |
+
+### Response Caching
+
+| Feature | Value |
+|---|---|
+| Storage | Redis 7 (in-memory) |
+| TTL | 5 minutes (configurable via `REDIS_CACHE_TTL`) |
+| Key | SHA256(query)[:16] |
+| Hit rate | Instant response for repeated queries |
 
 ### LLM Providers
 
@@ -989,19 +1022,17 @@ flowchart TD
 | **OpenRouter** | `nvidia/nemotron-nano-9b-v2:free` | Fallback | Varies by upstream provider |
 | **OpenRouter** | `openrouter/free` | Auto-router (alternative) | 20 req/min, 200 req/day |
 
-All models are free-tier models accessed via a single OpenRouter API key. The system implements graceful degradation — when all LLM providers are rate-limited, it extracts key findings directly from retrieved log chunks rather than returning an error.
+All models are free-tier models accessed via a single OpenRouter API key. The system implements graceful degradation — when all LLM providers are rate-limited, it extracts key findings directly from retrieved log chunks with structured sections (Pattern Detection, Severity Assessment, Recommended Actions).
 
-### Uncertainty Quantification
+### Retrieval Confidence
 
-| Signal | Method | Weight | Description |
-|---|---|---|---|
-| **Self-Consistency** | Jaccard similarity across 1 sample | 50% | Generate 1 response at temperature=0.6, measure semantic overlap |
-| **Verbalized Confidence** | Regex extraction from response | 30% | Model outputs explicit confidence score (0-1) in text |
-| **Response Variance** | Length variance (normalized) | 20% | Variance in response lengths across samples |
+| Signal | Method | Contribution |
+|---|---|---|
+| **Distance Score** | `1.0 - min(avg_distance, 1.0)` | Base signal (0.0-1.0) |
+| **Chunk Count Bonus** | `min(chunks / 5, 0.1)` | +0 to +0.1 |
+| **Source Diversity** | `min(unique_atms - 1, 0.1)` | +0 to +0.1 |
 
-**Fallback:** When LLM is unavailable, uncertainty uses retrieval-based confidence derived from average ChromaDB chunk distance (`1.0 - min(avg_distance, 1.0)`).
-
-**Final score:** `0.5 × consistency + 0.3 × verbalized + 0.2 × (1 - normalized_variance)`
+**Final score:** `distance_score + count_bonus + diversity_bonus` (capped at 1.0)
 
 ### Confidence Levels
 
@@ -1010,6 +1041,16 @@ All models are free-tier models accessed via a single OpenRouter API key. The sy
 | **HIGH** | ≥ 0.8 | Auto-respond — 80%+ confidence in answer quality |
 | **MEDIUM** | 0.5–0.8 | Verify — moderate confidence, review before presenting |
 | **LOW** | < 0.5 | Escalate — low confidence, route to human expert |
+
+### Metadata Filtering
+
+The retriever supports intelligent query parsing for targeted retrieval:
+
+| Filter | Trigger | Effect |
+|---|---|---|
+| **Anomaly Type** | Query contains "A1"-"A7" or keywords (e.g., "network timeout", "cassette") | Filters ChromaDB by `_anomaly_tag` metadata |
+| **ATM ID** | Query contains ATM ID or `atm_id` param | Filters by specific ATM |
+| **Temporal Boost** | Always enabled | Prioritizes recent chunks (last 6 hours) with decay scoring |
 
 ### Calibration System
 
@@ -1031,7 +1072,7 @@ All models are free-tier models accessed via a single OpenRouter API key. The sy
 | **Per-user rate limit** | 10 requests/minute on `/api/rag/query` | Prevent abuse and LLM cost explosion |
 | **LLM retry with Retry-After** | Up to 5 retries respecting upstream `Retry-After` header | Handle transient rate limits gracefully |
 | **Request timeout** | 90 seconds per LLM call | Prevent hanging requests |
-| **Graceful degradation** | Extracts log snippets when LLM unavailable | Ensures UI always returns useful data |
+| **Graceful degradation** | Structured log analysis when LLM unavailable | Ensures UI always returns useful data |
 
 ### RAG API Endpoints
 
@@ -1174,7 +1215,7 @@ make pytest        # runs all tests in Docker with isolated test DB
 | **Security & auth** | Login, JWT, `require_admin` guard, privilege escalation |
 | **Anomaly detector** | Rule-based detection across A1–A7 with correct source assignment, 5-min dedup window |
 | **ML detector** | Model loading, inference cycle, CLASSIFIER/ZSCORE/SIGNAL_CORRELATOR layers, 47 features, dedup window |
-| **RAG** | Config validation, LLM client fallback routing, retriever chunk retrieval, uncertainty scoring, calibration fitting, pipeline end-to-end |
+| **RAG** | Config validation, LLM client fallback routing, retriever chunk retrieval, retrieval-only confidence, Redis caching, calibration fitting, pipeline end-to-end |
 
 ### Test Statistics
 

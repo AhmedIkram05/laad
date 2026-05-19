@@ -75,6 +75,14 @@ services:
     volumes:
       - chroma_data:/chroma/chroma
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   kafka-consumer:
     build: .
     command: python -m backend.kafka.consumer
@@ -123,12 +131,16 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - RAG_PRIMARY_MODEL=${RAG_PRIMARY_MODEL:-google/gemma-4-26b-a4b-it:free}
       - RAG_FALLBACK_MODEL=${RAG_FALLBACK_MODEL:-nvidia/nemotron-nano-9b-v2:free}
-      - RAG_TOP_K=${RAG_TOP_K:-5}
-      - RAG_SAMPLES=${RAG_SAMPLES:-3}
+      - RAG_TOP_K=${RAG_TOP_K:-3}
+      - RAG_SAMPLES=${RAG_SAMPLES:-1}
       - RAG_TEMPERATURE=${RAG_TEMPERATURE:-0.6}
       - CONF_HIGH=${CONF_HIGH:-0.8}
       - CONF_MEDIUM=${CONF_MEDIUM:-0.5}
       - RAG_CALIBRATION_ENABLED=${RAG_CALIBRATION_ENABLED:-true}
+      - RAG_CHUNK_TRUNCATE=${RAG_CHUNK_TRUNCATE:-200}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-300}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - TEST_POSTGRES_HOST=postgres_test
@@ -224,6 +236,9 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ML_HEURISTICS_ENABLED=true
       - ML_RULES_DETECTION_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_CACHE_TTL=300
     depends_on:
       - postgres_test
     volumes:
@@ -237,3 +252,4 @@ volumes:
   postgres_test_data:
   kafka_data:
   chroma_data:
+  redis_data:
