@@ -78,12 +78,40 @@ class TestRAGSchemas:
             is_calibrated=True,
             is_uncertain=False,
             recommendation="Auto-respond",
-            model_used="gemini-2.0-flash",
+            model_used="google/gemma-4-26b-a4b-it:free",
         )
 
         assert response.query_id == 42
         assert response.answer == "The error means..."
         assert response.confidence_level == "high"
+
+    def test_rag_query_response_with_fallback_model(self):
+        from backend.src.rag.schemas import RAGQueryResponse, SourceChunk
+
+        sources = [
+            SourceChunk(
+                text="Log 1",
+                chunk_id="1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                confidence_score=0.9,
+            )
+        ]
+
+        response = RAGQueryResponse(
+            query_id=43,
+            answer="I found 3 relevant log entries...",
+            sources=sources,
+            uncertainty_score=0.6,
+            confidence_level="medium",
+            is_calibrated=False,
+            is_uncertain=False,
+            recommendation="Verify - moderate confidence",
+            model_used="fallback-template",
+        )
+
+        assert response.model_used == "fallback-template"
+        assert response.query_id == 43
 
 
 class TestRAGFeedback:
@@ -95,6 +123,9 @@ class TestRAGFeedback:
 
         req = RAGFeedbackRequest(query_id=1, feedback="helpful")
         assert req.feedback == "helpful"
+
+        req_uncertain = RAGFeedbackRequest(query_id=1, feedback="uncertain")
+        assert req_uncertain.feedback == "uncertain"
 
         with pytest.raises(ValidationError):
             RAGFeedbackRequest(query_id=1, feedback="invalid")
@@ -116,7 +147,7 @@ class TestRAGRouter:
 
     @pytest.fixture(autouse=True)
     def mock_mlflow(self):
-        with patch.dict("sys.modules", {"mlflow": MagicMock(), "mlflow.sklearn": MagicMock()}):
+        with patch.dict("sys.modules", {"mlflow": MagicMock(), "mlflow.sklearn": MagicMock(), "mlflow.xgboost": MagicMock()}):
             yield
 
     @pytest.fixture
@@ -155,3 +186,64 @@ class TestRAGRouter:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
+
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.get_retriever")
+    @patch("backend.src.rag.router.get_generator")
+    @patch("backend.src.rag.router.get_uncertainty_estimator")
+    @patch("backend.src.rag.router.get_calibration_manager")
+    def test_query_rate_limiting(self, mock_cal, mock_unc, mock_gen, mock_ret, mock_user_id, client):
+        from backend.src.rag.retriever import RetrievedChunk
+        from backend.src.rag.generator import GeneratedResponse
+        from backend.src.rag.uncertainty import UncertaintyEstimate
+        from backend.src.rag.calibration import CalibrationParams
+        from backend.src.rag import router as rag_router
+
+        rag_router._query_timestamps.clear()
+
+        mock_user_id.return_value = 1
+        mock_ret.return_value.retrieve.return_value = [
+            RetrievedChunk(
+                text="Network timeout at ATM-GB-0001",
+                chunk_id="doc_1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                distance=0.1,
+                confidence_score=0.9,
+            )
+        ]
+        mock_gen.return_value.generate.return_value = GeneratedResponse(
+            text="This is a network timeout error.",
+            sources=[],
+            model="test-model",
+            raw_response={},
+        )
+        mock_unc.return_value.estimate.return_value = UncertaintyEstimate(
+            final_confidence=0.85,
+            confidence_level="high",
+            self_consistency_score=0.9,
+            verbalized_confidence=0.8,
+            generation_variance=0.1,
+            is_uncertain=False,
+            recommendation="Auto-respond",
+        )
+        mock_cal.return_value.params = CalibrationParams(is_fitted=False)
+
+        token_resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+        token = token_resp.json()["access_token"]
+
+        for i in range(rag_router.RATE_LIMIT_MAX_REQUESTS):
+            resp = client.post(
+                "/api/rag/query",
+                json={"query": f"test query {i}"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+
+        resp = client.post(
+            "/api/rag/query",
+            json={"query": "rate limited query"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 429
+        assert "Rate limit exceeded" in resp.json()["detail"]

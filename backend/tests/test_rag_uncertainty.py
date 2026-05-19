@@ -127,3 +127,34 @@ class TestUncertaintyEstimate:
         assert result.final_confidence > 0
         assert result.confidence_level in ("high", "medium", "low")
         assert isinstance(result.self_consistency_score, float)
+
+    @patch("backend.src.rag.uncertainty.get_generator")
+    @patch("backend.src.rag.uncertainty.get_llm_client")
+    def test_estimate_falls_back_to_retrieval_confidence(self, mock_llm, mock_gen):
+        """Test that uncertainty uses retrieval confidence when LLM is unavailable."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+        from backend.src.rag.retriever import RetrievedChunk
+
+        mock_llm.return_value.generate.side_effect = Exception("LLM unavailable")
+        mock_gen.return_value = MagicMock()
+
+        estimator = UncertaintyEstimator()
+        estimator.num_samples = 1
+
+        chunks = [
+            RetrievedChunk(
+                text="test log data",
+                chunk_id="1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                distance=0.2,
+                confidence_score=0.8,
+            )
+        ]
+
+        result = estimator.estimate(query="test", chunks=chunks)
+
+        assert result.final_confidence > 0
+        assert result.confidence_level in ("high", "medium", "low")
+        assert result.self_consistency_score == 0.0
+        assert result.verbalized_confidence is None

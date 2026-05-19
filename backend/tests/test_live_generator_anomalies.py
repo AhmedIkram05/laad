@@ -64,8 +64,8 @@ class TestInjectA2:
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a2(mock, t)
-        # A2 now sends 2-3 messages (always CASSETTE_LOW + CASSETTE_EMPTY + optional KAFKA)
-        assert 2 <= mock.send_event.call_count <= 3
+        # A2 sends 5 messages: 2 CASSETTE_LOW + 2 CASSETTE_EMPTY + 1 KAFKA
+        assert mock.send_event.call_count == 5
 
     def test_anomaly_tag_present(self):
         mock = _mock_producer()
@@ -74,22 +74,22 @@ class TestInjectA2:
         payloads = [c[0][0]["payload"] for c in mock.send_event.call_args_list]
         assert any(p.get("_anomaly_tag") == "A2" for p in payloads)
 
-    def test_sources_include_hardware_and_optionally_kafka(self):
+    def test_sources_include_hardware_and_kafka(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a2(mock, t)
         sources = {c[0][0]["source"] for c in mock.send_event.call_args_list}
         assert "HARDWARE" in sources
-        # May include KAFKA probabilistically (80% chance)
+        assert "KAFKA" in sources
 
 
 class TestInjectA3:
-    def test_emits_270_metric_messages(self):
+    def test_emits_360_metric_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a3(mock, t)
-        # 90 ticks × 3 metrics per tick = 270 metric messages
-        assert mock.send_metric.call_count == 270
+        # 90 ticks × 4 metrics per tick = 360 metric messages
+        assert mock.send_metric.call_count == 360
 
     def test_anomaly_tag_present_in_all_metrics(self):
         mock = _mock_producer()
@@ -102,8 +102,8 @@ class TestInjectA3:
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a3(mock, t)
-        # 90 ticks × 3 metrics per tick = 270 metric messages
-        assert mock.send_metric.call_count == 270
+        # 90 ticks × 4 metrics per tick = 360 metric messages
+        assert mock.send_metric.call_count == 360
         # 1 OOM_ERROR event
         assert mock.send_event.call_count == 1
 
@@ -128,7 +128,7 @@ class TestInjectA3:
         assert mock.send_event.call_count == 1
         call_args = mock.send_event.call_args[0][0]
         assert call_args["payload"].get("_anomaly_tag") == "A3"
-        assert call_args["event_type"] == "OOM_ERROR"
+        assert call_args["event_type"] == "OutOfMemoryError"
 
     def test_no_psycopg2_import(self):
         import backend.generator.anomaly_injectors as ai
@@ -138,11 +138,13 @@ class TestInjectA3:
 
 
 class TestInjectA4:
-    def test_sends_3_event_messages(self):
+    def test_sends_event_and_metric_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a4(mock, t)
-        assert mock.send_event.call_count == 3
+        # A4 sends 5 events (3 STARTUP + 2 OutOfMemoryError) + 2 metrics (restart_count)
+        assert mock.send_event.call_count == 5
+        assert mock.send_metric.call_count == 2
 
     def test_anomaly_tag_present(self):
         mock = _mock_producer()
@@ -151,12 +153,14 @@ class TestInjectA4:
         payloads = [c[0][0]["payload"] for c in mock.send_event.call_args_list]
         assert any(p.get("_anomaly_tag") == "A4" for p in payloads)
 
-    def test_sources_all_terminal_handler(self):
+    def test_sources_include_terminal_handler_and_cloud(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a4(mock, t)
-        sources = {c[0][0]["source"] for c in mock.send_event.call_args_list}
-        assert sources == {"TERMINAL_HANDLER"}
+        event_sources = {c[0][0]["source"] for c in mock.send_event.call_args_list}
+        metric_sources = {c[0][0]["source"] for c in mock.send_metric.call_args_list}
+        assert "TERMINAL_HANDLER" in event_sources
+        assert "CLOUD" in metric_sources
 
 
 class TestInjectA5:
@@ -164,10 +168,8 @@ class TestInjectA5:
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a5(mock, t)
-        # A5 now sends variable number of messages (8-12 METRIC + optional ATM_APP TIMEOUT + 1 STATUS)
-        # Minimum: 8 METRIC + 1 STATUS = 9
-        # Maximum: 12 METRIC + up to 11 ATM_APP TIMEOUT + 1 STATUS = 24
-        assert mock.send_event.call_count >= 9
+        # A5 sends 5 events: 3 KAFKA METRIC + 1 ATM_APP TIMEOUT + 1 KAFKA STATUS
+        assert mock.send_event.call_count == 5
 
     def test_anomaly_tag_present_in_all(self):
         mock = _mock_producer()
@@ -176,22 +178,22 @@ class TestInjectA5:
         for call in mock.send_event.call_args_list:
             assert call[0][0]["payload"].get("_anomaly_tag") == "A5"
 
-    def test_sources_include_kafka_and_optionally_atm_app(self):
+    def test_sources_include_kafka_and_atm_app(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a5(mock, t)
         sources = {c[0][0]["source"] for c in mock.send_event.call_args_list}
         assert "KAFKA" in sources
-        # May include ATM_APP probabilistically (40% chance per METRIC after first)
+        assert "ATM_APP" in sources
 
 
 class TestInjectA6:
-    def test_emits_120_metric_messages(self):
+    def test_emits_360_metric_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a6(mock, t)
-        # 120 ticks × 1 metric per tick = 120 metric messages
-        assert mock.send_metric.call_count == 120
+        # 120 ticks × 3 metrics per tick = 360 metric messages
+        assert mock.send_metric.call_count == 360
         # 1 TIMEOUT event
         assert mock.send_event.call_count == 1
 
@@ -199,15 +201,15 @@ class TestInjectA6:
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a6(mock, t)
-        metric_name = mock.send_metric.call_args[0][0]["metric_name"]
-        assert metric_name == "memory_usage_percent"
+        metric_names = [c[0][0]["metric_name"] for c in mock.send_metric.call_args_list]
+        assert "memory_usage_percent" in metric_names
 
     def test_source_os(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a6(mock, t)
-        source = mock.send_metric.call_args[0][0]["source"]
-        assert source == "OS"
+        sources = {c[0][0]["source"] for c in mock.send_metric.call_args_list}
+        assert sources == {"OS"}
 
     def test_timeout_event_present(self):
         mock = _mock_producer()
@@ -220,25 +222,29 @@ class TestInjectA6:
 
 
 class TestInjectA7:
-    def test_sends_1_event_message(self):
+    def test_sends_event_and_metric_messages(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a7(mock, t)
-        assert mock.send_event.call_count == 1
+        # A7 sends 2 events (KAFKA out-of-order) + 1 metric (PROMETHEUS malformed)
+        assert mock.send_event.call_count == 2
+        assert mock.send_metric.call_count == 1
 
     def test_anomaly_tag_a7_out_of_order(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a7(mock, t)
-        payload = mock.send_event.call_args[0][0]["payload"]
-        assert payload.get("_anomaly_tag") == "A7_OUT_OF_ORDER"
+        payloads = [c[0][0]["payload"] for c in mock.send_event.call_args_list]
+        assert any(p.get("_anomaly_tag") == "A7_OUT_OF_ORDER" for p in payloads)
 
-    def test_offset_minus_one_in_payload(self):
+    def test_offset_values_in_payload(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
         inject_a7(mock, t)
-        payload = mock.send_event.call_args[0][0]["payload"]
-        assert payload.get("offset") == -1
+        payloads = [c[0][0]["payload"] for c in mock.send_event.call_args_list]
+        offsets = [p.get("offset") for p in payloads]
+        assert 4050 in offsets
+        assert 4051 in offsets
 
 
 class TestAnomalyRegistry:

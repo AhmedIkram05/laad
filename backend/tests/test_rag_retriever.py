@@ -120,3 +120,16 @@ class TestRetrievedChunk:
                 stats = retriever.get_collection_stats()
 
         assert stats["total_chunks"] == 100
+
+    def test_get_collection_stats_on_error(self):
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.count.side_effect = Exception("Connection failed")
+
+        with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
+            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+                retriever = RAGRetriever()
+                stats = retriever.get_collection_stats()
+
+        assert "error" in stats
