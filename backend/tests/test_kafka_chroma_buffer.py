@@ -153,8 +153,13 @@ class TestChromaBufferFlush:
                     buffer._client = mock_client
                     buffer._collection = mock_collection
                     buffer._buffers = defaultdict(list)
-                    buffer._buffers["ATM-GB-0001"] = [("text1", "ts1"), ("text2", "ts2")]
-                    buffer._buffers["ATM-GB-0002"] = [("text3", "ts3")]
+                    buffer._buffers["ATM-GB-0001"] = [
+                        {"text": "text1", "timestamp": "ts1", "severity": None, "anomaly_tag": None},
+                        {"text": "text2", "timestamp": "ts2", "severity": None, "anomaly_tag": None},
+                    ]
+                    buffer._buffers["ATM-GB-0002"] = [
+                        {"text": "text3", "timestamp": "ts3", "severity": None, "anomaly_tag": None},
+                    ]
                     buffer._chunker = mock_chunker
 
                     buffer.flush_all()

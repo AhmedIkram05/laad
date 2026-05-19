@@ -8,7 +8,6 @@ from typing import Optional
 from backend.src.rag.retriever import get_retriever, RetrievedChunk
 from backend.src.rag.generator import get_generator, GeneratedResponse
 from backend.src.rag.uncertainty import get_uncertainty_estimator, UncertaintyEstimate
-from backend.src.rag.calibration import get_calibration_manager
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 def process_query(
     query: str,
     atm_id: Optional[str] = None,
-    top_k: int = 5,
+    top_k: int = 3,
     include_uncertainty: bool = True,
 ) -> dict:
     """Process a RAG query through the full pipeline."""
@@ -24,7 +23,6 @@ def process_query(
         retriever = get_retriever()
         generator = get_generator()
         uncertainty_estimator = get_uncertainty_estimator()
-        calibration_manager = get_calibration_manager()
 
         chunks = retriever.retrieve(query=query, atm_id=atm_id, top_k=top_k)
 
@@ -39,10 +37,6 @@ def process_query(
         uncertainty = None
         if include_uncertainty:
             uncertainty = uncertainty_estimator.estimate(query=query, chunks=chunks)
-
-            if calibration_manager.params.is_fitted:
-                calibrated = calibration_manager.apply(uncertainty.final_confidence)
-                uncertainty.final_confidence = calibrated.calibrated_confidence
 
         return {
             "answer": response.text,

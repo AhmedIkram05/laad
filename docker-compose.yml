@@ -75,6 +75,14 @@ services:
     volumes:
       - chroma_data:/chroma/chroma
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   kafka-consumer:
     build: .
     command: python -m backend.kafka.consumer
@@ -121,14 +129,19 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - RAG_PRIMARY_MODEL=${RAG_PRIMARY_MODEL:-gemini-2.0-flash}
-      - RAG_FALLBACK_MODEL=${RAG_FALLBACK_MODEL:-groq/llama-3.1-70b-versatile}
-      - RAG_TOP_K=${RAG_TOP_K:-5}
-      - RAG_SAMPLES=${RAG_SAMPLES:-3}
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:31b-cloud}
+      - RAG_PRIMARY_MODEL=${RAG_PRIMARY_MODEL:-gemma4:31b-cloud}
+      - RAG_FALLBACK_MODEL=${RAG_FALLBACK_MODEL:-nemotron-3-supercloud}
+      - RAG_TOP_K=${RAG_TOP_K:-3}
+      - RAG_SAMPLES=${RAG_SAMPLES:-1}
       - RAG_TEMPERATURE=${RAG_TEMPERATURE:-0.6}
       - CONF_HIGH=${CONF_HIGH:-0.8}
       - CONF_MEDIUM=${CONF_MEDIUM:-0.5}
-      - RAG_CALIBRATION_ENABLED=${RAG_CALIBRATION_ENABLED:-true}
+      - RAG_CHUNK_TRUNCATE=${RAG_CHUNK_TRUNCATE:-800}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-300}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - TEST_POSTGRES_HOST=postgres_test
@@ -224,6 +237,9 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ML_HEURISTICS_ENABLED=true
       - ML_RULES_DETECTION_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_CACHE_TTL=300
     depends_on:
       - postgres_test
     volumes:
@@ -237,3 +253,4 @@ volumes:
   postgres_test_data:
   kafka_data:
   chroma_data:
+  redis_data:

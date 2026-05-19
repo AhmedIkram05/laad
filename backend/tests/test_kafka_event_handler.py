@@ -11,8 +11,14 @@ class MockChromaBuffer:
     def __init__(self):
         self.events_added = []
 
-    def add_event(self, atm_id, text, timestamp):
-        self.events_added.append({"atm_id": atm_id, "text": text, "timestamp": timestamp})
+    def add_event(self, atm_id, text, timestamp, severity=None, anomaly_tag=None):
+        self.events_added.append({
+            "atm_id": atm_id,
+            "text": text,
+            "timestamp": timestamp,
+            "severity": severity,
+            "anomaly_tag": anomaly_tag,
+        })
 
 
 class TestHandleEvent:

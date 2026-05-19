@@ -82,6 +82,23 @@ def _trigger_anomaly_detection() -> None:
         log.warning("Anomaly detection failed: %s", exc)
 
 
+_cached_syncer = None
+
+
+def _trigger_anomaly_sync() -> None:
+    """Sync UNKNOWN/NORMAL anomalies from DB to ChromaDB."""
+    global _cached_syncer
+    try:
+        from backend.kafka.anomaly_syncer import AnomalySyncer
+        if _cached_syncer is None:
+            _cached_syncer = AnomalySyncer()
+        result = _cached_syncer.sync_once()
+        if result.get("synced", 0) > 0:
+            log.info("Anomaly syncer: %d anomalies synced to ChromaDB", result["synced"])
+    except Exception as exc:
+        log.warning("Anomaly sync failed: %s", exc)
+
+
 def run_consumer() -> None:
     signal.signal(signal.SIGTERM, _handle_sigterm)
     signal.signal(signal.SIGINT, _handle_sigterm)
@@ -157,6 +174,7 @@ def run_consumer() -> None:
             if processed > 0 and (now - last_anomaly_trigger) >= ANOMALY_INTERVAL_S:
                 log.info("Triggering anomaly detection (processed=%d, last_trigger=%.1fs ago)", processed, now - last_anomaly_trigger)
                 _trigger_anomaly_detection()
+                _trigger_anomaly_sync()
                 last_anomaly_trigger = now
 
             if processed % 500 == 0 and processed > 0:

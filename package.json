@@ -6,9 +6,7 @@
   "directories": {
     "doc": "docs"
   },
-  "scripts": {
-    "test": "playwright test"
-  },
+  "scripts": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/AhmedIkram05/laad.git"
@@ -21,7 +19,5 @@
     "url": "https://github.com/AhmedIkram05/laad/issues"
   },
   "homepage": "https://github.com/AhmedIkram05/laad#readme",
-  "devDependencies": {
-    "@playwright/test": "^1.60.0"
-  }
+  "devDependencies": {}
 }

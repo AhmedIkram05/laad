@@ -9,8 +9,10 @@ class RAGQueryRequest(BaseModel):
     """Request body for RAG query."""
     query: str = Field(..., min_length=1, max_length=1000, description="User query")
     atm_id: Optional[str] = Field(None, description="Filter by specific ATM ID")
-    top_k: int = Field(5, ge=1, le=20, description="Number of chunks to retrieve")
+    top_k: int = Field(3, ge=1, le=20, description="Number of chunks to retrieve")
     include_uncertainty: bool = Field(True, description="Include uncertainty estimation")
+    error_only: Optional[bool] = Field(None, description="Filter for ERROR/FATAL severity only")
+    most_recent_first: Optional[bool] = Field(None, description="Sort by timestamp descending")
 
 
 class SourceChunk(BaseModel):
@@ -29,7 +31,6 @@ class RAGQueryResponse(BaseModel):
     sources: list[SourceChunk]
     uncertainty_score: float
     confidence_level: str
-    is_calibrated: bool
     is_uncertain: bool
     recommendation: str
     model_used: str
@@ -65,5 +66,14 @@ class RAGHistoryResponse(BaseModel):
 class RAGStatsResponse(BaseModel):
     """RAG system statistics."""
     collection_chunks: int
-    calibration_status: dict
     total_queries: int
+
+
+class AnomalyStatsResponse(BaseModel):
+    """Response for anomaly statistics queries."""
+    total: int
+    by_type: dict[str, int] = Field(default_factory=dict)
+    by_atm: dict[str, int] = Field(default_factory=dict)
+    by_severity: dict[str, int] = Field(default_factory=dict)
+    active: int = 0
+    resolved: int = 0

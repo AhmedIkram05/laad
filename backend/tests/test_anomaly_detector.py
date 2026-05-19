@@ -200,15 +200,15 @@ class TestA4Detection:
     def test_fires_when_gcp_restarts_and_terminal_handler_confirms(self):
         data = [
             {"source": "GCP", "metric_name": "container/restart_count",
-             "metric_value": 1, "timestamp": "2024-01-01T09:30:00Z"},
+             "metric_value": 1, "timestamp": "2024-01-01T09:30:00Z", "atm_id": "ATM-A4"},
             {"source": "GCP", "metric_name": "container/restart_count",
-             "metric_value": 2, "timestamp": "2024-01-01T09:34:00Z"},
+             "metric_value": 2, "timestamp": "2024-01-01T09:34:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:30:00Z"},
+             "timestamp": "2024-01-01T09:30:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:32:00Z"},
+             "timestamp": "2024-01-01T09:32:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:34:00Z"},
+             "timestamp": "2024-01-01T09:34:00Z", "atm_id": "ATM-A4"},
         ]
         anomalies = a4_detection(data)
         assert len(anomalies) == 1
@@ -218,11 +218,11 @@ class TestA4Detection:
     def test_requires_at_least_one_gcp_restart(self):
         data = [
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:30:00Z"},
+             "timestamp": "2024-01-01T09:30:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:32:00Z"},
+             "timestamp": "2024-01-01T09:32:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:34:00Z"},
+             "timestamp": "2024-01-01T09:34:00Z", "atm_id": "ATM-A4"},
         ]
         anomalies = a4_detection(data)
         assert len(anomalies) == 0
@@ -230,15 +230,15 @@ class TestA4Detection:
     def test_a4_fires_with_real_gcp_parser_format(self):
         data = [
             {"source": "CLOUD", "metric_name": "restart_count",
-             "metric_value": 1, "timestamp": "2024-01-01T09:30:00Z"},
+             "metric_value": 1, "timestamp": "2024-01-01T09:30:00Z", "atm_id": "ATM-A4"},
             {"source": "CLOUD", "metric_name": "restart_count",
-             "metric_value": 2, "timestamp": "2024-01-01T09:34:00Z"},
+             "metric_value": 2, "timestamp": "2024-01-01T09:34:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:30:00Z"},
+             "timestamp": "2024-01-01T09:30:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:32:00Z"},
+             "timestamp": "2024-01-01T09:32:00Z", "atm_id": "ATM-A4"},
             {"source": "TERMINAL_HANDLER", "event_type": "STARTUP",
-             "timestamp": "2024-01-01T09:34:00Z"},
+             "timestamp": "2024-01-01T09:34:00Z", "atm_id": "ATM-A4"},
         ]
         anomalies = a4_detection(data)
         assert len(anomalies) == 1

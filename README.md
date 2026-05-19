@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Analysis & Diagnostics Platform (LAAD)
 
-> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by Gemini with confidence scoring and Platt scaling calibration.
+> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by Ollama Cloud with query classification, direct DB stats queries, and context-aware prompts.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
@@ -8,9 +8,14 @@
   <img src="https://img.shields.io/badge/PostgreSQL-003B57?style=for-the-badge&labelColor=000000&logo=postgresql">
   <img src="https://img.shields.io/badge/Kafka-231F20?style=for-the-badge&labelColor=000000&logo=apachekafka">
   <img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&labelColor=000000&logo=react">
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&labelColor=000000&logo=vite">
+  <img src="https://img.shields.io/badge/ChromaDB-000000?style=for-the-badge&labelColor=5F3DC8">
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&labelColor=000000&logo=redis">
   <img src="https://img.shields.io/badge/XGBoost-0052CC?style=for-the-badge&labelColor=000000&logo=xgboost">
   <img src="https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&labelColor=000000&logo=mlflow">
-  <img src="https://img.shields.io/badge/Gemini-4285F4?style=for-the-badge&labelColor=000000&logo=google">
+  <img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&labelColor=FF6B35">
+  <img src="https://img.shields.io/badge/OpenRouter-000000?style=for-the-badge&labelColor=FF6B35">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&labelColor=000000&logo=docker">
 </p>
 
 ---
@@ -32,7 +37,8 @@
 | **API Endpoints** | 20+ across 6 routers (auth, anomalies, analysis, admin, events, metrics, RAG) |
 | **Test Coverage** | 281 tests across 39 files, 9 tiers, isolated test DB |
 | **Docker Services** | 8 production + 2 test-only services |
-| **RAG Uncertainty** | Hybrid: self-consistency (50%) + verbalized (30%) + variance (20%) |
+| **RAG Uncertainty** | Retrieval-only: distance + chunk count + source diversity |
+| **RAG Response Time** | <10s (uncached), <100ms (cached) |
 | **Calibration** | Platt scaling, ECE < 0.10 target, 20-sample minimum |
 | **MLflow Tracking** | All training runs + inference cycles logged, 2 registered models with "champion" alias |
 | **Frontend Pages** | 10 pages, 11 components (React 19 + Vite 8 + Recharts) |
@@ -910,81 +916,201 @@ make generate-training-data # Generate 24h offline dataset (868,320 rows, ~260MB
 
 ## RAG Diagnostic Assistant
 
-An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with hybrid uncertainty quantification and Platt scaling calibration.
+An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with retrieval-based confidence scoring and Redis response caching. Uses Ollama Cloud as primary LLM provider with OpenRouter as emergency fallback, and features intelligent query classification that routes stats queries directly to the database for faster responses.
 
 ### Architecture
 
 ```mermaid
 flowchart TD
-  subgraph Retrieval ["Retrieval"]
+  subgraph QueryRouting ["Query Routing"]
     Q["User Query"]
-    EMB["Local Embedding\nnomic-embed-text"]
+    CLASS["classify_query_type()\nstats / diagnostic / troubleshooting / general"]
+    ROUTE{"Query Type?"}
+  end
+
+  subgraph Retrieval ["Retrieval"]
+    SAN["Query Sanitization\nprompt injection filter"]
     CDB[("ChromaDB\natm_logs collection\ncosine similarity")]
-    TOPK["Top-K retrieval\nk=5 chunks"]
+    TOPK["Top-K retrieval\nk=3 chunks, 800 chars each"]
+    FILTER["Metadata Filter\nanomaly type, atm_id, severity, error_only, temporal boost"]
+  end
+
+  subgraph StatsQuery ["Stats Query (bypasses LLM)"]
+    DB["PostgreSQL\nanomalies table"]
+    STATS["Direct COUNT/GROUP BY\nstructured JSON response"]
+  end
+
+  subgraph Cache ["Response Cache"]
+    REDIS[("Redis\n5 min TTL\nSHA256 query hash")]
+    HIT["Cache Hit?"]
   end
 
   subgraph Generation ["Generation"]
-    GEM["Gemini (primary)\ngemini-2.0-flash"]
-    GROQ["Groq (fallback)\nllama-3.1-70b-versatile"]
-    OPENR["OpenRouter (fallback)\nfree models"]
+    OLLAMA["Ollama Cloud (primary)\ngemma4:31b-cloud"]
+    FBACK["Ollama (fallback)\nnemotron-3-supercloud"]
+    EMERG["OpenRouter (emergency)\nfree models"]
+    GRACEFUL["Context-aware Fallback\nstats / troubleshooting / diagnostic"]
     GEN["Response generation\nmax_tokens=2048, temp=0.6"]
   end
 
-  subgraph Uncertainty ["Uncertainty Quantification"]
-    SC["Self-Consistency\n3 samples, temp=0.6\nJaccard similarity"]
-    VC["Verbalized Confidence\nRegex extract from response"]
-    RV["Response Variance\nLength variance (normalized)"]
-    WEIGHT["Weighted combination\n[0.5, 0.3, 0.2]"]
+  subgraph Prompting ["Query-Type Prompts"]
+    DIAG["Diagnostic prompt\nAnalysis, Root Cause, Actions"]
+    TROUB["Troubleshooting prompt\nNumbered steps, expected outcome"]
+    GENP["General prompt\nSummary, key points, context"]
+  end
+
+  subgraph Confidence ["Retrieval Confidence"]
+    DIST["Distance Score\n1.0 - avg_distance"]
+    COUNT["Chunk Count Bonus\nmin(chunks/5, 0.1)"]
+    DIVERSITY["Source Diversity\nmin(unique_atms-1, 0.1)"]
+    COMBINE["Combine: distance + count + diversity"]
     LEVEL["Confidence level\nHIGH ≥0.8, MED ≥0.5, LOW <0.5"]
   end
 
   subgraph Calibration ["Calibration"]
-    FB["User Feedback\nhelpful / not_helpful"]
+    FB["User Feedback\nhelpful / not_helpful / uncertain"]
     PLATT["Platt Scaling\nsigmoid(scale × conf + bias)\nscipy Nelder-Mead"]
     ECE["ECE computation\n5 bins, target < 0.10"]
     RECAL["Recalibrate trigger\nEvery 20 new samples"]
   end
 
-  Q --> EMB --> CDB --> TOPK
-  TOPK --> GEM
-  TOPK --> GROQ
-  TOPK --> OPENR
-  GEM & GROQ & OPENR --> GEN
-  GEN --> SC
-  GEN --> VC
-  GEN --> RV
-  SC & VC & RV --> WEIGHT --> LEVEL
+  Q --> CLASS
+  CLASS --> ROUTE
+  ROUTE -->|"stats"| DB --> STATS
+  ROUTE -->|"diagnostic|troubleshooting|general"| SAN --> CDB --> TOPK --> FILTER
+  FILTER --> REDIS
+  REDIS --> HIT
+  HIT -->|"yes"| RESP["Return cached response"]
+  HIT -->|"no"| OLLAMA
+  OLLAMA --> FBACK --> EMERG --> GEN
+  GEN --> DIAG
+  GEN --> TROUB
+  GEN --> GENP
+  GEN --> DIST
+  GEN --> COUNT
+  GEN --> DIVERSITY
+  DIST & COUNT & DIVERSITY --> COMBINE --> LEVEL
   LEVEL --> FB
   FB --> PLATT --> ECE --> RECAL
 
+  classDef routing fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
   classDef retrieval fill:#0f766e,stroke:#14b8a6,color:#ffffff;
+  classDef stats fill:#0f766e,stroke:#34d399,color:#ffffff;
+  classDef cache fill:#7c2d12,stroke:#f59e0b,color:#ffffff;
   classDef gen fill:#581c87,stroke:#a78bfa,color:#ffffff;
-  classDef unc fill:#7c2d12,stroke:#f59e0b,color:#ffffff;
-  classDef cal fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
+  classDef prompt fill:#7c2d12,stroke:#f97316,color:#ffffff;
+  classDef conf fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
+  classDef cal fill:#4a1d6a,stroke:#c084fc,color:#ffffff;
 
-  class Q,EMB,CDB,TOPK retrieval;
-  class GEM,GROQ,OPENR,GEN gen;
-  class SC,VC,RV,WEIGHT,LEVEL unc;
+  class Q,CLASS,ROUTE routing;
+  class SAN,CDB,TOPK,FILTER retrieval;
+  class DB,STATS stats;
+  class REDIS,HIT,RESP cache;
+  class OLLAMA,FBACK,EMERG,GRACEFUL,GEN gen;
+  class DIAG,TROUB,GENP prompt;
+  class DIST,COUNT,DIVERSITY,COMBINE,LEVEL conf;
   class FB,PLATT,ECE,RECAL cal;
 ```
+
+### Performance Improvements
+
+| Metric | Before | After |
+|---|---|---|
+| Response time | 30-90s | <10s (uncached), <100ms (cached) |
+| LLM calls/query | 2 | 1 |
+| Context size | 5 chunks × full | 3 chunks × 800 chars |
+| Confidence method | LLM self-consistency | Retrieval-based |
+
+### Response Caching
+
+| Feature | Value |
+|---|---|
+| Storage | Redis 7 (in-memory) |
+| TTL | 5 minutes (configurable via `REDIS_CACHE_TTL`) |
+| Key | SHA256(query)[:16] |
+| Hit rate | Instant response for repeated queries |
 
 ### LLM Providers
 
 | Provider | Model | Role | Rate Limit |
 |---|---|---|---|
-| **Gemini** | `gemini-2.0-flash` | Primary | ~1,500 req/day (free tier) |
-| **Groq** | `groq/llama-3.1-70b-versatile` | Fallback | ~30 RPM, 315 TPS |
-| **OpenRouter** | Free models (e.g., `google/gemma-4-26b-a4b-it:free`) | Secondary fallback | Varies by model |
+| **Ollama Cloud** | `gemma4:31b-cloud` | Primary | Account-based |
+| **Ollama Cloud** | `nemotron-3-supercloud` | Fallback | Account-based |
+| **OpenRouter** | Free models | Emergency fallback | 20 req/min, 200 req/day |
 
-### Uncertainty Quantification
+Ollama Cloud is the primary provider. When unavailable, it falls back to Ollama Cloud's alternative models, then OpenRouter as emergency. The system implements context-aware graceful degradation — when all LLM providers fail:
+- **Stats queries**: Returns approximate counts from retrieved log chunks
+- **Diagnostic queries**: Returns structured log analysis with Pattern Detection, Severity Assessment, Recommended Actions
+- **Troubleshooting queries**: Returns numbered steps based on retrieved chunks
 
-| Signal | Method | Weight | Description |
+### Query Classification
+
+The RAG system automatically classifies incoming queries to route them appropriately:
+
+| Query Type | Keywords | Handler | Example |
 |---|---|---|---|
-| **Self-Consistency** | Jaccard similarity across 3 samples | 50% | Generate 3 responses at temperature=0.6, measure semantic overlap |
-| **Verbalized Confidence** | Regex extraction from response | 30% | Model outputs explicit confidence score (0-1) in text |
-| **Response Variance** | Length variance (normalized) | 20% | Variance in response lengths across samples |
+| **Stats** | how many, count of, total, number of | Direct DB query → JSON | "how many anomalies are there" |
+| **Diagnostic** | what's wrong, why is, root cause, what caused | ChromaDB → LLM → natural language | "what's causing high response times on ATM 3" |
+| **Troubleshooting** | how to fix, what to do, steps to, solve | ChromaDB → LLM → numbered steps | "how to fix cassette empty error" |
+| **General** | Everything else | ChromaDB → LLM → summary | "tell me about recent ATM issues" |
 
-**Final score:** `0.5 × consistency + 0.3 × verbalized + 0.2 × (1 - normalized_variance)`
+**Query-type-specific prompts:**
+- **Diagnostic**: Structured response with Analysis, Root Cause, Recommended Actions sections
+- **Troubleshooting**: Numbered steps the operator can follow with expected outcomes
+- **General**: Concise summary in plain language
+
+Stats queries bypass the LLM entirely and query the database directly, returning structured JSON with totals, by-type, by-ATM, and by-severity counts. This makes stats queries faster and more reliable.
+
+### Configuration
+
+| Parameter | Default | Description |
+|---|---|---|
+| `OLLAMA_API_KEY` | (required) | Ollama Cloud API key from https://ollama.com |
+| `OLLAMA_BASE_URL` | https://ollama.com | Ollama API base URL |
+| `OLLAMA_MODEL` | gemma4:31b-cloud | Primary Ollama Cloud model |
+| `OLLAMA_FALLBACK_MODELS` | nemotron-3-supercloud | Comma-separated fallback models |
+| `OPENROUTER_API_KEY` | (optional) | Emergency fallback when Ollama unavailable |
+| `RAG_TOP_K` | 3 | Number of chunks to retrieve |
+| `RAG_CHUNK_TRUNCATE` | 800 | Characters per chunk |
+| `RAG_ERROR_ONLY` | true | Filter for ERROR/FATAL severity when querying about issues |
+| `RAG_ANOMALY_TYPES` | A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL | Comma-separated anomaly types to filter |
+| `RAG_MOST_RECENT_FIRST` | true | Sort by timestamp descending for "most recent" queries |
+| `RAG_SAMPLES` | 1 | Self-consistency samples |
+| `CONF_HIGH` / `CONF_MEDIUM` | 0.8 / 0.5 | Confidence thresholds |
+
+### Query Improvements
+
+The RAG now features intelligent query parsing:
+
+| Feature | Description | Example |
+|---|---|---|
+| **ATM ID Extraction** | Parses multiple formats including shorthand | "ATM 1" → ATM-GB-0001, "ATM-0001" → ATM-GB-0001 |
+| **Query Intent Detection** | Automatically detects error-only and most-recent intent | "most recent issues" → error_only=true, most_recent_first=true |
+| **Error Keywords** | issue, error, problem, failure, anomaly, crash, timeout, disconnect | Triggers error_only filter |
+| **Recent Keywords** | most recent, latest, recent, last, current, today | Triggers most_recent_first sorting |
+
+### Anomaly Syncer
+
+A background service syncs UNKNOWN and NORMAL anomalies from PostgreSQL to ChromaDB for RAG retrieval:
+
+| Feature | Details |
+|---|---|
+| **Trigger** | Runs after each anomaly detection cycle (every 30s) |
+| **Data Source** | `anomalies` table where `anomaly_type IN ('UNKNOWN', 'NORMAL')` |
+| **Metadata** | `atm_id`, `last_timestamp`, `severity`, `_anomaly_tag` |
+| **Purpose** | Enables queries about novel patterns (UNKNOWN) and baseline behavior (NORMAL) |
+
+UNKNOWN anomalies are generated by the ML classifier when Isolation Forest detects unusual patterns that don't match trained A1-A7 signatures. NORMAL represents baseline operational behavior.
+
+### Retrieval Confidence
+
+| Signal | Method | Contribution |
+|---|---|---|
+| **Distance Score** | `1.0 - min(avg_distance, 1.0)` | Base signal (0.0-1.0) |
+| **Chunk Count Bonus** | `min(chunks / 5, 0.1)` | +0 to +0.1 |
+| **Source Diversity** | `min(unique_atms - 1, 0.1)` | +0 to +0.1 |
+
+**Final score:** `distance_score + count_bonus + diversity_bonus` (capped at 1.0)
 
 ### Confidence Levels
 
@@ -992,7 +1118,20 @@ flowchart TD
 |---|---|---|
 | **HIGH** | ≥ 0.8 | Auto-respond — 80%+ confidence in answer quality |
 | **MEDIUM** | 0.5–0.8 | Verify — moderate confidence, review before presenting |
-| **LOW** | < 0.5 | Escalate — route to human expert |
+| **LOW** | < 0.5 | Escalate — low confidence, route to human expert |
+
+### Metadata Filtering
+
+The retriever supports intelligent query parsing for targeted retrieval:
+
+| Filter | Trigger | Effect |
+|---|---|---|
+| **Anomaly Type** | Query contains "A1"-"A7" or keywords (e.g., "network timeout", "cassette") | Filters ChromaDB by `_anomaly_tag` metadata |
+| **ATM ID** | Query contains ATM ID or `atm_id` param | Filters by specific ATM (supports: ATM-GB-0001, ATM 1, ATM-0001) |
+| **Severity** | `error_only=true` filters for ERROR/FATAL/CRITICAL | Filters by severity metadata |
+| **Error-only Intent** | Query contains "issue", "error", "problem", "failure" | Auto-applies severity + anomaly type filters |
+| **Most Recent Intent** | Query contains "most recent", "latest", "recent" | Sorts results by timestamp descending |
+| **Temporal Boost** | Always enabled | Prioritizes recent chunks (last 6 hours) with decay scoring |
 
 ### Calibration System
 
@@ -1007,19 +1146,29 @@ flowchart TD
 | **Recalibration trigger** | Every 20 new feedback samples |
 | **Debounce** | `maybe_fit()` prevents refitting on every single feedback |
 
+### Rate Limiting & Protection
+
+| Feature | Value | Purpose |
+|---|---|---|
+| **Per-user rate limit** | 10 requests/minute on `/api/rag/query` | Prevent abuse and LLM cost explosion |
+| **LLM retry with Retry-After** | Up to 5 retries respecting upstream `Retry-After` header | Handle transient rate limits gracefully |
+| **Request timeout** | 90 seconds per LLM call | Prevent hanging requests |
+| **Graceful degradation** | Structured log analysis when LLM unavailable | Ensures UI always returns useful data |
+
 ### RAG API Endpoints
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/api/rag/query` | JWT | Query with uncertainty estimation |
-| POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful) |
-| GET | `/api/rag/history` | JWT | Query history (paginated) |
-| GET | `/api/rag/stats` | JWT | Collection chunks, calibration status, total queries |
+| POST | `/api/rag/query` | JWT | Query with automatic routing (stats→DB, others→LLM), rate limited 10 req/min |
+| GET | `/api/rag/anomalies/stats` | JWT | Direct anomaly statistics (bypasses LLM, returns DB counts) |
+| POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
+| GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
+| GET | `/api/rag/stats` | JWT | Collection chunks, total queries |
 | POST | `/api/rag/recalibrate` | Admin JWT | Manual recalibration trigger |
 
 ### Data Privacy
 
-Log data stored in ChromaDB never leaves the network — only generated responses are sent to the LLM API. Embeddings are created locally. The LLM receives only the retrieved log context and user query, not raw ATM data.
+Log data stored in ChromaDB never leaves the network — only retrieved log context and user queries are sent to the LLM API. The LLM receives only the retrieved log snippets and user query, not raw ATM data. When LLM providers are unavailable, the system falls back to local log extraction without making any external API calls.
 
 ---
 
@@ -1063,9 +1212,9 @@ Log data stored in ChromaDB never leaves the network — only generated response
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/api/rag/query` | JWT | Query with uncertainty estimation |
-| POST | `/api/rag/feedback` | JWT | Submit feedback |
-| GET | `/api/rag/history` | JWT | Query history (paginated) |
+| POST | `/api/rag/query` | JWT | Query with uncertainty estimation (rate limited: 10 req/min per user) |
+| POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
+| GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
 | GET | `/api/rag/stats` | JWT | System statistics |
 | POST | `/api/rag/recalibrate` | Admin JWT | Trigger recalibration |
 
@@ -1148,7 +1297,7 @@ make pytest        # runs all tests in Docker with isolated test DB
 | **Security & auth** | Login, JWT, `require_admin` guard, privilege escalation |
 | **Anomaly detector** | Rule-based detection across A1–A7 with correct source assignment, 5-min dedup window |
 | **ML detector** | Model loading, inference cycle, CLASSIFIER/ZSCORE/SIGNAL_CORRELATOR layers, 47 features, dedup window |
-| **RAG** | Config validation, LLM client fallback routing, retriever chunk retrieval, uncertainty scoring, calibration fitting, pipeline end-to-end |
+| **RAG** | Config validation, LLM client fallback routing, retriever chunk retrieval, retrieval-only confidence, Redis caching, calibration fitting, pipeline end-to-end |
 
 ### Test Statistics
 
@@ -1202,7 +1351,7 @@ Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regard
 CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The Kafka consumer triggers detection every 30 seconds after processing messages. A 5-minute dedup window in `_is_active()` prevents duplicate writes within that window. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display.
 
 **RAG Data Privacy**
-Log data stored in ChromaDB never leaves the network — only generated responses are sent to the LLM API. Embeddings are created locally using `nomic-embed-text`. The LLM receives only the retrieved log context and user query, not raw ATM data.
+Log data stored in ChromaDB never leaves the network — only retrieved log context and user queries are sent to the LLM API. The LLM receives only the retrieved log snippets and user query, not raw ATM data. When LLM providers are rate-limited or unavailable, the system falls back to local log extraction without making any external API calls, ensuring zero data leakage.
 
 ---
 
@@ -1365,14 +1514,14 @@ cp .env.example .env   # edit POSTGRES_* values as needed
 
 ### 1a. Configure RAG (Optional - enables AI diagnostic assistant)
 
-To enable the RAG diagnostic assistant, get a free API key from [Google AI Studio](https://aistudio.google.com/app) and add it to your `.env`:
+To enable the RAG diagnostic assistant, get a free API key from [OpenRouter](https://openrouter.ai) and add it to your `.env`:
 
 ```bash
 # Add to .env file
-GEMINI_API_KEY=your_google_ai_studio_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 ```
 
-The diagnostic assistant will automatically use Gemini with Groq and OpenRouter fallback for high availability.
+The system uses free OpenRouter models by default (`google/gemma-4-26b-a4b-it:free` as primary, `nvidia/nemotron-nano-9b-v2:free` as fallback). When all LLM providers are rate-limited, the system gracefully degrades to extracting log snippets directly from retrieved chunks.
 
 ### 2. Start all backend services
 
@@ -1444,12 +1593,12 @@ make rebuild
 | Scheduler | APScheduler | Cleanup every 1h, auto-retrain on startup (if models missing/corrupted) |
 | Log generator | Python + `kafka-python` | Backfill + live loop, SIGTERM/SIGINT handling, pure Kafka producer (no direct DB writes), 7 emitters + 7 anomaly injectors |
 | Kafka consumer | Python + `kafka-python` | Manual offset commit, LRU deduplication (10k IDs), writes to PostgreSQL + ChromaDB, triggers anomaly detector every 30s |
-| ChromaDB | ChromaDB HTTP client | Per-ATM 10-event buffer, SemanticChunker with `nomic-embed-text`, `atm_logs` collection on Docker named volume |
+| ChromaDB | ChromaDB HTTP client | Per-ATM 10-event buffer, SemanticChunker with `nomic-embed-text` (Ollama) or simple text chunking fallback, `atm_logs` collection on Docker named volume |
 | Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain on startup (if models missing/corrupted), inference logged to MLflow. Detection triggered by Kafka consumer every 30s with 5-min dedup window |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React 19 + Vite 8 | 10 pages, 11 components, Recharts for visualization, React Router for navigation |
-| RAG | Gemini + Groq + OpenRouter + ChromaDB | Uncertainty-aware RAG with self-consistency sampling (50%), verbalized confidence (30%), response variance (20%), Platt scaling calibration. ChromaDB populated by Kafka consumer |
+| RAG | OpenRouter + ChromaDB | Uncertainty-aware RAG with self-consistency sampling (1 sample), verbalized confidence (30%), response variance (20%), retrieval confidence fallback, Platt scaling calibration. Graceful degradation when LLM unavailable. ChromaDB populated by Kafka consumer. Per-user rate limiting (10 req/min), retry with Retry-After, 90s timeouts |
 | Testing | Pytest | 281 tests across 39 files, 9 tiers, isolated test DB in Docker |
 
 ---

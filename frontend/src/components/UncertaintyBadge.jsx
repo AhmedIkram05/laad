@@ -6,7 +6,7 @@
 
 import "./UncertaintyBadge.css";
 
-function UncertaintyBadge({level, score, isCalibrated}) {
+function UncertaintyBadge({level, score}) {
     const getLevelColor = () => {
         switch (level) {
             case "high":
@@ -47,7 +47,6 @@ function UncertaintyBadge({level, score, isCalibrated}) {
                 </span>
                 <span className="confidence-score">
                     {(score * 100).toFixed(0)}%
-                    {isCalibrated && <span className="calibrated-tag">calibrated</span>}
                 </span>
             </span>
         </div>
