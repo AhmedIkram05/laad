@@ -1,101 +1,119 @@
-/*
- * Login Page
- * --------------------
- * Handles user logins.
- */
-
-/* External Libraries */
-import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState } from "react";
-
-/* Internal Imports */
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import "./Login.css";
+import { LogIn, CheckCircle } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
 
-const API_BASE_URL = "http://localhost:8000";
+export default function Login() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { login } = useAuth();
 
-function Login() {
-    const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+  const registered = searchParams.get("registered");
 
-    // Sets states for username, password, error and loading
-    const [username, setUsername] = useState("");
-    const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
 
-    const { login } = useAuth();
+    try {
+      const res = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username, password }),
+      });
 
-    // This is used to handle logins in the form
-    const handleLogin = async () => {
-        setError("");
+      if (!res.ok) {
+        throw new Error("Invalid credentials");
+      }
 
-        // Checks if Username or Password not entered
-        if (!username || !password) {
-            setError("Please enter your username and password.");
-            return;
-        }
+      const data = await res.json();
+      login(data.access_token);
+      toast.success("Welcome back!");
+      navigate("/dashboard", { replace: true });
+    } catch {
+      toast.error("Login failed. Please check your credentials.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        // adds username and password to url parameters
-        const formData = new URLSearchParams();
-        formData.append("username", username);
-        formData.append("password", password);
-
-        setLoading(true);
-
-        try {
-            // Try to connect to /auth/login endpoint, sending the username and password, and getting JWT back
-            const res = await fetch(`${API_BASE_URL}/auth/login`, {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: formData.toString(),
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                setError(data.detail ?? "Login failed.");
-                return;
-            }
-
-            // store token via AuthProvider (it will fetch /auth/me API endpoint)
-            login(data.access_token);
-            navigate("/dashboard");
-        } catch {
-            setError("Could not reach the server. Please try again.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="loginPage">
-            <div className="loginBox">
-                <h1 className="loginTitle">Log In</h1>
-
-                {searchParams.get("registered") === "1" && <p className="loginSuccess">Account created. Please sign in.</p>}
-                {error && <p className="loginError">{error}</p>}
-
-                {/* Username */}
-                <label htmlFor="username">Username:</label>
-                <input type="text" id="username" name="username" className="loginInput" value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
-
-                {/* Password */}
-                <label htmlFor="password">Password:</label>
-                <input type="password" id="password" name="password" className="loginInput" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
-
-                {/* Login & Sign Up Buttons */}
-                <div className="loginButtonContainer">
-                    <button className="loginButton--primary" onClick={handleLogin}>
-                        Login
-                    </button>
-                    <button className="loginButton--secondary" onClick={() => navigate('/signup')}>
-                        Create account
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
+        <Card>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-2xl font-bold text-center">
+              Welcome back
+            </CardTitle>
+            <CardDescription className="text-center">
+              Enter your credentials to access the dashboard
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {registered && (
+              <div className="mb-4 p-3 rounded-md bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-emerald-700 text-sm dark:bg-emerald-950 dark:border-emerald-800">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                Account created successfully. Please log in.
+              </div>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your username"
+                  required
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  required
+                  disabled={loading}
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Signing in...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <LogIn className="w-4 h-4" />
+                    Sign In
+                  </span>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+          <CardFooter className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/signup")}
+              disabled={loading}
+            >
+              Don't have an account? Sign up
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    </div>
+  );
 }
-
-export default Login;
