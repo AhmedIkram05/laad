@@ -74,7 +74,7 @@ export default function Signup() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Choose a username"
+                  placeholder="Enter a username"
                   required
                   disabled={loading}
                 />
@@ -86,7 +86,7 @@ export default function Signup() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create a password"
+                  placeholder="••••••••"
                   required
                   disabled={loading}
                 />
@@ -104,7 +104,7 @@ export default function Signup() {
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password"
+                  placeholder="••••••••"
                   required
                   disabled={loading}
                 />
