@@ -1,30 +1,21 @@
-/*
- * Main Layout
- * --------------------
- * A layout applied to all main pages.
- */
-
-/* External Libraries */
 import { Outlet } from "react-router-dom";
+import { Sidebar } from "../components/Sidebar";
+import { cn } from "../lib/utils";
 
-/* Internal Components */
-import SideNavbar from "../components/SideNavbar";
-import './MainLayout.css'
-
-function MainLayout() {
+export default function MainLayout() {
   return (
-
-    <div className="container">
-      {/* Side Navbar */}
-      <SideNavbar/>
-
-      {/* Page content */}
-      <div className="page">
-        <Outlet/>
-      </div>
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <main
+        className={cn(
+          "flex-1 transition-all duration-200",
+          "ml-[64px] lg:ml-[240px]"
+        )}
+      >
+        <div className="p-6 lg:p-8">
+          <Outlet />
+        </div>
+      </main>
     </div>
-
   );
 }
-
-export default MainLayout;

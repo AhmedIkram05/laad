@@ -28,7 +28,6 @@ function SourceList({sources}) {
     if (!sources || sources.length === 0) return null;
 
     const allAreExpanded = sources.length > 0 && sources.every((_, i) => expanded[i]);
-    const anyExpanded = sources.some((_, i) => expanded[i]);
 
     return (
         <div className="source-list">
