@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import {
@@ -22,19 +21,10 @@ const navItems = [
   { path: "/completed", icon: CheckCircle, label: "Completed" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ collapsed, onToggle }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  
-  const [collapsed, setCollapsed] = useState(() => {
-    const stored = localStorage.getItem("sidebar-collapsed");
-    return stored ? JSON.parse(stored) : false;
-  });
-
-  useEffect(() => {
-    localStorage.setItem("sidebar-collapsed", JSON.stringify(collapsed));
-  }, [collapsed]);
 
   const handleNav = (path) => {
     navigate(path);
@@ -60,7 +50,7 @@ export function Sidebar() {
           </span>
         )}
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={onToggle}
           className="p-1.5 rounded-md hover:bg-secondary transition-colors"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
