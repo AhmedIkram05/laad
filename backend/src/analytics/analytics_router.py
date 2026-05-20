@@ -9,7 +9,7 @@ from backend.src.database.connection import get_conn, release_conn
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="", tags=["analytics"])
+router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 
 @router.get("/events")
