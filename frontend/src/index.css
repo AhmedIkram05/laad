@@ -19,6 +19,8 @@
   --color-border: oklch(0.92 0.006 264.5);
   --color-input: oklch(0.92 0.006 264.5);
   --color-ring: oklch(0.54 0.245 262.9);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.13 0.028 261.7);
   
   --color-chart-1: oklch(0.54 0.245 262.9);
   --color-chart-2: oklch(0.55 0.245 292.7);
@@ -45,6 +47,8 @@
   --color-muted-foreground: oklch(0.72 0.012 264.7);
   --color-border: oklch(0.21 0.034 264.7);
   --color-input: oklch(0.21 0.034 264.7);
+  --color-popover: oklch(0.18 0.028 261.7);
+  --color-popover-foreground: oklch(0.98 0.005 264.5);
 }
 
 @layer base {
