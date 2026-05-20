@@ -4,9 +4,11 @@ import { Star, CheckCircle, Circle } from "lucide-react";
 import { toast } from "sonner";
 import { fetchAnomalies, fetchDetailedAnalysis, toggleComplete, toggleStar } from "../api/api";
 import BackButton from "../components/BackButton";
+import { Skeleton } from "../components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { formatUKDateTime } from "../lib/utils";
 
 const severityColors = {
   CRITICAL: "bg-destructive text-destructive-foreground",
@@ -74,7 +76,13 @@ function AnomalyData() {
     load();
   }, [anomaly_type]);
 
-  if (!data) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
+  if (!data) return (
+    <div className="space-y-4 p-4">
+      <Skeleton className="h-8 w-1/2" />
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-32 w-full" />
+    </div>
+  );
 
   const confidence = data.model_confidence_score ?? dbAnomaly?.model_confidence_score ?? null;
   const sources = data.sources_involved ?? dbAnomaly?.sources_involved ?? [];
@@ -148,7 +156,7 @@ function AnomalyData() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Time Received:</span>
-                <span>{data.Event_Time || "Time Unknown"}</span>
+                <span>{data.Event_Time ? formatUKDateTime(data.Event_Time) : "Time Unknown"}</span>
               </div>
               {dbAnomaly?.correlation_id && (
                 <div className="flex justify-between">

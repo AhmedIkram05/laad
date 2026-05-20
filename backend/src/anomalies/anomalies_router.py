@@ -37,7 +37,7 @@ def listAnomalies(
     detection_source: Optional[str] = Query(None, description="Filter by detection source: CLASSIFIER, ZSCORE, SIGNAL_CORRELATOR"),
     is_starred: Optional[int] = Query(None, description="Filter by starred state: 1=starred, 0=unstarred"),
     sort_by: Optional[str] = Query(default="score", description="Sort by: score (default, criticality), detected_at (most recent), severity"),
-    limit: int = Query(default=500, le=2000),
+    limit: int = Query(default=None, ge=0),
     offset: int = Query(default=0, ge=0),
     currentUser: dict = Depends(get_current_user),
     conn=Depends(get_db_connection)
@@ -294,10 +294,16 @@ def listAnomalies(
             END
         ) DESC, detected_at DESC"""
 
-    query = f"SELECT * FROM anomalies WHERE {where_sql} ORDER BY {order_clause} LIMIT %s OFFSET %s"
-    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(query, params + [limit, offset])
-        rows = cur.fetchall()
+    if limit is not None:
+        query = f"SELECT * FROM anomalies WHERE {where_sql} ORDER BY {order_clause} LIMIT %s OFFSET %s"
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, params + [limit, offset])
+            rows = cur.fetchall()
+    else:
+        query = f"SELECT * FROM anomalies WHERE {where_sql} ORDER BY {order_clause} OFFSET %s"
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, params + [offset])
+            rows = cur.fetchall()
     return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
 
 

@@ -1,20 +1,34 @@
 import { Search, X } from "lucide-react";
 import { Input } from "./ui/input";
+import { useGlobalSearch } from "./SearchContext";
 
-export default function SearchBar({ search, setSearch }) {
+export default function SearchBar({ onQueryChange }) {
+  const { query, setQuery } = useGlobalSearch();
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    if (onQueryChange) onQueryChange(val);
+  };
+
+  const handleClear = () => {
+    setQuery("");
+    if (onQueryChange) onQueryChange("");
+  };
+
   return (
     <div className="relative">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <Input
         type="text"
-        placeholder="Search by title..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search anomalies, ATMs, types, severities..."
+        value={query}
+        onChange={handleChange}
         className="pl-9 pr-9"
       />
-      {search && (
+      {query && (
         <button
-          onClick={() => setSearch("")}
+          onClick={handleClear}
           className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-md hover:bg-secondary transition-colors"
           aria-label="Clear search"
         >

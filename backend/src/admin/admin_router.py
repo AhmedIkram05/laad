@@ -10,7 +10,7 @@ from pydantic import BaseModel
 import psycopg2
 
 from backend.src.auth.auth_router import get_db_connection, require_admin
-from backend.src.admin.cleanup import run_wipe
+from backend.src.admin.cleanup import run_wipe, run_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,44 @@ def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connec
     return {"retention_days": request.days, "message": "Retention period updated"}
 
 
+@router.get("/ingestion-errors", dependencies=[Depends(require_admin)])
+def get_ingestion_errors(limit: int = 100, offset: int = 0, conn=Depends(get_db_connection)):
+    """Admin only. Returns ingestion error records for review."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, timestamp, source, error_detail, raw_input FROM ingestion_errors ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+            (limit, offset),
+        )
+        rows = cur.fetchall()
+        cur.execute("SELECT COUNT(*) FROM ingestion_errors")
+        total = cur.fetchone()[0]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "data": [
+            {
+                "id": r[0],
+                "timestamp": r[1],
+                "source": r[2],
+                "error_detail": r[3],
+                "raw_input": r[4],
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.delete("/ingestion-errors", dependencies=[Depends(require_admin)])
+def clear_ingestion_errors(conn=Depends(get_db_connection)):
+    """Admin only. Deletes all ingestion error records."""
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM ingestion_errors")
+        deleted = cur.rowcount
+    conn.commit()
+    return {"deleted": deleted}
+
+
 @router.post("/cleanup/wipe", dependencies=[Depends(require_admin)])
 def trigger_wipe():
     """Admin only. Permanently deletes all rows from cleanup tables and VACUUMs.
@@ -68,6 +106,12 @@ def trigger_wipe():
     This is a destructive operation. Only admin access is allowed.
     """
     return run_wipe()
+
+
+@router.post("/cleanup/run", dependencies=[Depends(require_admin)])
+def trigger_cleanup():
+    """Admin only. Runs retention-based cleanup, deleting records older than the configured retention period."""
+    return run_cleanup()
 
 
 @router.post("/users", dependencies=[Depends(require_admin)], status_code=201)
