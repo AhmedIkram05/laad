@@ -1,24 +1,12 @@
-/*
- * Completed Page
- * --------------------
- * Displays all active anomalies (in the "Completed" state) in a list.
- */
-
-/* Internal Imports */
 import AnomalyListPage from "../components/AnomalyListPage";
 
-const completedFilter = (a) => a.is_active === 0;
-
 function Completed() {
-    return(
-
-    <AnomalyListPage
-      title="Completed Anomalies"
-      filter={completedFilter}
+  return (
+    <AnomalyListPage 
+      title="Completed Anomalies" 
+      subtitle="Resolved and completed anomalies that have been addressed."
       isActive={0}
-      subtitle="Anomalies marked as resolved."
     />
-
   );
 }
 

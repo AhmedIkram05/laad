@@ -1,34 +1,26 @@
-/*
- * SearchBar Component
- * --------------------
- * A search bar to apply filtering to anomaly lists.
- */
+import { Search, X } from "lucide-react";
+import { Input } from "./ui/input";
 
-/* External Libraries */
-import { GoSearch } from "react-icons/go";
-
-/* Internal Imports */
-import './SearchBar.css';
-
-function SearchBar({ search, setSearch }) {
-
+export default function SearchBar({ search, setSearch }) {
   return (
-    <div className="barContainer">
-
-      {/* Search Bar */}
-      <div className="searchContainer">
-        <GoSearch className="searchIcon" />
-        <input
-          type="text"
-          placeholder="Search by title..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="searchInput"
-        />
-      </div>
-
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <Input
+        type="text"
+        placeholder="Search by title..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="pl-9 pr-9"
+      />
+      {search && (
+        <button
+          onClick={() => setSearch("")}
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-md hover:bg-secondary transition-colors"
+          aria-label="Clear search"
+        >
+          <X className="w-4 h-4 text-muted-foreground" />
+        </button>
+      )}
     </div>
   );
 }
-
-export default SearchBar;
