@@ -1,16 +1,17 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     server: {
         proxy: {
-            "/api": "http://127.0.0.1:8000",
+            "/api/rag": "http://127.0.0.1:8000",
+            "/api": {
+                target: "http://127.0.0.1:8000",
+                rewrite: (path) => path.replace(/^\/api/, ""),
+            },
             "/auth": "http://127.0.0.1:8000",
-            "/anomalies": "http://127.0.0.1:8000",
-            "/analysis": "http://127.0.0.1:8000",
-            "/metrics": "http://127.0.0.1:8000",
-            "/events": "http://127.0.0.1:8000",
         },
         fallback: "index.html",
     },

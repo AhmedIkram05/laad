@@ -58,24 +58,24 @@ export const fetchAnomalies = (is_active = 1, hours = 24, sort_by = 'score', det
     if (severity) {
         params += `&severity=${encodeURIComponent(severity)}`;
     }
-    return request(`/anomalies?${params}`);
+    return request(`/api/anomalies?${params}`);
 };
 
 // Fetches analysis data for a specific anomaly
 export const fetchDetailedAnalysis = (anomaly_type) =>
-    request(`/analysis/detailed?Anomaly=${anomaly_type}`);
+    request(`/api/analysis/detailed?Anomaly=${anomaly_type}`);
 
 // Toggles the "Starred" state of an anomaly
 export const toggleStar = (id) =>
-    request(`/anomalies/${id}/star`, {method: "PATCH",});
+    request(`/api/anomalies/${id}/star`, {method: "PATCH",});
 
 // Toggles the "Completed" state of an anomaly
 export const toggleComplete = (id) =>
-    request(`/anomalies/${id}/resolve`, {method: "PATCH",});
+    request(`/api/anomalies/${id}/resolve`, {method: "PATCH",});
 
 // Fetches anomaly metrics for dashboard analytics
 export const fetchMetrics = (hours = 24, bucket_minutes = 60) =>
-    request(`/analysis/metrics?hours=${hours}&bucket_minutes=${bucket_minutes}`);
+    request(`/api/analysis/metrics?hours=${hours}&bucket_minutes=${bucket_minutes}`);
 
 // RAG Diagnostic Assistant API
 export const queryRAG = (query, atm_id = null, top_k = 3, include_uncertainty = true) =>

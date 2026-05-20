@@ -1,15 +1,12 @@
-/*
- * Dashboard Page
- * --------------------
- * Displays all anomalies in a list with analytics, timeline, and log stream.
- */
-
-/* Internal Imports */
 import AnomalyListPage from "../components/AnomalyListPage";
 
 function Dashboard() {
   return (
-    <AnomalyListPage title="Anomalies Detected" />
+    <AnomalyListPage 
+      title="Anomalies Detected" 
+      subtitle="Detected anomalies across ATM and server systems, prioritised by severity."
+      isActive={1}
+    />
   );
 }
 

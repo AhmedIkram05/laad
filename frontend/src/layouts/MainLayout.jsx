@@ -1,30 +1,30 @@
-/*
- * Main Layout
- * --------------------
- * A layout applied to all main pages.
- */
-
-/* External Libraries */
+import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
+import { Sidebar } from "../components/Sidebar";
+import { SearchProvider } from "../components/GlobalSearch";
 
-/* Internal Components */
-import SideNavbar from "../components/SideNavbar";
-import './MainLayout.css'
+export default function MainLayout() {
+  const [collapsed, setCollapsed] = useState(() => {
+    const stored = localStorage.getItem("sidebar-collapsed");
+    return stored ? JSON.parse(stored) : false;
+  });
 
-function MainLayout() {
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", JSON.stringify(collapsed));
+  }, [collapsed]);
+
   return (
-
-    <div className="container">
-      {/* Side Navbar */}
-      <SideNavbar/>
-
-      {/* Page content */}
-      <div className="page">
-        <Outlet/>
+    <SearchProvider>
+      <div className="flex min-h-screen bg-background">
+        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+        <main
+          className={`flex-1 transition-all duration-200 ${collapsed ? "ml-16" : "ml-60"}`}
+        >
+          <div className="p-6 lg:p-8">
+            <Outlet />
+          </div>
+        </main>
       </div>
-    </div>
-
+    </SearchProvider>
   );
 }
-
-export default MainLayout;

@@ -42,7 +42,7 @@
 | **RAG Response Time** | <10s (uncached), <100ms (cached) |
 | **Calibration** | Platt scaling, ECE < 0.10 target, 20-sample minimum |
 | **MLflow Tracking** | All training runs + inference cycles logged, 2 registered models with "champion" alias |
-| **Frontend Pages** | 10 pages, 11 components (React 19 + Vite 8 + Recharts) |
+| **Frontend Pages** | 10 pages (React 19 + Vite 8 + Tailwind v4 + shadcn/ui components) |
 | **Model Training** | Manual retraining via `make retrain` (live) or `make retrain-offline` (offline dataset) |
 
 ---
@@ -131,7 +131,7 @@ flowchart TD
 
   subgraph Serving ["Serving Layer"]
     API["FastAPI REST API\n20+ endpoints\n6 routers"]
-    UI["React 19 + Vite 8\n10 pages, 11 components"]
+    UI["React 19 + Vite 8\n10 pages, Tailwind v4, shadcn/ui"]
     RAG["RAG Diagnostic Assistant\nGemini + Groq fallback\nUncertainty + Calibration"]
   end
 
@@ -1242,38 +1242,46 @@ Log data stored in ChromaDB never leaves the network — only retrieved log cont
 
 ## Frontend
 
-React 19 + Vite 8 dashboard with 10 pages and 11 components.
+React 19 + Vite 8 dashboard with 10 pages, built with Tailwind CSS v4 and shadcn/ui-style components.
 
 ### Pages
 
 | Page | Route | Description |
 |---|---|---|
 | Dashboard | `/dashboard` | Main anomaly list with criticality ranking, severity badges, ATM status |
-| Analytics | `/analytics` | Time-series charts, anomaly type distribution, metrics overview |
-| Starred | `/starred` | Filtered view of starred anomalies |
-| Completed | `/completed` | Filtered view of resolved anomalies |
+| Analytics | `/analytics` | Event and metrics timeline (placeholder for future charts) |
+| Starred | `/starred` | Filtered view of starred anomalies (is_starred=1) |
+| Completed | `/completed` | Filtered view of resolved anomalies (is_active=0) |
 | Anomaly Data | `/data/:anomaly_type` | Detailed view for specific anomaly type |
-| Diagnostic | `/diagnostic` | RAG chat interface with uncertainty badges, stats bar, recalibrate button |
-| RAG History | `/rag-history` | Query history with pagination, confidence scores |
+| Diagnostic | `/diagnostic` | RAG chat interface with Chat/History tabs |
 | Login | `/login` | Authentication |
 | Signup | `/signup` | Registration |
-| Admin Settings | `/admin/settings` | Retention config, cleanup trigger, user management (admin only) |
+| Admin Settings | `/admin/settings` | Retention config, cleanup trigger (admin only) |
 
 ### Components
 
 | Component | Purpose |
 |---|---|
-| `SideNavbar` | Primary navigation with active state highlighting |
+| `MainLayout` | Layout wrapper with collapsible sidebar |
 | `AnomalyCard` | Individual anomaly display with severity badge, toggle-complete, star |
-| `AnomalyListPage` | Reusable list layout for starred/completed pages |
+| `AnomalyListPage` | Reusable list layout with pagination, filters, sorting |
 | `SearchBar` | Search by title |
-| `BackButton` | Navigation helper |
+| `ThemeProvider` | Dark mode theme context |
 | `ProtectedRoute` | Auth guard for protected pages |
 | `AdminRoute` | Admin-only route guard |
-| `UncertaintyBadge` | RAG confidence level display (HIGH/MEDIUM/LOW with color coding) |
-| `SourceList` | Retrieved source chunks display |
-| `StarIcon` | Star/unstar toggle |
-| `MainLayout` | Layout wrapper with sidebar |
+
+### UI Components (shadcn/ui-style)
+
+| Component | Purpose |
+|---|---|
+| `ui/button` | Button with variants |
+| `ui/card` | Card container |
+| `ui/input` | Text input |
+| `ui/label` | Form label |
+| `ui/badge` | Severity/status badges |
+| `ui/select` | Dropdown selects |
+| `ui/skeleton` | Loading placeholders |
+| `ui/switch` | Toggle switch |
 
 ### Libraries
 
@@ -1281,9 +1289,11 @@ React 19 + Vite 8 dashboard with 10 pages and 11 components.
 |---|---|---|
 | `react` | 19.2.4 | UI framework |
 | `react-router-dom` | 7.13.2 | Client-side routing |
-| `recharts` | 3.8.1 | Time-series charts, bar charts |
+| `tailwindcss` | 4.3.0 | CSS framework |
 | `lucide-react` | 1.7.0 | Icon set |
-| `react-icons` | 5.6.0 | Additional icons |
+| `sonner` | 2.0.7 | Toast notifications |
+| `react-markdown` | latest | Markdown rendering for RAG responses |
+| `remark-gfm` | latest | GitHub Flavored Markdown support |
 | `vite` | 8.0.1 | Build tool, dev server |
 
 ### Dashboard Features
@@ -1294,7 +1304,7 @@ The main dashboard displays all anomalies with criticality-based ordering and fi
 
 | Option | Description |
 |---|---|
-| **Criticality Score** (default) | Ranked by operation gravity (A1=7 → A7=1, UNKNOWN=0) + severity (CRITICAL=3 → LOW=0) + age bonus (48h+=3, 24h+=2, 6h+=1) |
+| **Criticality Score** (default) | Ranked by operation gravity (A1=7 → A7=1, UNKNOWN=0) + severity (CRITICAL=3 → LOW=0) + age bonus |
 | **Most Recent** | Chronological order (newest first) |
 | **Severity** | CRITICAL → HIGH → MAJOR → LOW |
 
@@ -1308,11 +1318,17 @@ The main dashboard displays all anomalies with criticality-based ordering and fi
 | **Severity** | All Severities, CRITICAL, HIGH, MAJOR, LOW | Filter by severity level |
 | **Search** | Title | Text search across anomaly titles |
 
-**Key Changes:**
-- Default limit increased from 100 to 500 (max 2000) — all anomalies now visible
-- Default sort changed from "Most Recent" to "Criticality Score"
-- UNKNOWN anomalies ranked at bottom (score=0 + severity + age)
-- Added ATM ID, Anomaly Type, and Severity dropdown filters
+**Key Features:**
+- 20 items per page with pagination
+- 30-second auto-refresh
+- Star toggle per anomaly
+- Complete toggle to mark resolved
+- Theme: System preference (light/dark) with no manual toggle
+- Sidebar: Collapsible with dynamic main content expansion
+- Loading states: Skeleton components throughout
+- Diagnostic Assistant: Full-height chat, markdown rendering, animated typing indicator, confidence badges, collapsible sources
+- Form UX: Example-based placeholders (e.g., "e.g. admin")
+- Unlimited anomalies (no 500 limit)
 
 ---
 
@@ -1638,7 +1654,7 @@ make rebuild
 | Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain on startup (if models missing/corrupted), inference logged to MLflow. Detection triggered by Kafka consumer every 30s with 5-min dedup window |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
-| Frontend | React 19 + Vite 8 | 10 pages, 11 components, Recharts for visualization, React Router for navigation |
+| Frontend | React 19 + Vite 8 | 10 pages, Tailwind v4, shadcn/ui, sonner, react-markdown, React Router, system theme, dynamic sidebar |
 | RAG | OpenRouter + ChromaDB | Uncertainty-aware RAG with self-consistency sampling (1 sample), verbalized confidence (30%), response variance (20%), retrieval confidence fallback, Platt scaling calibration. Graceful degradation when LLM unavailable. ChromaDB populated by Kafka consumer. Per-user rate limiting (10 req/min), retry with Retry-After, 90s timeouts |
 | Testing | Pytest | 281 tests across 39 files, 9 tiers, isolated test DB in Docker |
 

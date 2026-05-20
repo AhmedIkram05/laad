@@ -1,274 +1,207 @@
-/*
- * AnomalyData Page
- * --------------------
- * Displays detailed analysis for a single anomaly, including detection
- * source, confidence score, sources involved, and recommended action.
- */
-
-/* External Libraries */
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { GoStar, GoCheckCircle } from "react-icons/go";
-
-/* Internal Imports */
+import { Star, CheckCircle, Circle } from "lucide-react";
+import { toast } from "sonner";
 import { fetchAnomalies, fetchDetailedAnalysis, toggleComplete, toggleStar } from "../api/api";
 import BackButton from "../components/BackButton";
-import "./AnomalyData.css";
+import { Skeleton } from "../components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { formatUKDateTime } from "../lib/utils";
 
-const SOURCE_LABELS = {
-    HEURISTIC: { label: "Heuristic", color: "#2563eb" },
-    RULES:     { label: "Rule-Based", color: "#7c3aed" },
-    ML:        { label: "ML Detected", color: "#059669" },
+const severityColors = {
+  CRITICAL: "bg-destructive text-destructive-foreground",
+  MAJOR: "bg-amber-500 text-white",
+  HIGH: "bg-blue-500 text-white",
+  LOW: "bg-muted text-muted-foreground",
 };
 
-function SectionBox({ title, children, rightSlot }) {
-    return (
-        <section className="anomaly-section-box">
-            <div className="anomaly-section-box__header">
-                <h2 className="anomaly-section-box__title">{title}</h2>
-                {rightSlot ? <div>{rightSlot}</div> : null}
-            </div>
-            <div className="anomaly-section-box__body">{children}</div>
-        </section>
-    );
-}
-
-function ActionButton({ label, primary = false, completed = false, icon, onClick }) {
-    return (
-        <button
-            onClick={onClick}
-            className={`anomaly-action-button
-                ${primary ? "anomaly-action-button--primary" : "anomaly-action-button--secondary"}
-                ${completed ? "anomaly-action-button--completed" : ""}`}
-        >
-            {icon && <span className="buttonIcon">{icon}</span>}
-            <span>{label}</span>
-        </button>
-    );
-}
-
-function DetectionSourceBadge({ source }) {
-    const info = SOURCE_LABELS[source] || { label: source || "Unknown", color: "#6b7280" };
-    return (
-        <span
-            className="detection-source-badge"
-            style={{ backgroundColor: info.color + "22", color: info.color, borderColor: info.color }}
-        >
-            {info.label}
-        </span>
-    );
-}
-
-function ConfidenceBar({ score }) {
-    if (score === null || score === undefined) return null;
-    const pct = Math.round((score || 0) * 100);
-    const color = pct >= 80 ? "#059669" : pct >= 60 ? "#d97706" : "#dc2626";
-    return (
-        <div className="confidence-bar-container">
-            <div className="confidence-bar-labels">
-                <span className="confidence-label">Confidence</span>
-                <span className="confidence-pct">{pct}%</span>
-            </div>
-            <div className="confidence-bar-track">
-                <div
-                    className="confidence-bar-fill"
-                    style={{ width: `${pct}%`, backgroundColor: color }}
-                />
-            </div>
-        </div>
-    );
-}
-
-function SourcesChips({ sources }) {
-    if (!sources || (Array.isArray(sources) && sources.length === 0)) return null;
-    const list = Array.isArray(sources) ? sources : [];
-    return (
-        <div className="sources-chips">
-            <span className="sources-label">Sources:</span>
-            {list.map((s) => (
-                <span key={s} className="source-chip">{s}</span>
-            ))}
-        </div>
-    );
-}
-
-function formatEventTime(range) {
-    if (!range) return "Unknown";
-    const [startStr] = range.split(" - ");
-    const start = new Date(startStr);
-    const dateOptions = { day: "numeric", month: "short", year: "numeric" };
-    const timeOptions = { hour: "2-digit", minute: "2-digit", hour12: false };
-    const date = start.toLocaleDateString("en-GB", dateOptions);
-    const time = start.toLocaleTimeString("en-GB", timeOptions);
-    return `${date}, ${time}`;
-}
-
 function AnomalyData() {
-    const { anomaly_type } = useParams();
-    const [data, setData] = useState(null);
-    const [isCompleted, setIsCompleted] = useState(true);
-    const [isStarred, setIsStarred] = useState(false);
-    const [dbAnomaly, setDbAnomaly] = useState(null);
+  const { anomaly_type } = useParams();
+  const [data, setData] = useState(null);
+  const [isCompleted, setIsCompleted] = useState(true);
+  const [isStarred, setIsStarred] = useState(false);
+  const [dbAnomaly, setDbAnomaly] = useState(null);
 
-    const handleComplete = async () => {
-        if (!dbAnomaly) return;
-        try {
-            await toggleComplete(dbAnomaly.id);
-            setIsCompleted(prev => !prev);
-        } catch (err) {
-            console.error("Failed to resolve anomaly", err);
+  const handleComplete = async () => {
+    if (!dbAnomaly) return;
+    try {
+      await toggleComplete(dbAnomaly.id);
+      setIsCompleted(prev => !prev);
+      toast.success(isCompleted ? "Marked as active" : "Marked as completed");
+    } catch (err) {
+      console.error("Failed to resolve anomaly", err);
+      toast.error("Failed to update status");
+    }
+  };
+
+  const handleStar = async () => {
+    if (!dbAnomaly) return;
+    try {
+      await toggleStar(dbAnomaly.id);
+      setIsStarred(prev => !prev);
+    } catch (err) {
+      console.error("Failed to toggle star", err);
+    }
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [analysisRes, anomaliesRes] = await Promise.all([
+          fetchDetailedAnalysis(anomaly_type),
+          fetchAnomalies(),
+        ]);
+
+        const analysis = analysisRes.data.find(
+          (item) => item.Anomaly === anomaly_type
+        ) || analysisRes.data[0];
+
+        const matchedAnomaly = anomaliesRes.data.find(
+          (a) => a.anomaly_type === anomaly_type
+        );
+
+        if (analysis) setData(analysis);
+        if (matchedAnomaly) {
+          setIsStarred(matchedAnomaly.is_starred === 1);
+          setIsCompleted(matchedAnomaly.is_active === 0);
+          setDbAnomaly(matchedAnomaly);
         }
+      } catch (err) {
+        console.error("Failed to fetch data", err);
+      }
     };
 
-    const handleStar = async () => {
-        if (!dbAnomaly) return;
-        try {
-            await toggleStar(dbAnomaly.id);
-            setIsStarred(prev => !prev);
-        } catch (err) {
-            console.error("Failed to toggle star", err);
-        }
-    };
+    load();
+  }, [anomaly_type]);
 
-    useEffect(() => {
-        const load = async () => {
-            try {
-                const [analysisRes, anomaliesRes] = await Promise.all([
-                    fetchDetailedAnalysis(anomaly_type),
-                    fetchAnomalies(),
-                ]);
+  if (!data) return (
+    <div className="space-y-4 p-4">
+      <Skeleton className="h-8 w-1/2" />
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-32 w-full" />
+    </div>
+  );
 
-                const analysis = analysisRes.data.find(
-                    (item) => item.Anomaly === anomaly_type
-                ) || analysisRes.data[0];
+  const confidence = data.model_confidence_score ?? dbAnomaly?.model_confidence_score ?? null;
+  const sources = data.sources_involved ?? dbAnomaly?.sources_involved ?? [];
+  const recommendedAction = data.recommended_action || data.Recommended_Action;
 
-                const matchedAnomaly = anomaliesRes.data.find(
-                    (a) => a.anomaly_type === anomaly_type
-                );
-
-                if (analysis) {
-                    setData(analysis);
-                }
-
-                if (matchedAnomaly) {
-                    setIsStarred(matchedAnomaly.is_starred === 1);
-                    setIsCompleted(matchedAnomaly.is_active === 0);
-                    setDbAnomaly(matchedAnomaly);
-                }
-            } catch (err) {
-                console.error("Failed to fetch data", err);
-            }
-        };
-
-        load();
-    }, [anomaly_type]);
-
-    if (!data) return <p>Loading...</p>;
-
-    const confidence = data.model_confidence_score ?? dbAnomaly?.model_confidence_score ?? null;
-    const detectionSource = data.detection_source ?? dbAnomaly?.explanation ?
-        (() => {
-            try {
-                const exp = typeof dbAnomaly.explanation === "string" ?
-                    JSON.parse(dbAnomaly.explanation) : dbAnomaly.explanation;
-                return exp?.source || null;
-            } catch { return null; }
-        })() : null;
-    const sources = data.sources_involved ?? dbAnomaly?.sources_involved ?? [];
-    const recommendedAction = data.recommended_action || data.Recommended_Action;
-
-    return (
-        <div className="anomaly-page">
-            <div className="anomaly-page__inner">
-
-                <div className="anomaly-page__header">
-                    <div className="back-button-container"><BackButton/></div>
-
-                    <div className="anomaly-page__text">
-                        <div className="anomaly-page__title-row">
-                            <h1 className="anomaly-page__title">{data.Title || "Title Unknown"}</h1>
-                            <DetectionSourceBadge source={detectionSource} />
-                        </div>
-                        <p className="anomaly-page__subtitle">
-                            Review analysis, understand the ATM issue, and follow the recommended actions.
-                        </p>
-                    </div>
-
-                    <div className="anomaly-page__button-group">
-                        <ActionButton
-                            label={isStarred ? "Starred" : "Mark as Starred"}
-                            icon={<GoStar />}
-                            primary={!isStarred}
-                            completed={isStarred}
-                            onClick={handleStar}
-                        />
-                        <ActionButton
-                            label={isCompleted ? "Completed" : "Mark as Completed"}
-                            icon={<GoCheckCircle />}
-                            primary={!isCompleted}
-                            completed={isCompleted}
-                            onClick={handleComplete}
-                        />
-                    </div>
-                </div>
-
-                <div className="anomaly-page__main-grid">
-                    <div className="anomaly-page__left-column">
-                        <SectionBox title="Root Cause">
-                            <p>{data.root_cause || "Root Cause Unknown."}</p>
-                        </SectionBox>
-
-                        <SectionBox title="Operation Impact">
-                            <p>{data.operations || "Operation Impact Unknown."}</p>
-                        </SectionBox>
-
-                        <SectionBox
-                            title="Recommended Action"
-                            rightSlot={
-                                recommendedAction ? (
-                                    <span className="recommended-action-badge">Actionable</span>
-                                ) : null
-                            }
-                        >
-                            <p className="recommended-action-text">
-                                {recommendedAction || "Recommended Action Unknown."}
-                            </p>
-                        </SectionBox>
-                    </div>
-
-                    <div className="anomaly-page__right-column">
-                        <SectionBox title="Details">
-                            <div className="detail-list">
-                                <div className="detail-row">
-                                    <p><strong>ATM / Server:</strong></p>
-                                    <p>{data.ATM_ID ?? dbAnomaly?.atm_id ?? "SERVER"}</p>
-                                </div>
-                                <div className="detail-row">
-                                    <p><strong>Severity:</strong></p>
-                                    <p><span className="anomaly-status-pill">{data.Severity || "Unknown"}</span></p>
-                                </div>
-                                <div className="detail-row">
-                                    <p><strong>Time Received:</strong></p>
-                                    <p>{formatEventTime(data.Event_Time) || "Time Unknown"}</p>
-                                </div>
-                                {dbAnomaly?.correlation_id && (
-                                    <div className="detail-row">
-                                        <p><strong>Correlation ID:</strong></p>
-                                        <p className="correlation-id">{dbAnomaly.correlation_id}</p>
-                                    </div>
-                                )}
-                            </div>
-                        </SectionBox>
-
-                        <SectionBox title="Detection">
-                            <ConfidenceBar score={confidence} />
-                            <SourcesChips sources={sources} />
-                        </SectionBox>
-                    </div>
-                </div>
-            </div>
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <BackButton />
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold">{data.Title || "Title Unknown"}</h1>
+          <p className="text-muted-foreground">Review analysis, understand the ATM issue, and follow the recommended actions.</p>
         </div>
-    );
+      </div>
+
+      <div className="flex gap-3">
+        <Button variant={isStarred ? "default" : "outline"} onClick={handleStar}>
+          <Star className={`w-4 h-4 mr-2 ${isStarred ? "fill-current" : ""}`} />
+          {isStarred ? "Starred" : "Star"}
+        </Button>
+        <Button variant={isCompleted ? "secondary" : "default"} onClick={handleComplete}>
+          {isCompleted ? <CheckCircle className="w-4 h-4 mr-2" /> : <Circle className="w-4 h-4 mr-2" />}
+          {isCompleted ? "Completed" : "Mark Complete"}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Root Cause</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">{data.root_cause || "Root Cause Unknown."}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Operation Impact</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">{data.operations || "Operation Impact Unknown."}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">Recommended Action</CardTitle>
+              {recommendedAction && <Badge>Actionable</Badge>}
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">{recommendedAction || "Recommended Action Unknown."}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ATM / Server:</span>
+                <span className="font-mono">{data.ATM_ID ?? dbAnomaly?.atm_id ?? "SERVER"}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Severity:</span>
+                <Badge className={severityColors[data.Severity] || ""}>{data.Severity || "Unknown"}</Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Time Received:</span>
+                <span>{data.Event_Time ? formatUKDateTime(data.Event_Time) : "Time Unknown"}</span>
+              </div>
+              {dbAnomaly?.correlation_id && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Correlation ID:</span>
+                  <span className="font-mono text-sm">{dbAnomaly.correlation_id}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Detection</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {confidence !== null && (
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-muted-foreground">Confidence</span>
+                    <span className="font-mono">{Math.round(confidence * 100)}%</span>
+                  </div>
+                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full ${confidence >= 0.8 ? "bg-emerald-500" : confidence >= 0.6 ? "bg-amber-500" : "bg-red-500"}`}
+                      style={{ width: `${confidence * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {sources.length > 0 && (
+                <div>
+                  <span className="text-sm text-muted-foreground block mb-2">Sources:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {sources.map((s) => (
+                      <Badge key={s} variant="secondary">{s}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default AnomalyData;

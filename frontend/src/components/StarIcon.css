@@ -1,8 +1,0 @@
-.starButton {
-    height: 45px;
-    width: 45px;
-    font-size: x-large;
-    border: none;
-    background-color: var(--bg-primary);
-    cursor: pointer;
-}
