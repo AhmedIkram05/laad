@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -48,7 +48,6 @@ function Analytics() {
   const [metricsData, setMetricsData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [retryCount, setRetryCount] = useState(0);
   const [eventSources, setEventSources] = useState(DEFAULT_EVENT_SOURCES);
   const [metricSources, setMetricSources] = useState(DEFAULT_METRIC_SOURCES);
   const [selectedMetric, setSelectedMetric] = useState("jvm_memory_used_bytes");
@@ -58,6 +57,9 @@ function Analytics() {
     { value: "cpu_usage_percent", label: "OS CPU" },
     { value: "container_cpu_usage", label: "Container CPU" }
   ]);
+
+  const retryTimeoutRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   const fetchAvailableMetrics = useCallback(async () => {
     try {
@@ -76,7 +78,36 @@ function Analytics() {
     }
   }, []);
 
+  const fetchWithRetry = useCallback(async (url, maxRetries = 3) => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch(url, { headers: getAuthHeaders() });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        const data = await res.json();
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        return data;
+      } catch (err) {
+        if (err.message.includes("ERR_BLOCKED_BY_CLIENT") || err.message.includes("Failed to fetch")) {
+          throw new Error("Request blocked by browser extension or network issue. Please disable ad blockers and try again.");
+        }
+        if (attempt === maxRetries) {
+          throw err;
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+      }
+    }
+  }, []);
+
   const fetchEventsData = useCallback(async () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -85,21 +116,10 @@ function Analytics() {
         .map(([k]) => k)
         .join(",");
       
-      const res = await fetch(
-        `/api/analytics/events?hours=${hours}&bucket_minutes=${bucketMinutes}${enabledSources ? `&sources=${enabledSources}` : ""}`,
-        { headers: getAuthHeaders() }
-      );
+      const url = `/api/analytics/events?hours=${hours}&bucket_minutes=${bucketMinutes}${enabledSources ? `&sources=${enabledSources}` : ""}`;
+      const data = await fetchWithRetry(url);
       
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      
-      const data = await res.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      if (data.time_series) {
+      if (isMountedRef.current && data.time_series) {
         const processed = data.time_series.map(bucket => {
           const entry = { time: bucket.bucket_start };
           EVENT_SOURCES.forEach(source => {
@@ -109,23 +129,25 @@ function Analytics() {
           return entry;
         });
         setEventsData(processed);
-        setRetryCount(0);
       }
     } catch (err) {
-      console.error("Failed to fetch events:", err);
-      setError(err.message);
-      if (retryCount < 3) {
-        setTimeout(() => {
-          setRetryCount(prev => prev + 1);
-          fetchEventsData();
-        }, 2000 * (retryCount + 1));
+      if (isMountedRef.current) {
+        console.error("Failed to fetch events:", err);
+        setError(err.message);
       }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  }, [hours, bucketMinutes, eventSources, retryCount]);
+  }, [hours, bucketMinutes, eventSources, fetchWithRetry]);
 
   const fetchMetricsData = useCallback(async () => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -134,21 +156,10 @@ function Analytics() {
         .map(([k]) => k)
         .join(",");
       
-      const res = await fetch(
-        `/api/analytics/metrics?hours=${hours}&bucket_minutes=${bucketMinutes}${enabledSources ? `&sources=${enabledSources}` : ""}`,
-        { headers: getAuthHeaders() }
-      );
+      const url = `/api/analytics/metrics?hours=${hours}&bucket_minutes=${bucketMinutes}${enabledSources ? `&sources=${enabledSources}` : ""}`;
+      const data = await fetchWithRetry(url);
       
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      
-      const data = await res.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      if (data.time_series) {
+      if (isMountedRef.current && data.time_series) {
         const processed = data.time_series.map(bucket => {
           const entry = { time: bucket.bucket_start };
           METRIC_SOURCES.forEach(source => {
@@ -161,24 +172,28 @@ function Analytics() {
           return entry;
         });
         setMetricsData(processed);
-        setRetryCount(0);
       }
     } catch (err) {
-      console.error("Failed to fetch metrics:", err);
-      setError(err.message);
-      if (retryCount < 3) {
-        setTimeout(() => {
-          setRetryCount(prev => prev + 1);
-          fetchMetricsData();
-        }, 2000 * (retryCount + 1));
+      if (isMountedRef.current) {
+        console.error("Failed to fetch metrics:", err);
+        setError(err.message);
       }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  }, [hours, bucketMinutes, metricSources, selectedMetric, retryCount]);
+  }, [hours, bucketMinutes, metricSources, selectedMetric, fetchWithRetry]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     fetchAvailableMetrics();
+    return () => {
+      isMountedRef.current = false;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+    };
   }, [fetchAvailableMetrics]);
 
   useEffect(() => {
@@ -187,7 +202,7 @@ function Analytics() {
     } else {
       fetchMetricsData();
     }
-  }, [activeTab, hours, bucketMinutes]);
+  }, [activeTab, hours, bucketMinutes, fetchEventsData, fetchMetricsData]);
 
   useEffect(() => {
     if (activeTab === "events") {
@@ -195,7 +210,7 @@ function Analytics() {
     } else {
       fetchMetricsData();
     }
-  }, [activeTab === "events" ? eventSources : metricSources, selectedMetric]);
+  }, [activeTab, eventSources, metricSources, selectedMetric, fetchEventsData, fetchMetricsData]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -289,7 +304,7 @@ function Analytics() {
           <AlertCircle size={24} />
           <p>{error}</p>
           <button className="analyticsPage__retryBtn" onClick={() => {
-            setRetryCount(0);
+            setError(null);
             if (activeTab === "events") fetchEventsData();
             else fetchMetricsData();
           }}>
