@@ -122,8 +122,17 @@ useEffect(() => {
 
     // Filters anomalies based on search input
     const searchedAnomalies = anomalies.filter((a) => {
-        const value = String(a[filterBy] ?? "").toLowerCase();
-        return value.includes(search.toLowerCase());
+        if (!search) return true;
+        const q = search.toLowerCase();
+        const searchable = [
+            a.title,
+            a.anomaly_type,
+            a.atm_id,
+            a.severity,
+            a.description,
+            a.recommended_action,
+        ].filter(Boolean).join(" ").toLowerCase();
+        return searchable.includes(q);
     });
 
     // Time range options

@@ -228,3 +228,27 @@ def get_metrics_timeline(
         return {"time_series": [], "error": str(e)}
     finally:
         release_conn(conn)
+
+
+@router.get("/metrics/list")
+def get_available_metrics():
+    """
+    Returns list of unique metric names available in the database.
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT DISTINCT metric_name 
+                FROM metrics 
+                ORDER BY metric_name
+            """)
+            rows = cur.fetchall()
+            return {
+                "metrics": [row['metric_name'] for row in rows]
+            }
+    except Exception as e:
+        logger.error("Metrics list endpoint failed: %s", e, exc_info=True)
+        return {"metrics": [], "error": str(e)}
+    finally:
+        release_conn(conn)
