@@ -159,14 +159,68 @@
 }
 
 .analyticsPage__loading,
-.analyticsPage__empty {
+.analyticsPage__empty,
+.analyticsPage__error {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 400px;
   color: #999;
   font-size: 16px;
   font-family: "IBM Plex Sans", sans-serif;
+  gap: 12px;
+}
+
+.analyticsPage__loadingSpinner {
+  animation: spin 1s linear infinite;
+  color: #75A2E6;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.analyticsPage__empty {
+  color: #999;
+}
+
+.analyticsPage__emptyIcon {
+  color: #ddd;
+  margin-bottom: 8px;
+}
+
+.analyticsPage__emptyHint {
+  font-size: 13px;
+  color: #bbb;
+  margin-top: 4px;
+}
+
+.analyticsPage__error {
+  color: #d32f2f;
+}
+
+.analyticsPage__error svg {
+  color: #d32f2f;
+  margin-bottom: 8px;
+}
+
+.analyticsPage__retryBtn {
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: #75A2E6;
+  border: none;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 14px;
+  font-family: "IBM Plex Sans", sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.analyticsPage__retryBtn:hover {
+  background: #5a8fd4;
 }
 
 .analyticsPage__legend {
@@ -192,6 +246,12 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
+}
+
+.analyticsPage__legendLine {
+  width: 24px;
+  height: 3px;
+  border-radius: 2px;
 }
 
 .analyticsPage__legendInfo {
