@@ -110,7 +110,7 @@ class ChromaBuffer:
             severities = [e.get("severity") for e in events if e.get("severity")]
             anomaly_tags = [e.get("anomaly_tag") for e in events if e.get("anomaly_tag")]
             dominant_severity = self._get_dominant_severity(severities) if severities else None
-            dominant_anomaly = anomaly_tags[0] if anomaly_tags else None
+            dominant_anomaly = max(set(anomaly_tags), key=anomaly_tags.count) if anomaly_tags else None
 
             text_with_prefix = "\n".join(
                 f"ATM: {atm_id} | {e['text']}" for e in events

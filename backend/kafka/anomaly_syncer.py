@@ -1,12 +1,16 @@
 """Anomaly syncer - syncs detected anomalies from PostgreSQL to ChromaDB.
 
-This module periodically queries the anomalies table and syncs UNKNOWN and NORMAL
-anomaly types to ChromaDB for RAG retrieval. This allows users to query about
-novel patterns (UNKNOWN) and baseline behavior (NORMAL).
+This module periodically queries the anomalies table and syncs all anomaly types
+(A1-A7, UNKNOWN, NORMAL) to ChromaDB for RAG retrieval. This allows the RAG
+diagnostic assistant to answer questions about any anomaly type across any ATM.
+
+Previously this only synced UNKNOWN and NORMAL anomalies, which meant A1-A7
+anomalies were invisible to the RAG — queries like "what are all the issues with
+ATM 1" would miss most of the data.
 
 The syncer:
 - Runs on a configurable interval (default: 60 seconds)
-- Queries for UNKNOWN and NORMAL anomalies not yet synced
+- Queries all anomaly types not yet synced
 - Formats each anomaly as a text chunk with ATM ID and details
 - Upserts to ChromaDB with appropriate metadata (atm_id, severity, _anomaly_tag)
 
@@ -51,11 +55,11 @@ class AnomalySyncer:
             self._chroma_buffer = None
 
     def _get_unsynced_anomalies(self) -> list[dict]:
-        """Query PostgreSQL for UNKNOWN/NORMAL anomalies not yet synced."""
+        """Query PostgreSQL for all anomalies not yet synced with ChromaDB."""
         query = """
             SELECT id, detected_at, anomaly_type, atm_id, severity, title, explanation
             FROM anomalies
-            WHERE anomaly_type IN ('UNKNOWN', 'NORMAL')
+            WHERE anomaly_type IS NOT NULL
         """
         params = []
         if self._synced_ids:
