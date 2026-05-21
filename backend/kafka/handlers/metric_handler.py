@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import psycopg2.extras
 
 from backend.src.database.connection import get_cursor
+from backend.src.analytics.analytics_router import increment_event_counter, track_unique_atm
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +76,13 @@ def handle_metric(msg: dict) -> bool:
     except Exception as exc:
         log.error("DB write failed for metric (name=%s): %s", msg.get("metric_name"), exc)
         return False
+
+    entity_id = msg.get("entity_id", "")
+    if entity_id.startswith("ATM-"):
+        track_unique_atm(entity_id)
+
+    hour_bucket = ts.strftime("%Y-%m-%dT%H")
+    increment_event_counter(msg["source"], hour_bucket)
 
     return True
 

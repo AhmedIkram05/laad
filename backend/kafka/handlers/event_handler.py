@@ -15,6 +15,7 @@ import psycopg2.extras
 
 from backend.src.database.connection import get_cursor
 from backend.kafka.chroma_buffer import ChromaBuffer, format_event_text
+from backend.src.analytics.analytics_router import increment_event_counter, track_unique_atm
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +85,10 @@ def handle_event(msg: dict, chroma_buffer: ChromaBuffer) -> bool:
             severity=severity,
             anomaly_tag=anomaly_tag,
         )
+        track_unique_atm(atm_id)
+
+    hour_bucket = ts.strftime("%Y-%m-%dT%H")
+    increment_event_counter(msg["source"], hour_bucket)
 
     return True
 
