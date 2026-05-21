@@ -90,11 +90,27 @@ export const fetchMetrics = (hours = 24, bucket_minutes = 60) =>
     request(`/api/analysis/metrics?hours=${hours}&bucket_minutes=${bucket_minutes}`);
 
 // RAG Diagnostic Assistant API
-export const queryRAG = (query, atm_id = null, top_k = 3, include_uncertainty = true) =>
+export const queryRAG = (
+    query,
+    atm_id = null,
+    top_k = 3,
+    include_uncertainty = true,
+    enable_reflexion = true,
+    enable_citation_grounding = true,
+    enable_self_consistency = true,
+) =>
     request("/api/rag/query", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({query, atm_id, top_k, include_uncertainty}),
+        body: JSON.stringify({
+            query,
+            atm_id,
+            top_k,
+            include_uncertainty,
+            enable_reflexion,
+            enable_citation_grounding,
+            enable_self_consistency,
+        }),
     });
 
 export const submitRAGFeedback = (query_id, feedback) =>
