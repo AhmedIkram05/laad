@@ -36,29 +36,33 @@ const request = async (endpoint, options = {}) => {
 // atm_id: filter by specific ATM ID
 // anomaly_type: filter by anomaly type (A1-A7, UNKNOWN)
 // severity: filter by severity (CRITICAL, HIGH, MAJOR, LOW)
-export const fetchAnomalies = (is_active = 1, hours = 24, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null) => {
-    const now = new Date();
-    const from = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
-    let params = `from_date=${encodeURIComponent(from)}&sort_by=${sort_by}`;
+export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null) => {
+    const params = new URLSearchParams();
+    if (hours !== null && hours !== undefined) {
+        const now = new Date();
+        const from = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
+        params.append('from_date', from);
+    }
+    params.append('sort_by', sort_by);
     if (is_active !== null && is_active !== undefined) {
-        params += `&is_active=${is_active}`;
+        params.append('is_active', is_active);
     }
     if (detection_source) {
-        params += `&detection_source=${encodeURIComponent(detection_source)}`;
+        params.append('detection_source', encodeURIComponent(detection_source));
     }
     if (is_starred !== null && is_starred !== undefined) {
-        params += `&is_starred=${is_starred}`;
+        params.append('is_starred', is_starred);
     }
     if (atm_id) {
-        params += `&atm_id=${encodeURIComponent(atm_id)}`;
+        params.append('atm_id', encodeURIComponent(atm_id));
     }
     if (anomaly_type) {
-        params += `&anomaly_type=${encodeURIComponent(anomaly_type)}`;
+        params.append('anomaly_type', encodeURIComponent(anomaly_type));
     }
     if (severity) {
-        params += `&severity=${encodeURIComponent(severity)}`;
+        params.append('severity', encodeURIComponent(severity));
     }
-    return request(`/api/anomalies?${params}`);
+    return request(`/api/anomalies?${params.toString()}`);
 };
 
 // Fetches analysis data for a specific anomaly

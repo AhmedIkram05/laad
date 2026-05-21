@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthProvider";
+import { useAuth } from "../auth/useAuth";
 import { LogIn, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";

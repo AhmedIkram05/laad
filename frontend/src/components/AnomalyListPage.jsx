@@ -22,8 +22,6 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const [severityFilter, setSeverityFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const hours = 24;
-
   const handleQueryChange = (newQuery) => {
     setQuery(newQuery);
     setCurrentPage(1);
@@ -36,7 +34,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
         setLoading(true);
         const anomalyRes = await fetchAnomalies(
           isActive,
-          hours,
+          undefined,
           sortBy,
           detectionSource !== "all" ? detectionSource : undefined,
           isStarred,
@@ -54,7 +52,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
     };
     load();
     return () => { cancelled = true; };
-  }, [isActive, isStarred, hours, sortBy, detectionSource, atmIdFilter, anomalyTypeFilter, severityFilter]);
+  }, [isActive, isStarred, sortBy, detectionSource, atmIdFilter, anomalyTypeFilter, severityFilter]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);

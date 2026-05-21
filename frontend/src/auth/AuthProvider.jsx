@@ -5,11 +5,10 @@
  */
 
 /* External Libraries */
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { AuthContext } from "./useAuth";
 
 const API_BASE_URL = "http://localhost:8000";
-
-const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
     const [token, setToken] = useState(() => localStorage.getItem("jwt") || null);
@@ -40,7 +39,7 @@ export function AuthProvider({ children }) {
                     const data = await res.json();
                     if (mounted) setUser(data);
                 }
-            } catch (err) {
+            } catch {
                 if (mounted) setUser(null);
             } finally {
                 if (mounted) setLoading(false);
@@ -72,10 +71,3 @@ export function AuthProvider({ children }) {
     );
 }
 
-export const useAuth = () => {
-    const ctx = useContext(AuthContext);
-    if (ctx === null) {
-        throw new Error("useAuth must be used within an AuthProvider");
-    }
-    return ctx;
-};
