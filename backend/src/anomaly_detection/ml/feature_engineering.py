@@ -24,11 +24,12 @@ import pandas as pd
 from typing import Any
 
 FEATURE_NAMES = [
-    # Metric features (14)
+    # Metric features (16)
     "jvm_mem_mean", "jvm_mem_max", "jvm_mem_rate",
-    "jvm_gc_mean", "jvm_gc_max",
+    "jvm_gc_mean", "jvm_gc_max", "jvm_gc_slope",
     "cpu_usage_mean", "cpu_usage_max",
     "os_mem_mean", "os_mem_max", "os_mem_rate",
+    "network_errors_max",
     "kafka_rt_mean", "kafka_rt_max",
     "kafka_sr_min",
     "container_restart_max",
@@ -230,11 +231,12 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
     atm_unique_count = int(df["atm_id"].dropna().nunique())
 
     return np.array([
-        # Metric features (14)
+        # Metric features (16)
         jvm_mem["mean"], jvm_mem["max"], jvm_mem["rate"],
-        jvm_gc["mean"], jvm_gc["max"],
+        jvm_gc["mean"], jvm_gc["max"], jvm_gc["slope"],
         cpu_mean, cpu_max,
         os_mem["mean"], os_mem["max"], os_mem["rate"],
+        network_err["max"],
         kafka_rt_mean, kafka_rt_max,
         kafka_sr_min,
         restart_max,

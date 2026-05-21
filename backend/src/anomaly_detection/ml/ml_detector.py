@@ -48,7 +48,7 @@ from backend.src.analytics.analytics_router import increment_anomaly_counter
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS            = int(os.getenv("ML_WINDOW_SECONDS", "120"))
+WINDOW_SECONDS            = int(os.getenv("ML_WINDOW_SECONDS", "60"))
 CONFIDENCE_THRESHOLD      = 0.70
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.75"))
 SIGNAL_CORRELATOR_ENABLED = os.getenv("ML_SIGNAL_CORRELATOR_ENABLED", "true").lower() in ("true", "1", "yes")
@@ -191,9 +191,12 @@ class RollingBaseline:
 
 class MLAnomalyDetector:
     def __init__(self):
-        self._iso:    object | None = None
-        self._clf:    object | None = None
-        self._le:     object | None = None
+        self._iso:                 object | None = None
+        self._clf:                 object | None = None
+        self._le:                  object | None = None
+        self._scaler:              object | None = None
+        self._if_feature_indices:  list[int] | None = None
+        self._if_unknown_threshold: float = UNKNOWN_ANOMALY_THRESHOLD
         self._loaded  = self._load_models()
         self._mlflow_available = False
         self._baseline = RollingBaseline()
@@ -228,8 +231,24 @@ class MLAnomalyDetector:
             self._iso  = joblib.load(ARTIFACT_DIR / "isolation_forest.joblib")
             self._clf  = joblib.load(ARTIFACT_DIR / "xgb_classifier.joblib")
             self._le   = joblib.load(ARTIFACT_DIR / "label_encoder.joblib")
+            self._scaler = joblib.load(ARTIFACT_DIR / "scaler.joblib")
+
+            indices_path = ARTIFACT_DIR / "if_feature_indices.json"
+            if indices_path.exists():
+                with open(indices_path) as f:
+                    self._if_feature_indices = json.load(f)
+
+            threshold_path = ARTIFACT_DIR / "if_unknown_threshold.json"
+            if threshold_path.exists():
+                with open(threshold_path) as f:
+                    data = json.load(f)
+                    self._if_unknown_threshold = float(data.get("threshold", UNKNOWN_ANOMALY_THRESHOLD))
+
             self._loaded = True
-            log.info("ML models loaded from %s", ARTIFACT_DIR)
+            log.info("ML models loaded from %s (indices=%s, threshold=%.4f)",
+                      ARTIFACT_DIR,
+                      "yes" if self._if_feature_indices else "no",
+                      self._if_unknown_threshold)
             return True
         except FileNotFoundError:
             log.warning("Model artifacts not found at %s", ARTIFACT_DIR)
@@ -488,15 +507,23 @@ class MLAnomalyDetector:
 
                 try:
                     features = extract_features(entity_rows).reshape(1, -1)
+                    if self._scaler is not None:
+                        features_scaled = self._scaler.transform(features)
+                    else:
+                        features_scaled = features
+                    if self._if_feature_indices is not None:
+                        features_if = features_scaled[:, self._if_feature_indices]
+                    else:
+                        features_if = features_scaled
                 except Exception:
                     continue
 
-                is_anomaly = self._iso.predict(features)[0] == -1
+                is_anomaly = self._iso.predict(features_if)[0] == -1
 
                 if not is_anomaly:
                     continue
 
-                if_score = float(self._iso.score_samples(features)[0])
+                if_score = float(self._iso.score_samples(features_if)[0])
                 proba = self._clf.predict_proba(features)[0]
                 pred_idx = int(np.argmax(proba))
                 confidence = float(proba[pred_idx])
@@ -516,8 +543,8 @@ class MLAnomalyDetector:
                         classifier_detections.add((label, entity_id))
                         log.info("Classifier detected: %s (atm=%s, conf=%.2f)", label, entity_id, confidence)
 
-                elif label == "NORMAL" and if_score <= UNKNOWN_ANOMALY_THRESHOLD:
-                    unknown_confidence = min(abs(if_score) / abs(UNKNOWN_ANOMALY_THRESHOLD), 1.0) if UNKNOWN_ANOMALY_THRESHOLD != 0 else 0.5
+                elif label == "NORMAL" and if_score <= self._if_unknown_threshold:
+                    unknown_confidence = min(abs(if_score) / abs(self._if_unknown_threshold), 1.0) if self._if_unknown_threshold != 0 else 0.5
                     if not self._is_active("UNKNOWN", entity_id):
                         self._save_anomaly(
                             anomaly_type="UNKNOWN",
