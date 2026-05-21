@@ -36,14 +36,15 @@ const request = async (endpoint, options = {}) => {
 // atm_id: filter by specific ATM ID
 // anomaly_type: filter by anomaly type (A1-A7, UNKNOWN)
 // severity: filter by severity (CRITICAL, HIGH, MAJOR, LOW)
-export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null) => {
+// entity_type: filter by entity type ('atm' or 'server')
+export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null, entity_type = null) => {
     const params = new URLSearchParams();
+    params.append('sort_by', sort_by);
     if (hours !== null && hours !== undefined) {
         const now = new Date();
         const from = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
         params.append('from_date', from);
     }
-    params.append('sort_by', sort_by);
     if (is_active !== null && is_active !== undefined) {
         params.append('is_active', is_active);
     }
@@ -62,8 +63,15 @@ export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', d
     if (severity) {
         params.append('severity', encodeURIComponent(severity));
     }
+    if (entity_type) {
+        params.append('entity_type', encodeURIComponent(entity_type));
+    }
     return request(`/api/anomalies?${params.toString()}`);
 };
+
+// Fetches all entity IDs (ATMs + servers) from the analytics entities endpoint
+export const fetchEntities = () =>
+    request("/api/analytics/entities");
 
 // Fetches analysis data for a specific anomaly
 export const fetchDetailedAnalysis = (anomaly_type) =>
