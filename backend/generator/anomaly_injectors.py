@@ -10,9 +10,16 @@ import random
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 
-from backend.generator.config import ATMS, ATM_LOCATIONS
+from backend.generator.config import ATMS, SERVERS, ATM_LOCATIONS
 
 _anomaly_state: dict[str, dict] = {}
+
+
+def _pick_entity(server_prob: float = 0.0) -> str:
+    """Pick a random entity — ATM by default, or server with given probability."""
+    if server_prob > 0 and random.random() < server_prob:
+        return random.choice(SERVERS)
+    return random.choice(ATMS)
 
 
 def _get_progressive_state(key: str) -> dict:
@@ -148,9 +155,9 @@ def inject_a3(producer, t: datetime) -> str | None:
       - Prometheus: process_cpu_usage rising to 0.94 (94%)
       - GCP: container/cpu/usage_time rising to 94%
       - Terminal Handler: OutOfMemoryError FATAL event
-    Returns the ATM ID used.
+    Returns the ATM/Server ID used.
     """
-    atm = random.choice(ATMS)
+    atm = _pick_entity(server_prob=0.4)
     corr_id = str(uuid4())
     pod_name = f"terminal-handler-{atm.lower()}"
 
@@ -221,9 +228,9 @@ def inject_a4(producer, t: datetime) -> str | None:
       - GCP: container/restart_count = 1, then 2 within 4 minutes
       - Terminal Handler: STARTUP repeated 3× (container_id changes each time)
       - Terminal Handler: Two FATAL OutOfMemoryError events
-    Returns the ATM ID used.
+    Returns the ATM/Server ID used.
     """
-    atm = random.choice(ATMS)
+    atm = _pick_entity(server_prob=0.4)
     corr_id = str(uuid4())
     pod_name = f"terminal-handler-{atm.lower()}"
 
@@ -376,11 +383,11 @@ def inject_a6(producer, t: datetime) -> str | None:
       - Windows OS: network_errors growing: 0 → 22
       - Windows OS: cpu_usage_percent rising to 91.5%
       - ATM App: event_type=TIMEOUT with error_detail containing "ThreadAbortException"
-    Returns the ATM ID used.
+    Returns the ATM/Server ID used.
     """
-    atm = random.choice(ATMS)
+    atm = _pick_entity(server_prob=0.4)
     corr_id = str(uuid4())
-    loc = ATM_LOCATIONS[atm]
+    loc = ATM_LOCATIONS.get(atm, f"SRV-{atm.split('-')[-1]}")
 
     mem_start = 46.0
     mem_end = 98.75

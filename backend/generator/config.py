@@ -13,6 +13,8 @@ BACKFILL_MODE       = os.getenv("BACKFILL_MODE", "false").lower() in ("true", "1
 
 # Fleet configuration
 ATMS = [f"ATM-GB-{str(i).zfill(4)}" for i in range(1, 11)]
+SERVERS = [f"ATM-SERVER-{str(i).zfill(3)}" for i in range(1, 4)]
+ALL_ENTITIES = ATMS + SERVERS
 ATM_LOCATIONS = {atm: f"LOC-{str(i).zfill(3)}" for i, atm in enumerate(ATMS, 1)}
 POD_NAME = "terminal-handler-pod-0"
 OS_VERSION = "Windows-Server-2019"
