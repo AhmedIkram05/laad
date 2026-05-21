@@ -327,6 +327,7 @@ def get_realtime_stats(
     all_time = hours == 0
 
     # For time-bounded queries, try Redis counters first
+    cutoff_time = None if all_time else datetime.now() - timedelta(hours=hours)
     if not all_time and client is not None:
         try:
             event_keys = client.keys(f"{EVENT_COUNTER_PREFIX}*")
@@ -335,10 +336,26 @@ def get_realtime_stats(
                 if value:
                     parts = key.replace(EVENT_COUNTER_PREFIX, "").split(":")
                     source = parts[0]
+                    # Filter by hour bucket from key: stats:events:{source}:{hour}
+                    if len(parts) > 1:
+                        try:
+                            key_hour = datetime.strptime(parts[1], "%Y-%m-%dT%H")
+                            if cutoff_time and key_hour < cutoff_time:
+                                continue
+                        except ValueError:
+                            pass
                     events_by_source[source] = events_by_source.get(source, 0) + int(value)
 
             anomaly_keys = client.keys(f"{ANOMALY_COUNTER_PREFIX}type:*")
             for key in anomaly_keys:
+                # Filter by hour bucket from key: stats:anomaly:type:{hour}
+                hour_str = key.replace(f"{ANOMALY_COUNTER_PREFIX}type:", "")
+                try:
+                    key_hour = datetime.strptime(hour_str, "%Y-%m-%dT%H")
+                    if cutoff_time and key_hour < cutoff_time:
+                        continue
+                except ValueError:
+                    pass
                 entries = client.zrange(key, 0, -1, withscores=True)
                 for atype, score in entries:
                     anomaly_types[atype] = anomaly_types.get(atype, 0) + int(score)
@@ -393,3 +410,19 @@ def get_realtime_stats(
         "anomaly_types": anomaly_types,
         "unique_atms": unique_atms,
     }
+
+
+@router.get("/entities")
+def list_entities():
+    """Return all ATM and server entity IDs from the atms table."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT atm_id, os_version, location_code FROM atms ORDER BY atm_id")
+            rows = cur.fetchall()
+        return {"entities": [dict(r) for r in rows]}
+    except Exception as e:
+        logger.error(f"Failed to fetch entities: {e}", exc_info=True)
+        return {"entities": []}
+    finally:
+        release_conn(conn)
