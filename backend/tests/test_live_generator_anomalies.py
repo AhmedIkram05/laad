@@ -11,8 +11,9 @@ from datetime import datetime, timezone
 
 from backend.generator.anomaly_injectors import (
     inject_a1, inject_a2, inject_a3, inject_a4, inject_a5, inject_a6, inject_a7,
-    ANOMALY_REGISTRY,
+    _pick_entity, ANOMALY_REGISTRY,
 )
+from backend.generator.config import ATMS, SERVERS
 
 
 def _mock_producer():
@@ -264,3 +265,99 @@ class TestAnomalyRegistry:
     def test_cooldowns_reasonable(self):
         for _, _, cooldown in ANOMALY_REGISTRY:
             assert cooldown >= 60
+
+
+class TestPickEntity:
+    def test_returns_atm_with_zero_server_prob(self):
+        for _ in range(100):
+            entity = _pick_entity(server_prob=0.0)
+            assert entity in ATMS
+
+    def test_returns_server_with_full_server_prob(self):
+        for _ in range(100):
+            entity = _pick_entity(server_prob=1.0)
+            assert entity in SERVERS
+
+    def test_mixed_probability(self):
+        count_server = 0
+        trials = 1000
+        for _ in range(trials):
+            entity = _pick_entity(server_prob=0.4)
+            if entity in SERVERS:
+                count_server += 1
+        assert 0.25 <= count_server / trials <= 0.55, f"server ratio {count_server/trials} outside expected range"
+
+    def test_default_probability_is_zero(self):
+        for _ in range(100):
+            entity = _pick_entity()
+            assert entity in ATMS
+
+
+class TestServerAwareInjectors:
+    def test_a3_can_return_server_id(self):
+        from unittest.mock import MagicMock
+        mock = MagicMock()
+        t = datetime.now(timezone.utc)
+        results = set()
+        for _ in range(50):
+            results.add(inject_a3(mock, t))
+        has_server = any(r in SERVERS for r in results)
+        has_atm = any(r in ATMS for r in results)
+        assert has_atm, "A3 should sometimes target ATMs"
+        assert has_server, "A3 should sometimes target servers (40% prob over 50 trials)"
+
+    def test_a4_can_return_server_id(self):
+        from unittest.mock import MagicMock
+        mock = MagicMock()
+        t = datetime.now(timezone.utc)
+        results = set()
+        for _ in range(50):
+            results.add(inject_a4(mock, t))
+        has_server = any(r in SERVERS for r in results)
+        has_atm = any(r in ATMS for r in results)
+        assert has_atm, "A4 should sometimes target ATMs"
+        assert has_server, "A4 should sometimes target servers (40% prob over 50 trials)"
+
+    def test_a6_can_return_server_id(self):
+        from unittest.mock import MagicMock
+        mock = MagicMock()
+        t = datetime.now(timezone.utc)
+        results = set()
+        for _ in range(50):
+            results.add(inject_a6(mock, t))
+        has_server = any(r in SERVERS for r in results)
+        has_atm = any(r in ATMS for r in results)
+        assert has_atm, "A6 should sometimes target ATMs"
+        assert has_server, "A6 should sometimes target servers (40% prob over 50 trials)"
+
+    def test_a1_only_targets_atms(self):
+        from unittest.mock import MagicMock
+        mock = MagicMock()
+        t = datetime.now(timezone.utc)
+        for _ in range(100):
+            result = inject_a1(mock, t)
+            assert result in ATMS, f"A1 should only target ATMs, got {result}"
+
+    def test_a2_only_targets_atms(self):
+        from unittest.mock import MagicMock
+        mock = MagicMock()
+        t = datetime.now(timezone.utc)
+        for _ in range(100):
+            result = inject_a2(mock, t)
+            assert result in ATMS, f"A2 should only target ATMs, got {result}"
+
+    def test_a5_only_targets_atms(self):
+        from unittest.mock import MagicMock
+        mock = MagicMock()
+        t = datetime.now(timezone.utc)
+        for _ in range(100):
+            result = inject_a5(mock, t)
+            assert result in ATMS, f"A5 should only target ATMs, got {result}"
+
+    def test_a7_only_targets_atms(self):
+        from unittest.mock import MagicMock
+        mock = MagicMock()
+        t = datetime.now(timezone.utc)
+        for _ in range(100):
+            result = inject_a7(mock, t)
+            assert result in ATMS, f"A7 should only target ATMs, got {result}"

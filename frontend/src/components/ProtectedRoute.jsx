@@ -8,7 +8,7 @@
 import { Navigate, Outlet } from "react-router-dom";
 
 // Internal Imports
-import { useAuth } from "../auth/AuthProvider";
+import { useAuth } from "../auth/useAuth";
 
 function ProtectedRoute() {
     const { user, loading } = useAuth();

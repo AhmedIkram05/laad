@@ -26,16 +26,18 @@ class TestLoadModels:
         mock_iso = MagicMock()
         mock_clf = MagicMock()
         mock_le  = MagicMock()
+        mock_scaler = MagicMock()
 
         with patch("backend.src.anomaly_detection.ml.ml_detector.ARTIFACT_DIR", tmp_path):
             with patch("backend.src.anomaly_detection.ml.ml_detector.joblib.load") as jl:
-                jl.side_effect = [mock_iso, mock_clf, mock_le]
+                jl.side_effect = [mock_iso, mock_clf, mock_le, mock_scaler]
                 detector = MLAnomalyDetector()
 
         assert detector._loaded is True
         assert detector._iso is mock_iso
         assert detector._clf is mock_clf
         assert detector._le  is mock_le
+        assert detector._scaler is mock_scaler
 
     def test_returns_false_when_artifact_missing(self, tmp_path):
         with patch("backend.src.anomaly_detection.ml.ml_detector.ARTIFACT_DIR", tmp_path):
@@ -436,8 +438,8 @@ class TestConstants:
     def test_confidence_threshold_is_070(self):
         assert CONFIDENCE_THRESHOLD == 0.70
 
-    def test_window_seconds_is_120(self):
-        assert WINDOW_SECONDS == 120
+    def test_window_seconds_is_60(self):
+        assert WINDOW_SECONDS == 60
 
     def test_artifact_dir_points_to_backend_ml(self):
         assert "backend" in str(ARTIFACT_DIR) and "ml" in str(ARTIFACT_DIR)

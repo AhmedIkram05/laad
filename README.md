@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Analysis & Diagnostics Platform (LAAD)
 
-> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an uncertainty-aware RAG diagnostic assistant powered by Ollama Cloud with query classification, direct DB stats queries, and context-aware prompts.
+> Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform — built for NCR Atleos as a 7-person Agile industry project. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an **Agentic RAG** diagnostic assistant featuring cross-encoder reranking, self-consistency scoring, reflexion (self-critique), citation grounding, and multi-signal confidence fusion.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
@@ -25,26 +25,29 @@
 | Metric | Value |
 |---|---|
 | **Log Sources** | 7 simultaneous sources (ATM_APP, HARDWARE, TERMINAL_HANDLER, KAFKA, PROMETHEUS, OS, CLOUD) |
-| **ATMs Monitored** | 10 (`ATM-GB-0001` through `ATM-GB-0010`) across 10 locations |
+| **ATMs Monitored** | 10 ATMs + 3 Servers (`ATM-GB-0001`–`ATM-GB-0010` + `ATM-SERVER-001`–`ATM-SERVER-003`) |
 | **Anomaly Types** | 7 known (A1–A7) + UNKNOWN (novel pattern detection) |
 | **Detection Layers** | 3 (CLASSIFIER → ZSCORE → SIGNAL_CORRELATOR) |
-| **ML Features** | 47 engineered features across 7 groups |
-| **CV Accuracy** | **99.1% ± 0.2%** (StratifiedKFold, 8 classes) |
+| **ML Features** | 49 engineered features across 7 groups (46 selected for IF via XGBoost importance) |
+| **Isolation Forest Precision** | **97.3%** (grid search + feature selection, 46 of 49 features, AUC-ROC=0.9502) |
+| **XGBoost CV Accuracy** | **99.8% ± 0.1%** (StratifiedKFold, 8 classes) |
+| **IF UNKNOWN Threshold** | **−0.5199** (Youden's J calibration, F1=0.7008) |
+| **ML Artifacts** | 7 artifacts: xgb, if, scaler, encoder, feature names, feature indices, threshold |
 | **Kafka Topics** | 2 (`atm-events`, `atm-metrics`), 3 partitions each, gzip compression |
-| **Messages Processed** | 190,000+ per backfill cycle, 100+ messages/sec live |
+| **Messages Processed** | 930,000+ events, 100+ messages/sec live |
 | **Database Tables** | 10 tables + 3 views + 13 indexes |
 | **Connection Pool** | ThreadedConnectionPool (minconn=5, maxconn=50) with exponential backoff |
 | **API Endpoints** | 31+ across 8 routers (auth, anomalies, analysis, admin, analytics, events, metrics, RAG) |
-| **Anomaly List Limit** | 500 default, 2000 max (increased from 100) |
-| **Test Coverage** | 351 tests across 48 files, 10 tiers, isolated test DB |
+| **Anomaly List Limit** | No limit (unlimited: returns all matching anomalies) |
+| **Test Coverage** | 407+ tests across 52 files, 10 tiers, isolated test DB |
 | **Docker Services** | 8 production + 2 test-only services |
 | **Redis Patterns** | 8 (sorted sets, sets, Pub/Sub, streams, HyperLogLog, distributed locks, caching, blacklists) |
-| **RAG Uncertainty** | Retrieval-only: distance + chunk count + source diversity |
-| **RAG Response Time** | <10s (uncached), <100ms (cached) |
+| **RAG Confidence** | Multi-signal fusion: retrieval (30%) + self-consistency (25%) + verbalized (25%) + grounding (20%) |
+| **RAG Response Time** | <15s (uncached with agentic), <100ms (cached) |
 | **Calibration** | Platt scaling, ECE < 0.10 target, 20-sample minimum |
 | **MLflow Tracking** | All training runs + inference cycles logged, 2 registered models with "champion" alias |
-| **Frontend Pages** | 11 pages (React 19 + Vite 8 + Tailwind v4 + shadcn/ui components + Chart.js) |
-| **Model Training** | Manual retraining via `make retrain` (live) or `make retrain-offline` (offline dataset) |
+| **Frontend Pages** | 11 pages (React 19 + Vite 8 + Tailwind v4 + shadcn/ui + Chart.js) with configurable time-range filtering and "All Time" analytics |
+| **Model Training** | Manual training via `make train` (generates dataset + retrains offline) |
 
 ---
 
@@ -125,7 +128,7 @@ flowchart TD
   end
 
   subgraph Detection ["3-Layer Detection Engine"]
-    CLS["CLASSIFIER\nXGBoost + IF\n47 features"]
+    CLS["CLASSIFIER\nXGBoost + IF\n49→46 features"]
     ZSC["ZSCORE\nRolling 20-window\n>3σ threshold"]
     SCC["SIGNAL_CORRELATOR\nMulti-source\nA1-A7 patterns"]
   end
@@ -199,6 +202,8 @@ The continuous generator (`backend/generator/continuous_generator.py`) is a pure
 | `ANOMALY_PROB` | 0.02 (2%) | Live anomaly injection probability |
 | `BACKFILL_ANOMALY_PROB` | 0.01 (1%) | Backfill anomaly probability |
 | `ATMS` | 10 | `ATM-GB-0001` through `ATM-GB-0010` |
+| `SERVERS` | 3 | `ATM-SERVER-001` through `ATM-SERVER-003` |
+| `ALL_ENTITIES` | 13 | Combined list of ATMs + Servers |
 | `ATM_LOCATIONS` | 10 | `LOC-001` through `LOC-010` |
 | `POD_NAME` | `terminal-handler-pod-0` | Kubernetes pod identifier |
 | `OS_VERSION` | `Windows-Server-2019` | Simulated OS version |
@@ -264,6 +269,7 @@ flowchart LR
 - **Pure Kafka producer:** No direct database writes. The generator only produces to Kafka topics. This decouples data generation from ingestion — if the consumer falls behind, data is safely buffered in Kafka (7-day retention).
 - **Batch anomaly emission:** A3 (JVM Memory Leak) and A6 (OS Memory Pressure) emit all their historical ticks in a single call with timestamps spread over the past 90/120 minutes respectively. This ensures the full progressive degradation pattern is immediately available for detection rather than requiring multiple generator cycles to accumulate.
 - **Anomaly cooldowns:** Each anomaly type has a cooldown period (300s–600s) to prevent overlapping injections that would corrupt detection signals.
+- **Server entity support:** A3 (JVM Memory Leak), A4 (Container Restart Loop), and A6 (OS Memory Pressure) can target server entities (`ATM-SERVER-001`–`ATM-SERVER-003`) with 40% probability. A1, A2, A5, A7 remain ATM-only. Server entity IDs use the `ATM-SERVER-*` prefix for backward compatibility with frontend fallback logic.
 - **Backfill mode:** On startup, generates historical data based on `BACKFILL_MINUTES` (default: 0 for production). When enabled, anomaly probability is halved during backfill (0.01 vs 0.02) to avoid flooding the initial window.
 - **Graceful shutdown:** Handles SIGTERM/SIGINT with producer flush before exit, ensuring no in-flight messages are lost.
 
@@ -273,10 +279,10 @@ flowchart LR
 |---|---|---|---|---|
 | A1 | Network Timeout Cascade | `NETWORK_DISCONNECT` + Kafka `Offline` + `NETWORK_TIMEOUT` across 3+ sources | 300s | correlation_id=`corr-0030-nnet-disc-0001`, error_code=ERR-0040, response_time_ms=30000 |
 | A2 | Cash Cassette Depletion → Out of Service | `CASSETTE_LOW`×2 + `CASSETTE_EMPTY`×2 + Kafka `Out of Service` | 600s | atm_status="Out of Service", transaction_failure_reason="CASH_DISPENSE_ERROR", transaction_rate_tps=0.0, transaction_success_rate=0.0 |
-| A3 | JVM Memory Leak → OOM | Batch `jvm_memory_used_bytes` 300MB→1040MB + GC 0.45s→24.7s over 90 ticks | Single call (batch) | 270 metrics + 1 event, OutOfMemoryError FATAL |
-| A4 | Container Restart Loop | GCP `restart_count` 1→2 + ≥3 STARTUP events + 2× FATAL | 300s | container_id changes each STARTUP, 2× OutOfMemoryError FATAL |
+| A3 | JVM Memory Leak → OOM | Batch `jvm_memory_used_bytes` 300MB→1040MB + GC 0.45s→24.7s over 90 ticks | Single call (batch) | 270 metrics + 1 event, OutOfMemoryError FATAL. 40% probability on server entities |
+| A4 | Container Restart Loop | GCP `restart_count` 1→2 + ≥3 STARTUP events + 2× FATAL | 300s | container_id changes each STARTUP, 2× OutOfMemoryError FATAL. 40% probability on server entities |
 | A5 | High Response Time Spike | Kafka `response_time_ms` 3200→30000ms + success_rate 100%→50% | 300s | corr_ids=`corr-0010-xxyy-aabb-1234`,`corr-0011-xyzw-ccdd-5678`, failure_count 8,14, error_code=ERR-0012 |
-| A6 | OS Memory Pressure → Timeout | Batch `memory_usage_percent` 46%→98.75% + `network_errors` 0→22 + cpu 91.5% over 120 ticks | Single call (batch) | 120 metrics + 1 event, error_detail contains "ThreadAbortException" |
+| A6 | OS Memory Pressure → Timeout | Batch `memory_usage_percent` 46%→98.75% + `network_errors` 0→22 + cpu 91.5% over 120 ticks | Single call (batch) | 120 metrics + 1 event, error_detail contains "ThreadAbortException". 40% probability on server entities |
 | A7 | Malformed / Out-of-Order Kafka | Kafka offset 4050 out-of-order + offset 4051 null fields + Prometheus malformed | 300s | metric_value="890iembre" (non-numeric) |
 
 ---
@@ -640,7 +646,7 @@ erDiagram
 | `atms` | 10 (seeded) | `atm_id` (PK), `os_version`, `location_code` | ATM fleet registry |
 | `events` | 50,000+ | `timestamp` (TIMESTAMPTZ), `source`, `atm_id` (FK), `event_type`, `severity`, `payload` (JSONB) | Normalised event records |
 | `metrics` | 150,000+ | `timestamp` (TIMESTAMPTZ), `source`, `entity_id`, `metric_name`, `metric_value`, `payload` (JSONB) | Normalised metric records |
-| `anomalies` | 10-50 | `detected_at`, `anomaly_type`, `atm_id` (FK), `model_confidence_score`, `severity`, `explanation` (JSONB), `is_active`, `is_starred`, `false_positive_count` | Detected anomalies |
+| `anomalies` | 2,800+ | `detected_at`, `anomaly_type`, `atm_id` (FK), `model_confidence_score`, `severity`, `explanation` (JSONB), `is_active`, `is_starred`, `false_positive_count` | Detected anomalies |
 | `ingestion_errors` | 0-100 | `timestamp`, `source`, `error_detail`, `raw_input` | Dead-letter queue |
 | `users` | 2+ | `username` (UK), `password_hash` (bcrypt), `role` | Authentication |
 | `retention_config` | 1 | `retention_days` (default: 30) | Configurable retention |
@@ -689,7 +695,7 @@ A 3-layer hybrid detection engine that combines machine learning, statistical an
 flowchart TD
   subgraph Window ["Data Window (1800s, configurable via ML_WINDOW_SECONDS)"]
     Q["v_unified_analysis query\n≥5 rows required"]
-    FE["Feature extraction\n47 features"]
+    FE["Feature extraction\n49 features"]
     BU["RollingBaseline update\n20-vector history"]
   end
 
@@ -697,8 +703,8 @@ flowchart TD
     IF["Isolation Forest\npredict(features)"]
     IF_ANOM{"IF anomaly?"}
     XGB["XGBoost\npredict_proba(features)"]
-    KNOWN{"XGB class != NORMAL\n&& confidence >= 0.50?"}
-    UNKNOWN{"IF score <= -0.75?"}
+    KNOWN{"XGB class != NORMAL\n&& confidence >= 0.70?"}
+    UNKNOWN{"IF score <= -0.5199?"}
     SAVE1["Save anomaly\nsource=CLASSIFIER"]
   end
 
@@ -752,18 +758,19 @@ flowchart TD
 
 | Component | Configuration | Purpose |
 |---|---|---|
-| **Isolation Forest** | 200 estimators, contamination=0.1 | Anomaly detection — flags windows with unusual feature patterns |
+| **Isolation Forest** | 200 estimators, contamination='auto' (grid-searched) | Anomaly detection — flags windows with unusual feature patterns |
 | **XGBoost Classifier** | 100 estimators, max_depth=6, lr=0.1, subsample=0.8, colsample_bytree=0.8 | Classification — predicts anomaly type (A1–A7 + NORMAL) |
 | **Label Encoder** | 8 classes (A1–A7 + NORMAL) | Maps class indices to labels |
-| **Confidence threshold** | 0.50 | Minimum XGBoost confidence for known anomaly classification |
-| **UNKNOWN threshold** | IF score ≤ -0.75 (env: `ML_UNKNOWN_THRESHOLD`) | Isolation Forest score below which UNKNOWN anomaly is created |
+| **Confidence threshold** | 0.70 | Minimum XGBoost confidence for known anomaly classification |
+| **UNKNOWN threshold** | IF score ≤ −0.5199 (calibrated via Youden's J, saved in `if_unknown_threshold.json`) | Isolation Forest score below which UNKNOWN anomaly is created |
 
 **Decision logic:**
 
-1. Isolation Forest flags window as anomalous (`predict == -1`)
-2. XGBoost predicts class with probability distribution
-3. If `class != NORMAL` and `confidence >= 0.50` → save as known anomaly (A1–A7)
-4. If `class == NORMAL` but `IF score <= -0.75` → save as UNKNOWN anomaly (novel pattern)
+1. Full 49-dim features extracted → `StandardScaler.transform` (49-dim) → `if_feature_indices` subset (46-dim)
+2. Isolation Forest predicts on 46-dim subset (`predict == -1` flags anomaly)
+3. XGBoost predicts on full 49-dim features (separate path — avoids shape mismatch) with probability distribution
+4. If `class != NORMAL` and `confidence >= 0.70` → save as known anomaly (A1–A7)
+5. If `class == NORMAL` but `IF score <= −0.5199` (calibrated) → save as UNKNOWN anomaly (novel pattern)
 
 ### Layer 2: ZSCORE (Proactive)
 
@@ -805,13 +812,13 @@ The `_attribution_for()` method assigns the correct entity per anomaly type:
 | A3, A4 | `atm_id` (extracted from `pod_name` via regex) | Parsed from JSONB payload, falls back to mode |
 | UNKNOWN | Mode of ATMs in window | Fallback |
 
-### 47 ML Features
+### 49 ML Features
 
 | Group | Count | Features |
 |---|---|---|
-| **Metric statistics** | 14 | JVM memory mean/rate/slope, GC pause, CPU, OS memory, Kafka RT/success rate |
+| **Metric statistics** | 16 | JVM memory mean/rate/slope, GC pause mean/max/slope, CPU, OS memory, network errors, Kafka RT/success rate, container restarts |
 | **Percentiles** | 9 | JVM p75/p95, OS p75/p95, Kafka RT p75/p90/p99, CPU p90/p99 |
-| **Temporal slopes** | 5 | Memory trends, Kafka RT/success rate slopes |
+| **Temporal slopes** | 5 | Memory trends, GC pause trend, Kafka RT/success rate slopes |
 | **Event counts** | 10 | ATM errors, FATAL events, STARTUP events, OOM, cassette empty/low, Kafka offline/null status, timeouts, network disconnects |
 | **Severity-weighted** | 2 | FATAL-weighted sum, total error count |
 | **Cross-source flags** | 7 | Multi-source errors, OOM presence, network disconnect, timeout, Kafka out-of-order, anomaly tag count, unique ATM count |
@@ -826,6 +833,18 @@ The `kafka-consumer` service triggers anomaly detection every 30 seconds after p
 
 The 10-minute dedup window in `_is_active()` prevents duplicate writes for the same anomaly incident across consecutive 30-second detection cycles.
 
+### Key Fixes
+
+**Scaler fitted on full 49 features (not 46-dim subset):** The `StandardScaler` was previously fitted after feature selection, resulting in a 46-dim scaler. At inference time, `scaler.transform` received 49-dim features, causing `ValueError: X has 49 features, but StandardScaler is expecting 46 features`. Fixed by fitting scaler on ALL 49 `X_normal` features before applying feature selection subset — both training and inference now scale first, then subset. (`train.py:351`)
+
+**XGBoost receives full 49-dim features (separate from IF path):** Feature selection (49→46) was applied to a shared `features` variable used by both Isolation Forest and XGBoost. Since XGBoost was trained on all 49 features, `predict_proba` raised `ValueError: Feature shape mismatch, expected: 49, got 46`. Fixed by maintaining two independent paths: `features_scaled` (49-dim, for XGBoost) and `features_if` (46-dim after subset, for IF). (`ml_detector.py:508-527`)
+
+### Known Issues
+
+| Issue | Description | Impact |
+|---|---|---|
+| `_get_recent_anomalies` attribute missing | `consumer.py:83` calls `_cached_detector._get_recent_anomalies(n)` but `MLAnomalyDetector` has no such method | Pub/Sub anomaly publishing fails silently — anomalies are still saved to DB and appear in the dashboard on next refresh |
+
 ---
 
 ## ML Training & MLOps
@@ -838,23 +857,25 @@ flowchart TD
     LIVE["LIVE Mode\nQuery DB (360 min window)\n~228K rows, ~372 windows"]
     OFFLINE["OFFLINE Mode\nLoad data/training_data.json\n868,320 rows, 24h, all 8 classes"]
     WIN["Sliding Windows\n60s window, 30s step\nMin 5 rows per window"]
-    FE["Feature Extraction\n47 features per window"]
+    FE["Feature Extraction\n49 features per window"]
   end
 
   subgraph Training ["Model Training"]
-    IF_TRAIN["Isolation Forest\n200 estimators, contamination=0.1\nFit on all windows"]
+    IF_TRAIN["Isolation Forest\nGrid search: max_features, contamination, max_samples\nBest: max_features=1.0, contamination='auto'\nStandardScaler on all 49 features"]
     XGB_TRAIN["XGBoost Classifier\n100 estimators, max_depth=6\nStratifiedKFold CV"]
     BAL["Class Balancing\nsample_weight = normal_count / class_count"]
     CV["Cross-Validation\nUp to 5 folds\nPer-class precision/recall"]
+    FS["Feature Selection\nXGBoost importance filter\n49→46 features for IF"]
+    TC["UNKNOWN Threshold\nYouden's J sweep\n200 thresholds → −0.5199"]
   end
 
   subgraph Results ["Results"]
-    ACC["99.1% ± 0.2% CV accuracy\n1.0/1.0 per-class precision/recall"]
-    IF_PREC["IF anomaly precision: 89.1%"]
+    ACC["99.8% ± 0.1% CV accuracy\n1.0/1.0 per-class precision/recall"]
+    IF_PREC["IF anomaly precision: 97.3%\nAUC-ROC: 0.9502"]
   end
 
   subgraph Registry ["Model Registry"]
-    SAVE["Serialize artifacts\nxgb_classifier.joblib\nisolation_forest.joblib\nlabel_encoder.joblib\nfeature_names.json"]
+    SAVE["Serialize artifacts (7)\nxgb_classifier.joblib\nisolation_forest.joblib\nlabel_encoder.joblib\nfeature_names.json\nscaler.joblib\nif_feature_indices.json\nif_unknown_threshold.json"]
     REG["Register models\natm-xgb-classifier\natm-isolation-forest"]
     ALIAS["Set 'champion' alias\nMLflow 3.x API"]
     DESC["Version description\nGit SHA, timestamp, metrics"]
@@ -864,7 +885,8 @@ flowchart TD
   FE --> IF_TRAIN
   FE --> XGB_TRAIN
   XGB_TRAIN --> BAL --> CV
-  IF_TRAIN & CV --> ACC
+  IF_TRAIN --> FS --> TC
+  TC & CV --> ACC
   ACC --> IF_PREC
   IF_PREC --> SAVE --> REG --> ALIAS --> DESC
 
@@ -895,7 +917,7 @@ flowchart TD
 | Hyperparameter | Value | Rationale |
 |---|---|---|
 | `n_estimators` | 100 | Balanced between performance and overfitting |
-| `max_depth` | 6 | Controls tree complexity — prevents overfitting on 47 features |
+| `max_depth` | 6 | Controls tree complexity — prevents overfitting on 49 features |
 | `learning_rate` | 0.1 | Standard learning rate for gradient boosting |
 | `subsample` | 0.8 | 80% of samples per tree — adds randomness |
 | `colsample_bytree` | 0.8 | 80% of features per tree — feature subsampling |
@@ -904,21 +926,61 @@ flowchart TD
 
 ### Isolation Forest Hyperparameters
 
-| Hyperparameter | Value | Rationale |
+| Hyperparameter | Value | Sourcing |
 |---|---|---|
-| `n_estimators` | 200 | Sufficient trees for stable anomaly scores |
-| `contamination` | 0.1 | Expected proportion of anomalies in training data |
+| `n_estimators` | 200 | Adopted from previous tuning |
+| `contamination` | `'auto'` | Grid search (5 values: 0.01–0.2), best AUC-ROC |
+| `max_features` | `1.0` | Grid search (5 values: 0.3–1.0), best AUC-ROC |
+| `max_samples` | `0.7` | Grid search (4 values: 0.5–1.0), best AUC-ROC |
+| `bootstrap` | `True` | Grid search (true/false), best AUC-ROC |
 | `random_state` | 42 | Reproducible training |
+
+### Grid Search
+
+A sequential 1D grid search optimised the Isolation Forest hyperparameters on a held-out evaluation set of 960 normal training windows.
+
+| Parameter | Values Swept | Best Value | AUC-ROC Impact |
+|---|---|---|---|
+| `contamination` | `0.01, 0.03, 0.05, 0.1, 'auto'` | `'auto'` | 0.9502 (best) |
+| `max_features` | `0.3, 0.5, 0.7, 0.9, 1.0` | `1.0` | +0.02 vs 0.3 |
+| `max_samples` | `0.5, 0.7, 0.9, 1.0` | `0.7` | +0.01 vs 1.0 |
+| `bootstrap` | `True, False` | `True` | Marginal improvement |
+
+A full factorial search (5 × 5 × 4 × 2 = 200 fits) was intentionally avoided in favour of sequential 1D sweeps (14 total fits) — a practical tradeoff that finds a strong neighbourhood without hours of training time. Grid search metrics are logged to MLflow at `step=1`.
 
 ### Training Results
 
 | Metric | Value |
 |---|---|
-| **Cross-validation accuracy** | **99.1% ± 0.2%** (offline dataset) |
+| **Cross-validation accuracy** | **99.8% ± 0.1%** (6h offline dataset, 7,190 windows, 49 features) |
 | **Per-class precision** | 1.0 across all 8 classes (A1–A7 + NORMAL) |
 | **Per-class recall** | 1.0 across all 8 classes (A1–A7 + NORMAL) |
-| **Isolation Forest anomaly precision** | 89.1% |
-| **Top features** | `kafka_out_of_order`, `fatal_critical_weighted_sum`, `hardware_cassette_low_count`, `kafka_rt_max/mean`, `terminal_handler_startup_count`, `container_restart_max`, `jvm_mem_rate` |
+| **Isolation Forest anomaly precision** | **97.3%** (up from 92.9% — grid search + feature selection + threshold calibration) |
+| **IF AUC-ROC** | **0.9502** (best params: `max_features=1.0`, `contamination='auto'`, `max_samples=0.7`) |
+| **Grid search** | Sequential 1D sweep: 5 contamination × 5 max_features × 4 max_samples = 14 fits, 960 train windows |
+| **Feature selection** | 46 of 49 features retained (XGBoost importance > 0 filter) |
+| **UNKNOWN threshold** | **−0.5199** (Youden's J over 200 candidate thresholds, optimal F1=0.7008) |
+| **Scaler** | Fitted on all 49 features (before subset), matching inference pipeline |
+
+### Feature Selection & Threshold Calibration
+
+Isolation Forest was further optimised through two post-training steps:
+
+**Feature selection:** XGBoost `feature_importances_` was used to identify the most predictive features. A planned top-K filter (K=20) was evaluated, but analysis showed only 3 of 49 features had zero importance — discarding them reduced dimensionality without information loss, while keeping all 46 non-zero features preserved detection coverage. The selected feature indices are saved as `if_feature_indices.json` and applied after `scaler.transform` in the inference pipeline.
+
+**UNKNOWN threshold calibration:** A sweep of 200 candidate thresholds (−0.05 to −1.50) was evaluated against held-out normal/unseen-anomaly windows using Youden's J statistic (maximise sensitivity + specificity − 1). The optimal threshold was −0.5199 (F1=0.7008), replacing the previous manual default of −0.75. The calibrated threshold is saved as `if_unknown_threshold.json` and loaded by the detector on startup — falls back to −0.75 if the artifact is missing.
+
+### ML Artifacts
+
+| Artifact | Description |
+|---|---|
+| `xgb_classifier.joblib` | XGBoost multi-class classifier (49 features, 8 classes) |
+| `isolation_forest.joblib` | Isolation Forest (46 features after selection) |
+| `label_encoder.joblib` | Label encoder mapping class indices ↔ labels |
+| `scaler.joblib` | StandardScaler fitted on 49 features (transforms before subset) |
+| `feature_names.json` | All 49 feature names |
+| `if_feature_indices.json` | 46 selected feature indices for IF inference |
+| `if_unknown_threshold.json` | Calibrated UNKNOWN threshold (−0.5199) |
 
 ### MLOps
 
@@ -934,6 +996,7 @@ flowchart TD
 | **Git SHA tracking** | Captured via `subprocess.check_output(["git", "rev-parse", "HEAD"])` on every training run |
 | **Version descriptions** | Include git SHA, timestamp, accuracy metrics |
 | **Inference logging** | All inference cycles logged to MLflow (rows processed, anomalies saved, classifier/correlator counts) |
+| **Grid search metrics** | Logged at `step=1` to avoid UNIQUE constraint conflicts with MLflow v3.1.1 `log_model` which re-logs existing step=0 metrics internally |
 
 ### Auto-Retrain
 
@@ -943,21 +1006,30 @@ flowchart TD
 | **Guard** | Skips if models are < 24 hours old |
 | **Data source** | Live generator data from DB (360-min window) |
 | **Persistence** | Artifacts survive container restarts (bind mount) |
-| **Wipe condition** | Only on `make rebuild` (volume removal) |
+| **Wipe condition** | Only on `make clean` (volume removal); `make rebuild` now preserves MLflow artifacts volume |
 
 ### Training Commands
 
 ```bash
-make retrain               # Train on live generator data (production default)
-make retrain-offline       # Train on offline dataset (guaranteed all A1-A7 + NORMAL)
-make generate-training-data # Generate 24h offline dataset (868,320 rows, ~260MB)
+# Full training pipeline — generates dataset + retrains both models
+make train
+
+# Generate training dataset only (used by `make train`)
+docker compose run --rm -e ... backend python -m backend.generator.training_dataset
+
+# Retrain models using existing dataset (used by `make train`)
+docker compose run --rm -e ... backend python -m backend.src.anomaly_detection.ml.train
 ```
+
+> **Note:** Generator code changes require `docker compose build backend` since `backend/generator/` is not bind-mounted. The rest of the backend (training, inference) picks up changes automatically via bind mount.
+
+> **Note:** `make rebuild` now preserves the MLflow artifacts volume (`laad_mlflow_artifacts`). The explicit `-v` flags were removed from `docker compose down` calls, and `laad_mlflow_artifacts` was excluded from `docker volume rm`. MLflow experiment data and model registry survive rebuilds — only manual `docker volume rm laad_mlflow_artifacts` or `make clean` wipes MLflow data.
 
 ---
 
 ## RAG Diagnostic Assistant
 
-An uncertainty-aware RAG system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with retrieval-based confidence scoring and Redis response caching. Uses Ollama Cloud as primary LLM provider with OpenRouter as emergency fallback, and features intelligent query classification that routes stats queries directly to the database for faster responses.
+An **Agentic RAG** system that provides AI-powered diagnostics for ATM issues using Retrieval-Augmented Generation with multi-signal confidence fusion, cross-encoder reranking, reflexion (self-critique), self-consistency scoring, verbalized confidence estimation, and citation grounding verification. Uses Ollama Cloud as primary LLM provider with OpenRouter as emergency fallback, and features intelligent query classification that routes stats queries directly to the database for faster responses.
 
 ### Architecture
 
@@ -972,8 +1044,16 @@ flowchart TD
   subgraph Retrieval ["Retrieval"]
     SAN["Query Sanitization\nprompt injection filter"]
     CDB[("ChromaDB\natm_logs collection\ncosine similarity")]
-    TOPK["Top-K retrieval\nk=3 chunks, 800 chars each"]
+    TOPK["Top-K retrieval\nk=3*3 chunks"]
     FILTER["Metadata Filter\nanomaly type, atm_id, severity, error_only, temporal boost"]
+    CE[("Cross-Encoder Reranking\ncross-encoder/ms-marco-MiniLM-L-2-v2\njoint query+chunk relevance scoring")]
+  end
+
+  subgraph Agentic ["Agentic RAG Loop"]
+    SC["Self-Consistency\n3 samples @ temp=0.7\nn-gram pairwise similarity"]
+    VC["Verbalized Confidence\nLLM rates own answer\n'supported by context?' 0-1"]
+    REFLEX["Reflexion (Self-Critique)\n'identify unsupported claims'\nregenerate if issues found"]
+    CG["Citation Grounding\nentity extraction → verify in\nsource chunks → grounding_score"]
   end
 
   subgraph StatsQuery ["Stats Query (bypasses LLM)"]
@@ -991,76 +1071,107 @@ flowchart TD
     FBACK["Ollama (fallback)\nnemotron-3-supercloud"]
     EMERG["OpenRouter (emergency)\nfree models"]
     GRACEFUL["Context-aware Fallback\nstats / troubleshooting / diagnostic"]
-    GEN["Response generation\nmax_tokens=2048, temp=0.6"]
   end
 
-  subgraph Prompting ["Query-Type Prompts"]
-    DIAG["Diagnostic prompt\nAnalysis, Root Cause, Actions"]
-    TROUB["Troubleshooting prompt\nNumbered steps, expected outcome"]
-    GENP["General prompt\nSummary, key points, context"]
-  end
-
-  subgraph Confidence ["Retrieval Confidence"]
-    DIST["Distance Score\n1.0 - avg_distance"]
-    COUNT["Chunk Count Bonus\nmin(chunks/5, 0.1)"]
-    DIVERSITY["Source Diversity\nmin(unique_atms-1, 0.1)"]
-    COMBINE["Combine: distance + count + diversity"]
+  subgraph Confidence ["Multi-Signal Confidence Fusion"]
+    RETR["Retrieval Score\n30% weight"]
+    CONS["Consistency Score\n25% weight"]
+    VERB["Verbalized Score\n25% weight"]
+    GRND["Grounding Score\n20% weight"]
+    FUSE["Fuse: weighted average\n0.3*ret + 0.25*cons + 0.25*verb + 0.2*gnd"]
     LEVEL["Confidence level\nHIGH ≥0.8, MED ≥0.5, LOW <0.5"]
-  end
-
-  subgraph Calibration ["Calibration"]
-    FB["User Feedback\nhelpful / not_helpful / uncertain"]
-    PLATT["Platt Scaling\nsigmoid(scale × conf + bias)\nscipy Nelder-Mead"]
-    ECE["ECE computation\n5 bins, target < 0.10"]
-    RECAL["Recalibrate trigger\nEvery 20 new samples"]
   end
 
   Q --> CLASS
   CLASS --> ROUTE
   ROUTE -->|"stats"| DB --> STATS
-  ROUTE -->|"diagnostic|troubleshooting|general"| SAN --> CDB --> TOPK --> FILTER
-  FILTER --> REDIS
+  ROUTE -->|"diagnostic|troubleshooting|general"| SAN --> CDB --> TOPK --> FILTER --> CE
+  CE --> REDIS
   REDIS --> HIT
   HIT -->|"yes"| RESP["Return cached response"]
   HIT -->|"no"| OLLAMA
-  OLLAMA --> FBACK --> EMERG --> GEN
-  GEN --> DIAG
-  GEN --> TROUB
-  GEN --> GENP
-  GEN --> DIST
-  GEN --> COUNT
-  GEN --> DIVERSITY
-  DIST & COUNT & DIVERSITY --> COMBINE --> LEVEL
-  LEVEL --> FB
-  FB --> PLATT --> ECE --> RECAL
+  OLLAMA --> FBACK --> EMERG --> GRACEFUL --> SC
+  SC --> VC
+  VC --> REFLEX
+  REFLEX --> CG
+  CG --> RETR & CONS & VERB & GRND
+  RETR & CONS & VERB & GRND --> FUSE --> LEVEL
 
   classDef routing fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
   classDef retrieval fill:#0f766e,stroke:#14b8a6,color:#ffffff;
   classDef stats fill:#0f766e,stroke:#34d399,color:#ffffff;
   classDef cache fill:#7c2d12,stroke:#f59e0b,color:#ffffff;
   classDef gen fill:#581c87,stroke:#a78bfa,color:#ffffff;
-  classDef prompt fill:#7c2d12,stroke:#f97316,color:#ffffff;
+  classDef agentic fill:#4a1d6a,stroke:#c084fc,color:#ffffff;
   classDef conf fill:#1e3a5f,stroke:#60a5fa,color:#ffffff;
-  classDef cal fill:#4a1d6a,stroke:#c084fc,color:#ffffff;
 
   class Q,CLASS,ROUTE routing;
-  class SAN,CDB,TOPK,FILTER retrieval;
+  class SAN,CDB,TOPK,FILTER,CE retrieval;
   class DB,STATS stats;
   class REDIS,HIT,RESP cache;
-  class OLLAMA,FBACK,EMERG,GRACEFUL,GEN gen;
-  class DIAG,TROUB,GENP prompt;
-  class DIST,COUNT,DIVERSITY,COMBINE,LEVEL conf;
-  class FB,PLATT,ECE,RECAL cal;
+  class OLLAMA,FBACK,EMERG,GRACEFUL gen;
+  class SC,VC,REFLEX,CG agentic;
+  class RETR,CONS,VERB,GRND,FUSE,LEVEL conf;
 ```
 
-### Performance Improvements
+### Agentic RAG Features
 
-| Metric | Before | After |
+| Feature | Method | Impact | Literature |
+|---|---|---|---|
+| **Cross-Encoder Reranking** | `cross-encoder/ms-marco-MiniLM-L-2-v2` scores `(query, chunk)` pairs jointly | 5-15% retrieval relevance lift over bi-encoder cosine | Nogueira & Cho 2019 |
+| **Self-Consistency Scoring** | 3 samples at `temp=0.7`, n-gram Jaccard pairwise similarity → `consistency_score` | Detects ambiguous queries (high variance = low confidence) | Wang et al. 2022 (ICLR) |
+| **Verbalized Confidence** | LLM prompted: *"On a scale of 0-1, is your answer supported by context?"* | Adds calibrated self-awareness signal | Mielke et al. 2022 |
+| **Reflexion (Self-Critique)** | Two-pass: generate → critique → regenerate if unsupported claims found | Catches hallucinated claims before delivery | Shinn et al. 2023 |
+| **Citation Grounding** | Regex entity extraction + string matching against source chunks | Ensures every cited entity exists in sources | Grounded RAG patterns |
+| **Multi-Signal Fusion** | Weighted: 30% retrieval + 25% consistency + 25% verbalized + 20% grounding | Robust confidence vs any single signal | Ensembling principle |
+
+### Performance Improvements Over Baseline
+
+| Metric | Before | After (Agentic RAG) |
 |---|---|---|
-| Response time | 30-90s | <10s (uncached), <100ms (cached) |
-| LLM calls/query | 2 | 1 |
-| Context size | 5 chunks × full | 3 chunks × 800 chars |
-| Confidence method | LLM self-consistency | Retrieval-based |
+| Retrieval relevance | Bi-encoder cosine distance | Cross-encoder joint scoring (+5-15%) |
+| Confidence signals | 1 signal (retrieval distance) | 4 fused signals (retrieval + consistency + verbalized + grounding) |
+| Hallucination protection | None | Reflexion self-critique + citation grounding |
+| Ambiguous query detection | Not detected | Self-consistency variance flag |
+| Frontend visibility | Single badge | Confidence breakdown + agentic badges + critique expandable |
+
+### Performance Optimizations
+
+The RAG has been optimized to reduce latency without sacrificing confidence or output accuracy:
+
+| Optimization | Before | After | Speedup | Quality Impact |
+|---|---|---|---|---|
+| **Parallel self-consistency** | 3 sequential LLM calls (15–30s) | 3 concurrent calls via `ThreadPoolExecutor` (5–10s) | **2–3×** on multi-sample step | None — samples are independent, same model/temperature |
+| **Reuse first sample as primary** | 3 samples + 4th separate generation | First sample doubles as primary response | **5–10s** saved per query | None — sample 1 IS already a valid generation |
+
+**Typical query latency (all features enabled, `RAG_SAMPLES=3`):**
+
+| Step | Before | After |
+|---|---|---|
+| 3 self-consistency samples | 15–30s (sequential) | 5–10s (parallel) |
+| Primary generation | 5–10s (wasted) | 0s (first sample reused) |
+| Reflexion critique | 5–10s | 5–10s |
+| Verbalized confidence | 1–3s | 1–3s |
+| **Total** | **26–53s** | **11–23s** |
+
+#### Call sequence before optimization:
+
+```
+[Self-consistency 1] ──5–10s──┐
+[Self-consistency 2] ──5–10s──┤  sequential → 15–30s
+[Self-consistency 3] ──5–10s──┘
+[Primary generation]  ──5–10s──  wasted
+[Critique]            ──5–10s──
+[Verbalized]          ──1–3s───
+```
+
+#### Call sequence after optimization:
+
+```
+[Self-consistency 1,2,3] ──5–10s──  parallel (sample 1 becomes primary)
+[Critique]               ──5–10s──
+[Verbalized]             ──1–3s───
+```
 
 ### Response Caching
 
@@ -1074,7 +1185,7 @@ flowchart TD
 ### LLM Providers
 
 | Provider | Model | Role | Rate Limit |
-|---|---|---|---|
+|---|---|---|---|---|
 | **Ollama Cloud** | `gemma4:31b-cloud` | Primary | Account-based |
 | **Ollama Cloud** | `nemotron-3-supercloud` | Fallback | Account-based |
 | **OpenRouter** | Free models | Emergency fallback | 20 req/min, 200 req/day |
@@ -1111,13 +1222,18 @@ Stats queries bypass the LLM entirely and query the database directly, returning
 | `OLLAMA_MODEL` | gemma4:31b-cloud | Primary Ollama Cloud model |
 | `OLLAMA_FALLBACK_MODELS` | nemotron-3-supercloud | Comma-separated fallback models |
 | `OPENROUTER_API_KEY` | (optional) | Emergency fallback when Ollama unavailable |
-| `RAG_TOP_K` | 3 | Number of chunks to retrieve |
+| `RAG_TOP_K` | 10 | Number of chunks to retrieve (increased from 3 for richer context — comprehensive queries like "all issues" bypass error_only filter) |
 | `RAG_CHUNK_TRUNCATE` | 800 | Characters per chunk |
 | `RAG_ERROR_ONLY` | true | Filter for ERROR/FATAL severity when querying about issues |
 | `RAG_ANOMALY_TYPES` | A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL | Comma-separated anomaly types to filter |
 | `RAG_MOST_RECENT_FIRST` | true | Sort by timestamp descending for "most recent" queries |
-| `RAG_SAMPLES` | 1 | Self-consistency samples |
+| `RAG_SAMPLES` | 3 | Self-consistency samples (runs in parallel via ThreadPoolExecutor, so 3 samples ≈ 1× latency) |
 | `CONF_HIGH` / `CONF_MEDIUM` | 0.8 / 0.5 | Confidence thresholds |
+| `RAG_REFLEXION` | true | Enable reflexion self-critique |
+| `RAG_CITATION_GROUNDING` | true | Enable citation grounding verification |
+| `RAG_SELF_CONSISTENCY` | true | Enable self-consistency scoring |
+| `RAG_CROSS_ENCODER` | true | Enable cross-encoder reranking |
+| `RAG_CROSS_ENCODER_MODEL` | cross-encoder/ms-marco-MiniLM-L-2-v2 | Cross-encoder model name |
 
 ### Query Improvements
 
@@ -1132,32 +1248,37 @@ The RAG now features intelligent query parsing:
 
 ### Anomaly Syncer
 
-A background service syncs UNKNOWN and NORMAL anomalies from PostgreSQL to ChromaDB for RAG retrieval:
+A background service syncs all anomaly types (A1–A7, UNKNOWN, NORMAL) from PostgreSQL to ChromaDB for RAG retrieval:
 
 | Feature | Details |
 |---|---|
 | **Trigger** | Runs after each anomaly detection cycle (every 30s) |
-| **Data Source** | `anomalies` table where `anomaly_type IN ('UNKNOWN', 'NORMAL')` |
+| **Data Source** | `anomalies` table — previously only `UNKNOWN`/`NORMAL`, now all types |
 | **Metadata** | `atm_id`, `last_timestamp`, `severity`, `_anomaly_tag` |
-| **Purpose** | Enables queries about novel patterns (UNKNOWN) and baseline behavior (NORMAL) |
+| **Purpose** | Enables the RAG to answer questions about any anomaly type across any ATM |
+
+Previously only UNKNOWN and NORMAL anomalies were synced, which meant A1–A7 anomalies were invisible to the RAG — queries like "what are all the issues with ATM 1" would miss most of the data. Now all anomaly types are indexed, and the dominant anomaly tag is determined by frequency (not position) within each ChromaDB window.
 
 UNKNOWN anomalies are generated by the ML classifier when Isolation Forest detects unusual patterns that don't match trained A1-A7 signatures. NORMAL represents baseline operational behavior.
 
-### Retrieval Confidence
+### Multi-Signal Confidence Fusion
 
-| Signal | Method | Contribution |
-|---|---|---|
-| **Distance Score** | `1.0 - min(avg_distance, 1.0)` | Base signal (0.0-1.0) |
-| **Chunk Count Bonus** | `min(chunks / 5, 0.1)` | +0 to +0.1 |
-| **Source Diversity** | `min(unique_atms - 1, 0.1)` | +0 to +0.1 |
+| Signal | Method | Weight | Contribution |
+|---|---|---|---|
+| **Retrieval Distance** | `1.0 - min(avg_distance, 1.0)` + count bonus + diversity bonus | 30% | Base relevance signal |
+| **Self-Consistency** | 3-sample n-gram pairwise similarity (Wang et al. 2022) | 25% | Detects ambiguous queries |
+| **Verbalized Confidence** | LLM self-rating on 0-1 scale | 25% | Model's own certainty estimate |
+| **Citation Grounding** | % of cited entities found in source chunks | 20% | Factual accuracy check |
 
-**Final score:** `distance_score + count_bonus + diversity_bonus` (capped at 1.0)
+**Final score:** `0.3 * retrieval + 0.25 * consistency + 0.25 * verbalized + 0.2 * grounding`
+
+Missing signals are skipped and remaining weights renormalized (e.g., if only retrieval available, final = retrieval).
 
 ### Confidence Levels
 
 | Level | Threshold | Action |
 |---|---|---|
-| **HIGH** | ≥ 0.8 | Auto-respond — 80%+ confidence in answer quality |
+| **HIGH** | ≥ 0.8 | Auto-respond — high confidence across all signals |
 | **MEDIUM** | 0.5–0.8 | Verify — moderate confidence, review before presenting |
 | **LOW** | < 0.5 | Escalate — low confidence, route to human expert |
 
@@ -1170,7 +1291,8 @@ The retriever supports intelligent query parsing for targeted retrieval:
 | **Anomaly Type** | Query contains "A1"-"A7" or keywords (e.g., "network timeout", "cassette") | Filters ChromaDB by `_anomaly_tag` metadata |
 | **ATM ID** | Query contains ATM ID or `atm_id` param | Filters by specific ATM (supports: ATM-GB-0001, ATM 1, ATM-0001) |
 | **Severity** | `error_only=true` filters for ERROR/FATAL/CRITICAL | Filters by severity metadata |
-| **Error-only Intent** | Query contains "issue", "error", "problem", "failure" | Auto-applies severity + anomaly type filters |
+| **Error-only Intent** | Query contains "issue", "error", "problem", "failure" | Auto-applies severity + anomaly type filters (overridden to `false` when query also indicates comprehensive intent, e.g. "all issues") |
+| **Comprehensive Intent** | Query contains "all issues", "all problems", "complete list", "full list" | Disables error_only filter — retrieves ALL chunks for full context instead of only ERROR/FATAL |
 | **Most Recent Intent** | Query contains "most recent", "latest", "recent" | Sorts results by timestamp descending |
 | **Temporal Boost** | Always enabled | Prioritizes recent chunks (last 6 hours) with decay scoring |
 
@@ -1303,13 +1425,40 @@ React 19 + Vite 8 dashboard with 10 pages, built with Tailwind CSS v4 and shadcn
 
 | Component | Purpose |
 |---|---|
-| `MainLayout` | Layout wrapper with collapsible sidebar |
+| `MainLayout` | Layout wrapper with collapsible sidebar, wraps `<Outlet />` in `RAGProvider` and `SearchProvider` |
 | `AnomalyCard` | Individual anomaly display with severity badge, toggle-complete, star |
 | `AnomalyListPage` | Reusable list layout with pagination, filters, sorting |
 | `SearchBar` | Search by title |
 | `ThemeProvider` | Dark mode theme context |
+| `RAGProvider` | RAG state context — persists messages/input across page navigations and browser refreshes via localStorage |
 | `ProtectedRoute` | Auth guard for protected pages |
 | `AdminRoute` | Admin-only route guard |
+
+### RAG State Persistence
+
+The RAG diagnostic assistant saves all chat state across page navigations and browser refreshes via a **3-layer persistence architecture**:
+
+| Layer | Mechanism | Scope |
+|---|---|---|
+| **Cross-page Context** | `RAGProvider` React context wraps `<Outlet />` in `MainLayout` | Survives route changes — fetch continues even when user navigates away |
+| **Browser Refresh** | `localStorage` with keys `rag_messages`, `rag_input`, `rag_active_tab` | Survives full page reloads — chat history + input text restored on mount |
+| **Server-side** | `rag_queries` PostgreSQL table via `/api/rag/history` | Permanent query history across all sessions |
+
+**How it works:**
+
+1. `RAGProvider` (in `frontend/src/providers/RAGProvider.jsx`) owns all RAG state — `messages`, `input`, `loading`, `activeTab`, and the `submitQuery` fetch lifecycle
+2. State is persisted to `localStorage` on every change, and restored on mount via `loadFromStorage()` initializers
+3. `DiagnosticAssistant` consumes state via the `useRAG()` hook — it has no local `useState` for RAG data
+4. `MainLayout` wraps `<Outlet />` with `<RAGProvider>`, so the context stays mounted across all page navigations
+5. When a query is submitted and the user navigates to Dashboard/Settings, the `async` fetch continues in `RAGProvider` and the response is stored when it completes
+6. When the user navigates back to `/diagnostic`, the completed response appears automatically
+7. If the page is refreshed mid-conversation, `localStorage` restores all messages and the input box text
+
+| Key | Contents | Max Size |
+|---|---|---|
+| `rag_messages` | Array of message objects (role, content, uncertainty, sources, critiqueText) | 50 messages (oldest trimmed) |
+| `rag_input` | Current input box text | Single string |
+| `rag_active_tab` | Current tab ("chat" or "history") | Single string |
 
 ### UI Components (shadcn/ui-style)
 
@@ -1349,17 +1498,16 @@ The main dashboard displays all anomalies with criticality-based ordering and fi
 |---|---|
 | **Criticality Score** (default) | Ranked by operation gravity (A1=7 → A7=1, UNKNOWN=0) + severity (CRITICAL=3 → LOW=0) + age bonus |
 | **Most Recent** | Chronological order (newest first) |
-| **Severity** | CRITICAL → HIGH → MAJOR → LOW |
+| **Severity** | CRITICAL → HIGH → MAJOR |
 
 **Filters:**
 
 | Filter | Options | Description |
 |---|---|---|
-| **Detection Source** | All Sources, CLASSIFIER, ZSCORE, SIGNAL_CORRELATOR | Filter by detection layer |
-| **ATM ID** | All ATMs, ATM-GB-0001 through ATM-GB-0010 | Filter by specific ATM |
+| **Entity** | All Entities, ATMs Only, Servers Only, or specific ATM/server ID | Filter by entity type (ATM vs server) or by specific entity |
 | **Anomaly Type** | All Types, A1-A7, UNKNOWN | Filter by anomaly type |
-| **Severity** | All Severities, CRITICAL, HIGH, MAJOR, LOW | Filter by severity level |
-| **Search** | Title | Text search across anomaly titles |
+| **Severity** | All Severities, CRITICAL, HIGH, MAJOR | Filter by severity level |
+| **Search** | Title, entity ID | Text search across anomaly titles and entity identifiers |
 
 **Key Features:**
 - 20 items per page with pagination
@@ -1369,7 +1517,7 @@ The main dashboard displays all anomalies with criticality-based ordering and fi
 - Theme: System preference (light/dark) with no manual toggle
 - Sidebar: Collapsible with dynamic main content expansion
 - Loading states: Skeleton components throughout
-- Diagnostic Assistant: Full-height chat, markdown rendering, animated typing indicator, confidence badges, collapsible sources
+- Diagnostic Assistant: Full-height chat, markdown rendering, animated typing indicator, confidence badges, collapsible sources, persistent state across page navigations and browser refreshes
 - Form UX: Example-based placeholders (e.g. "e.g. admin")
 - Unlimited anomalies (no 500 limit)
 
@@ -1425,7 +1573,7 @@ flowchart TD
 |---|---|---|---|
 | **Total Events** | Redis `stats:events:*` counters | 5 seconds | Sum of all events across all sources (last 7 days of hourly buckets) |
 | **Total Anomalies** | Redis `stats:anomaly:type:*` sorted sets | 5 seconds | Frequency count of each anomaly type (A1-A7) |
-| **Unique ATMs** | Redis HyperLogLog `stats:unique:atms` | 5 seconds | Cardinality estimate of unique ATMs seen (last 30 days) |
+| **Unique ATMs & Servers** | PostgreSQL `atms` table `COUNT(*)` | 5 seconds | Total monitored entities (10 ATMs + 3 servers) from `atms` table |
 | **Metric Types** | PostgreSQL `metrics` table | On mount | Count of distinct metric names available for monitoring |
 
 #### Charts
@@ -1453,7 +1601,7 @@ flowchart TD
 |---|---|---|---|
 | **Event Counters** | `stats:events:{source}:{hour}` | 7 days | Per-source hourly event counts via `INCR` |
 | **Anomaly Counters** | `stats:anomaly:type:{hour}` | 7 days | Per-hour anomaly type frequency via `ZINCRBY` |
-| **Unique ATMs** | `stats:unique:atms` | 30 days | HyperLogLog for cardinality estimation via `PFADD`/`PFCOUNT` |
+| **Unique ATMs** | `stats:unique:atms` | 30 days | Legacy HyperLogLog — KPI now uses `SELECT COUNT(*) FROM atms` |
 
 #### API Endpoints
 
@@ -1497,7 +1645,7 @@ make pytest        # runs all tests in Docker with isolated test DB
 | **Concurrency & stress** | 50 concurrent write threads, lock collision recovery, concurrent emit_tick calls |
 | **Security & auth** | Login, JWT, `require_admin` guard, privilege escalation |
 | **Anomaly detector** | Rule-based detection across A1–A7 with correct source assignment, 5-min dedup window |
-| **ML detector** | Model loading, inference cycle, CLASSIFIER/ZSCORE/SIGNAL_CORRELATOR layers, 47 features, dedup window |
+| **ML detector** | Model loading, inference cycle, CLASSIFIER/ZSCORE/SIGNAL_CORRELATOR layers, 49 features (46 for IF), dedup window, XGBoost shape fix |
 | **RAG** | Config validation, LLM client fallback routing, retriever chunk retrieval, retrieval-only confidence, Redis caching, calibration fitting, pipeline end-to-end |
 | **Redis integration** | Shared client connection/singleton/degradation, distributed rate limiting, Redis-backed dedup, JWT blacklist, distributed locking, Pub/Sub alerts, anomaly query caching, analytics counters, DLQ streams |
 
@@ -1505,12 +1653,12 @@ make pytest        # runs all tests in Docker with isolated test DB
 
 | Metric | Value |
 |---|---|
-| **Total tests** | 351 |
-| **Test files** | 48 |
+| **Total tests** | 406 |
+| **Test files** | 51 |
 | **Test database** | Isolated (`atm_platform_test`, port 5433) |
 | **Test runner** | pytest via `make pytest` |
 | **ML tests** | Mock `mlflow` at module level via `pytest.fixture(autouse=True)` |
-| **Excluded from CI** | `test_kafka_producer.py` (requires live Kafka) |
+| **All tests run in CI** | All 406 tests (including Kafka producer) execute in Docker |
 
 ### Critical Defects Caught by the Test Suite
 
@@ -1550,7 +1698,7 @@ Batch writes use `psycopg2.extras.execute_values` with a `ThreadedConnectionPool
 Cleanup filters on `is_active = 1` only, preserving all unresolved alerts regardless of age. APScheduler runs cleanup every 1 hour automatically (only scheduler remaining after removing ML detector). Batched DELETE (5,000 rows/batch) + VACUUM for efficient space reclamation.
 
 **3-layer anomaly detection — reactive + proactive**
-CLASSIFIER (XGBoost + Isolation Forest, 47 features) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via IF threshold. ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The Kafka consumer triggers detection every 30 seconds after processing messages. A 5-minute dedup window in `_is_active()` prevents duplicate writes within that window. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display.
+CLASSIFIER (XGBoost + Isolation Forest, 49→46 features with feature selection) runs first as the primary detector when models are loaded, detecting known A1–A7 patterns and unknown anomalies via calibrated IF threshold (−0.5199). ZSCORE (rolling Z-score, >3σ threshold) runs independently of models to detect novel patterns. SIGNAL_CORRELATOR (final fallback) uses deterministic multi-signal correlation for A1–A7. The Kafka consumer triggers detection every 30 seconds after processing messages. A 5-minute dedup window in `_is_active()` prevents duplicate writes within that window. The `explanation` JSONB field embeds `"source": "CLASSIFIER"|"ZSCORE"|"SIGNAL_CORRELATOR"` for frontend display.
 
 **RAG Data Privacy**
 Log data stored in ChromaDB never leaves the network — only retrieved log context and user queries are sent to the LLM API. The LLM receives only the retrieved log snippets and user query, not raw ATM data. When LLM providers are rate-limited or unavailable, the system falls back to local log extraction without making any external API calls, ensuring zero data leakage.
@@ -1572,6 +1720,47 @@ Frequently-accessed anomaly list queries are cached in Redis with 15-second TTL.
 
 **Dead Letter Queue via Redis Streams**
 Failed ingestion messages are stored in a Redis Stream (`ingestion:dlq`) with retry count, error details, and exponential backoff. Messages are retried up to 3 times before being marked as exhausted. Provides better visibility and retry capability compared to the previous `ingestion_errors` table-only approach.
+
+---
+
+## Server Anomaly Support
+
+The platform now supports anomaly detection across both ATMs and server entities. Server entities (`ATM-SERVER-001`–`ATM-SERVER-003`) model cloud infrastructure components such as terminal handler pods and container hosts.
+
+### Entity Model
+
+| Entity Type | IDs | Count | Description |
+|---|---|---|---|
+| **ATMs** | `ATM-GB-0001`–`ATM-GB-0010` | 10 | Physical ATM machines across 10 locations |
+| **Servers** | `ATM-SERVER-001`–`ATM-SERVER-003` | 3 | Server/cloud infrastructure entities |
+| **Total** | — | 13 | All monitored entities |
+
+Server IDs use the `ATM-SERVER-*` prefix for backward compatibility with existing frontend fallback logic that checks `atm_id ?? "SERVER"`.
+
+### Anomaly Targeting
+
+| Injector | Targets Servers? | Probability | Rationale |
+|---|---|---|---|
+| A3 (JVM Memory Leak) | Yes | 40% | JVM memory leaks affect containerised app servers, not physical ATMs |
+| A4 (Container Restart Loop) | Yes | 40% | Container restarts are a server/infrastructure issue |
+| A6 (OS Memory Pressure) | Yes | 40% | OS resource exhaustion applies to both ATMs and servers |
+| A1, A2, A5, A7 | No | 0% | Network/Cassette/Response/Out-of-order are ATM-specific |
+
+### Frontend Integration
+
+- **Entity Type Filter:** `All Entities` / `ATMs Only` / `Servers Only` dropdown in the anomaly list page
+- **Dynamic Entity List:** Entity dropdown populated from `/api/analytics/entities` endpoint (13 entities)
+- **Entity Badge:** Anomaly cards display a purple `Server` badge (with `Server` icon) or blue `ATM` badge
+- **Search:** Searching "server" matches server anomalies via entity type label in search metadata
+- **Analytics KPI:** Header reads "ATMs & Servers Being Monitored" (combined count)
+- **Fallback:** "Unknown Entity" displayed when entity type cannot be determined
+
+### API Changes
+
+| Endpoint | Change |
+|---|---|
+| `GET /anomalies` | Added `entity_type` query parameter (`atm` / `server`) — filters via `atm_id LIKE 'ATM-GB-%'` or `ATM-SERVER-%'` |
+| `GET /analytics/entities` | New endpoint: returns all 13 entities with `atm_id`, `os_version`, `location_code` |
 
 ---
 
@@ -1814,12 +2003,12 @@ make rebuild
 | Log generator | Python + `kafka-python` | Backfill + live loop, SIGTERM/SIGINT handling, pure Kafka producer (no direct DB writes), 7 emitters + 7 anomaly injectors |
 | Kafka consumer | Python + `kafka-python` | Manual offset commit, LRU deduplication (10k IDs), writes to PostgreSQL + ChromaDB, triggers anomaly detector every 30s |
 | ChromaDB | ChromaDB HTTP client | Per-ATM 10-event buffer, SemanticChunker with `nomic-embed-text` (Ollama) or simple text chunking fallback, `atm_logs` collection on Docker named volume |
-| Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain on startup (if models missing/corrupted), inference logged to MLflow. Detection triggered by Kafka consumer every 30s with 5-min dedup window |
+| Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 49 features (46 selected for IF), git SHA tracking, auto-retrain on startup (if models missing/corrupted), inference logged to MLflow. Grid search for IF hyperparams, XGBoost-based feature selection, Youden's J threshold calibration. Detection triggered by Kafka consumer every 30s with 5-min dedup window |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
 | Frontend | React 19 + Vite 8 | 11 pages, Tailwind v4, shadcn/ui, sonner, react-markdown, Chart.js, React Router, system theme, dynamic sidebar |
-| RAG | OpenRouter + ChromaDB | Uncertainty-aware RAG with self-consistency sampling (1 sample), verbalized confidence (30%), response variance (20%), retrieval confidence fallback, Platt scaling calibration. Graceful degradation when LLM unavailable. ChromaDB populated by Kafka consumer. Per-user rate limiting (10 req/min), retry with Retry-After, 90s timeouts |
-| Testing | Pytest | 351 tests across 48 files, 10 tiers, isolated test DB in Docker |
+| RAG | OpenRouter + ChromaDB | Agentic RAG with cross-encoder reranking (sentence-transformers), self-consistency scoring (3 samples), verbalized confidence, reflexion self-critique, citation grounding, multi-signal confidence fusion (retrieval 30% + consistency 25% + verbalized 25% + grounding 20%). All features toggleable via env vars. Graceful degradation when LLM unavailable. ChromaDB populated by Kafka consumer. Per-user rate limiting (10 req/min), retry with Retry-After, 90s timeouts |
+| Testing | Pytest | 406 tests across 51 files, 10 tiers, isolated test DB in Docker |
 | Redis | Redis 7 | 8 patterns: sorted sets (rate limiting), sets (dedup), Pub/Sub (alerts), streams (DLQ), HyperLogLog (cardinality), distributed locks, caching, token blacklists |
 
 ---

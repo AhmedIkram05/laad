@@ -1,4 +1,4 @@
-"""Tests for RAG uncertainty estimation module (retrieval-only confidence)."""
+"""Tests for RAG uncertainty estimation with multi-signal fusion."""
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -137,8 +137,111 @@ class TestRetrievalConfidence:
         assert diverse >= same
 
 
+class TestMultiSignalFusion:
+    """Test cases for multi-signal confidence fusion."""
+
+    def test_fusion_retrieval_only(self):
+        """Test fusion falls back to retrieval when no agentic signals."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+        from backend.src.rag.retriever import RetrievedChunk
+
+        estimator = UncertaintyEstimator()
+        chunks = [
+            RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
+                           timestamp="2026-05-15T10:00:00Z", distance=0.2, confidence_score=0.8)
+        ]
+        result = estimator._fuse_signals(retrieval_confidence=0.8)
+        assert result.final_confidence == 0.8
+        assert result.self_consistency_score is None
+        assert result.verbalized_confidence is None
+        assert result.grounding_score is None
+
+    def test_fusion_all_signals(self):
+        """Test fusion with all 4 signals."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+
+        estimator = UncertaintyEstimator()
+        result = estimator._fuse_signals(
+            retrieval_confidence=0.8,
+            self_consistency_score=0.9,
+            verbalized_confidence=0.85,
+            grounding_score=0.95,
+        )
+        assert 0.8 <= result.final_confidence <= 1.0
+        assert result.self_consistency_score == 0.9
+        assert result.verbalized_confidence == 0.85
+        assert result.grounding_score == 0.95
+        assert result.generation_variance == pytest.approx(0.1, rel=0.01)
+
+    def test_fusion_low_consistency_lowers_confidence(self):
+        """Test that low self-consistency reduces final confidence."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+
+        estimator = UncertaintyEstimator()
+
+        high_consistency = estimator._fuse_signals(
+            retrieval_confidence=0.9,
+            self_consistency_score=0.95,
+            verbalized_confidence=0.9,
+            grounding_score=0.9,
+        )
+        low_consistency = estimator._fuse_signals(
+            retrieval_confidence=0.9,
+            self_consistency_score=0.3,
+            verbalized_confidence=0.9,
+            grounding_score=0.9,
+        )
+
+        assert high_consistency.final_confidence > low_consistency.final_confidence
+
+    def test_fusion_poor_grounding_lowers_confidence(self):
+        """Test that poor citation grounding reduces final confidence."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+
+        estimator = UncertaintyEstimator()
+
+        good_grounding = estimator._fuse_signals(
+            retrieval_confidence=0.9,
+            self_consistency_score=0.9,
+            verbalized_confidence=0.9,
+            grounding_score=0.95,
+        )
+        poor_grounding = estimator._fuse_signals(
+            retrieval_confidence=0.9,
+            self_consistency_score=0.9,
+            verbalized_confidence=0.9,
+            grounding_score=0.2,
+        )
+
+        assert good_grounding.final_confidence > poor_grounding.final_confidence
+
+    def test_fusion_empty_chunks(self):
+        """Test fusion with no chunks returns zero confidence."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+
+        estimator = UncertaintyEstimator()
+        result = estimator.estimate(query="test", chunks=[],
+                                     self_consistency_score=0.8,
+                                     verbalized_confidence=0.8,
+                                     grounding_score=0.8)
+        assert result.final_confidence == 0.0
+        assert result.is_uncertain is True
+
+    def test_fusion_with_generation_variance(self):
+        """Test that generation_variance is computed as 1 - consistency."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+
+        estimator = UncertaintyEstimator()
+        result = estimator._fuse_signals(
+            retrieval_confidence=0.8,
+            self_consistency_score=0.85,
+        )
+        assert result.generation_variance is not None
+        assert result.generation_variance == pytest.approx(0.15, rel=0.01)
+
+
 class TestUncertaintyEstimator:
-    """Test cases for UncertaintyEstimator class (retrieval-only)."""
+    """Test cases for UncertaintyEstimator class."""
 
     def test_confidence_classification(self):
         """Test confidence level classification."""
@@ -168,59 +271,45 @@ class TestUncertaintyEstimator:
         low_rec = estimator._get_recommendation(0.3, "low")
         assert "Escalate" in low_rec
 
-
-class TestUncertaintyEstimate:
-    """Test cases for UncertaintyEstimate dataclass."""
-
-    def test_estimate_creation(self):
-        from backend.src.rag.uncertainty import UncertaintyEstimate
-
-        estimate = UncertaintyEstimate(
-            final_confidence=0.85,
-            confidence_level="high",
-            self_consistency_score=0.85,
-            verbalized_confidence=None,
-            generation_variance=None,
-            is_uncertain=False,
-            recommendation="Auto-respond",
-        )
-
-        assert estimate.final_confidence == 0.85
-        assert estimate.confidence_level == "high"
-        assert estimate.is_uncertain is False
-
-    def test_estimate_returns_retrieval_confidence(self):
-        """Test that uncertainty uses retrieval confidence (no LLM call)."""
+    def test_estimate_passes_agentic_signals(self):
+        """Test estimate method correctly passes and fuses agentic signals."""
         from backend.src.rag.uncertainty import UncertaintyEstimator
         from backend.src.rag.retriever import RetrievedChunk
 
         estimator = UncertaintyEstimator()
-
         chunks = [
-            RetrievedChunk(
-                text="test log data",
-                chunk_id="1",
-                atm_id="ATM-GB-0001",
-                timestamp="2026-05-15T10:00:00Z",
-                distance=0.2,
-                confidence_score=0.8,
-            )
+            RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
+                           timestamp="2026-05-15T10:00:00Z", distance=0.1, confidence_score=0.9)
+        ]
+
+        result = estimator.estimate(
+            query="test",
+            chunks=chunks,
+            self_consistency_score=0.88,
+            verbalized_confidence=0.92,
+            grounding_score=0.96,
+        )
+
+        assert result.final_confidence > 0
+        assert result.self_consistency_score == 0.88
+        assert result.verbalized_confidence == 0.92
+        assert result.grounding_score == 0.96
+        assert result.generation_variance is not None
+
+    def test_estimate_no_agentic_signals(self):
+        """Test estimate with only retrieval fails gracefully."""
+        from backend.src.rag.uncertainty import UncertaintyEstimator
+        from backend.src.rag.retriever import RetrievedChunk
+
+        estimator = UncertaintyEstimator()
+        chunks = [
+            RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
+                           timestamp="2026-05-15T10:00:00Z", distance=0.2, confidence_score=0.8)
         ]
 
         result = estimator.estimate(query="test", chunks=chunks)
 
         assert result.final_confidence > 0
-        assert result.confidence_level in ("high", "medium", "low")
+        assert result.self_consistency_score is None
         assert result.verbalized_confidence is None
-        assert result.generation_variance is None
-
-    def test_estimate_empty_chunks(self):
-        """Test estimate with no chunks."""
-        from backend.src.rag.uncertainty import UncertaintyEstimator
-
-        estimator = UncertaintyEstimator()
-        result = estimator.estimate(query="test", chunks=[])
-
-        assert result.final_confidence == 0.0
-        assert result.confidence_level == "low"
-        assert result.is_uncertain is True
+        assert result.grounding_score is None

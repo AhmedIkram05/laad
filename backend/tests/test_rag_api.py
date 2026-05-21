@@ -29,7 +29,7 @@ class TestRAGSchemas:
         request = RAGQueryRequest(query="Test query")
 
         assert request.atm_id is None
-        assert request.top_k == 3
+        assert request.top_k == 10
         assert request.include_uncertainty is True
 
     def test_rag_query_request_validation(self):
@@ -75,15 +75,25 @@ class TestRAGSchemas:
             sources=sources,
             uncertainty_score=0.85,
             confidence_level="high",
-    
+
             is_uncertain=False,
             recommendation="Auto-respond",
             model_used="google/gemma-4-26b-a4b-it:free",
+            self_consistency_score=0.88,
+            verbalized_confidence=0.92,
+            grounding_score=0.95,
+            cross_encoder_used=True,
+            was_revised=False,
         )
 
         assert response.query_id == 42
         assert response.answer == "The error means..."
         assert response.confidence_level == "high"
+        assert response.self_consistency_score == 0.88
+        assert response.verbalized_confidence == 0.92
+        assert response.grounding_score == 0.95
+        assert response.cross_encoder_used is True
+        assert response.was_revised is False
 
     def test_rag_query_response_with_fallback_model(self):
         from backend.src.rag.schemas import RAGQueryResponse, SourceChunk
@@ -112,6 +122,7 @@ class TestRAGSchemas:
 
         assert response.model_used == "fallback-template"
         assert response.query_id == 43
+        assert response.self_consistency_score is None
 
 
 class TestRAGFeedback:
@@ -211,6 +222,7 @@ class TestRAGRouter:
             self_consistency_score=0.85,
             verbalized_confidence=None,
             generation_variance=None,
+            grounding_score=None,
             is_uncertain=False,
             recommendation="Auto-respond",
         )

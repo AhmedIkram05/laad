@@ -21,7 +21,7 @@ from pathlib import Path
 from backend.generator.config import ATMS, ATM_LOCATIONS
 
 OUTPUT_PATH = Path(__file__).parent.parent / "src" / "anomaly_detection" / "ml" / "artifacts" / "training_data.json"
-DURATION_HOURS = 24
+DURATION_HOURS = 6
 TICK_SECONDS = 1
 
 def _payload(overrides: dict) -> dict:
@@ -57,13 +57,13 @@ def _event(timestamp: datetime, source: str, atm_id: str, event_type: str, sever
 def generate_baseline(t: datetime, atm: str, rng: random.Random) -> list[dict]:
     rows = []
     loc = ATM_LOCATIONS.get(atm, "GB-LDN-001")
-    jvm_mem = 80_000_000 + rng.gauss(0, 5_000_000)
-    gc_pause = rng.uniform(0.01, 0.3)
-    cpu = rng.uniform(15, 45)
-    os_mem = rng.uniform(30, 65)
-    network_err = rng.randint(0, 2)
-    kafka_rt = rng.uniform(50, 250)
-    kafka_sr = rng.uniform(95, 100)
+    jvm_mem = 80_000_000 + rng.gauss(0, 2_000_000)
+    gc_pause = rng.uniform(0.02, 0.15)
+    cpu = rng.uniform(18, 38)
+    os_mem = rng.uniform(35, 55)
+    network_err = rng.randint(0, 1)
+    kafka_rt = rng.uniform(60, 200)
+    kafka_sr = rng.uniform(97, 100)
     rows.append(_metric("jvm_memory_used_bytes", jvm_mem, t, "PROMETHEUS", atm, _payload({"atm_id": atm, "location_code": loc})))
     rows.append(_metric("jvm_gc_pause_seconds_sum", gc_pause, t, "PROMETHEUS", atm, _payload({"atm_id": atm})))
     rows.append(_metric("process_cpu_usage", cpu / 100, t, "PROMETHEUS", atm, _payload({"atm_id": atm})))
@@ -112,12 +112,12 @@ def inject_a3(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
 
     jvm_start = 300_000_000
     jvm_end = 1_040_000_000
-    jvm_step = (jvm_end - jvm_start) / 90
+    jvm_step = (jvm_end - jvm_start) / 30
     gc_start = 0.45
     gc_end = 24.7
-    gc_step = (gc_end - gc_start) / 90
+    gc_step = (gc_end - gc_start) / 30
 
-    for i in range(90):
+    for i in range(30):
         tick_t = t + timedelta(minutes=i)
         jvm_mem = jvm_start + (i * jvm_step)
         gc_pause = gc_start + (i * gc_step)
@@ -130,7 +130,7 @@ def inject_a3(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
         rows.append(_metric("container/cpu/usage_time", 94.0, tick_t, "CLOUD", atm,
             {"_anomaly_tag": "A3", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
 
-    rows.append(_event(t + timedelta(minutes=90), "TERMINAL_HANDLER", atm, "OutOfMemoryError", "FATAL", "Java heap space",
+    rows.append(_event(t + timedelta(minutes=30), "TERMINAL_HANDLER", atm, "OutOfMemoryError", "FATAL", "Java heap space",
         {"_anomaly_tag": "A3", "pod_name": pod_name, "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a4(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
@@ -174,16 +174,16 @@ def inject_a6(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
 
     mem_start = 46.0
     mem_end = 98.75
-    mem_step = (mem_end - mem_start) / 120
+    mem_step = (mem_end - mem_start) / 30
     net_err_start = 0
     net_err_end = 22
-    net_err_step = (net_err_end - net_err_start) / 120
+    net_err_step = (net_err_end - net_err_start) / 30
 
-    for i in range(120):
+    for i in range(30):
         tick_t = t + timedelta(minutes=i)
         mem_val = mem_start + (i * mem_step)
         net_err_val = net_err_start + (i * net_err_step)
-        cpu_val = 20 + (i * 0.596)
+        cpu_val = 20 + (i * 2.383)
 
         rows.append(_metric("memory_usage_percent", mem_val, tick_t, "OS", atm,
             {"_anomaly_tag": "A6", "correlation_id": corr_id, "atm_id": atm, "location_code": loc}))
@@ -192,7 +192,7 @@ def inject_a6(rows: list[dict], t: datetime, atm: str, corr_id: str) -> None:
         rows.append(_metric("cpu_usage_percent", cpu_val, tick_t, "OS", atm,
             {"_anomaly_tag": "A6", "correlation_id": corr_id, "atm_id": atm}))
 
-    rows.append(_event(t + timedelta(minutes=120), "ATM_APP", atm, "TIMEOUT", "ERROR", "OS resource timeout - ThreadAbortException",
+    rows.append(_event(t + timedelta(minutes=30), "ATM_APP", atm, "TIMEOUT", "ERROR", "OS resource timeout - ThreadAbortException",
         {"_anomaly_tag": "A6", "error_code": "ERR-MEM", "error_detail": "ThreadAbortException: Thread was being aborted due to memory pressure", "correlation_id": corr_id, "atm_id": atm}))
 
 def inject_a7(rows: list[dict], t: datetime, atm: str, corr_id: str = None) -> None:
@@ -217,19 +217,19 @@ ANOMALY_INJECTORS = {
 }
 ANOMALY_COOLDOWNS = {"A1": 300, "A2": 600, "A3": 3600, "A4": 300, "A5": 300, "A6": 3600, "A7": 300}
 
-def generate(hours: int = 24) -> list[dict]:
+def generate(hours: int = 6, output_path: Path | None = None) -> int:
     rng = random.Random(42)
     start = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     end = start + timedelta(hours=hours)
-    rows: list[dict] = []
     anomaly_last: dict[str, datetime] = {}
     t = start
     total_ticks = int(hours * 3600 / TICK_SECONDS)
     tick = 0
+    row_count = 0
 
     schedule = []
     for a_type in ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]:
-        for offset_h in range(0, hours, 3):
+        for offset_h in range(0, hours, 2):
             schedule.append((start + timedelta(hours=offset_h + rng.random(), seconds=rng.randint(0, 3600)), a_type))
     schedule.sort(key=lambda x: x[0])
     schedule_idx = 0
@@ -237,32 +237,52 @@ def generate(hours: int = 24) -> list[dict]:
     print(f"Generating {hours}h of training data ({total_ticks:,} ticks)...")
     print(f"Scheduled anomalies: {len(schedule)}")
 
-    while t < end:
-        # Generate baseline for ALL ATMs each tick (matches production distribution)
-        for atm in ATMS:
-            for r in generate_baseline(t, atm, rng):
-                rows.append(r)
-        while schedule_idx < len(schedule) and schedule[schedule_idx][0] <= t:
-            sched_t, a_type = schedule[schedule_idx]
-            if (t - anomaly_last.get(a_type, datetime.min.replace(tzinfo=timezone.utc))).total_seconds() >= ANOMALY_COOLDOWNS[a_type]:
-                ANOMALY_INJECTORS[a_type](rows, sched_t, atm, str(uuid.uuid4()) if a_type != "A7" else None)
-                anomaly_last[a_type] = sched_t
-                print(f"  [{tick}/{total_ticks}] Injected {a_type} at {sched_t.isoformat()}")
-            schedule_idx += 1
-        t += timedelta(seconds=TICK_SECONDS)
-        tick += 1
-        if tick % 3600 == 0:
-            print(f"  Progress: {tick//3600}h / {hours}h ({len(rows):,} rows, {len(anomaly_last)} types injected)")
+    out = output_path or OUTPUT_PATH
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w") as f:
+        f.write("[\n")
+        first_row = True
 
-    print(f"Dataset complete: {len(rows):,} rows, {len(anomaly_last)} types")
-    return rows
+        def write_rows(buf: list[dict]) -> None:
+            nonlocal first_row
+            for r in buf:
+                if not first_row:
+                    f.write(",\n")
+                first_row = False
+                f.write(json.dumps(r, default=str))
+
+        while t < end:
+            buf: list[dict] = []
+            for atm in ATMS:
+                for r in generate_baseline(t, atm, rng):
+                    buf.append(r)
+            while schedule_idx < len(schedule) and schedule[schedule_idx][0] <= t:
+                sched_t, a_type = schedule[schedule_idx]
+                if (t - anomaly_last.get(a_type, datetime.min.replace(tzinfo=timezone.utc))).total_seconds() >= ANOMALY_COOLDOWNS[a_type]:
+                    anomaly_atm = rng.choice(ATMS)
+                    inject_buf: list[dict] = []
+                    ANOMALY_INJECTORS[a_type](inject_buf, sched_t, anomaly_atm, str(uuid.uuid4()) if a_type != "A7" else None)
+                    buf.extend(inject_buf)
+                    anomaly_last[a_type] = sched_t
+                    print(f"  [{tick}/{total_ticks}] Injected {a_type} at {sched_t.isoformat()} on {anomaly_atm}")
+                schedule_idx += 1
+            write_rows(buf)
+            row_count += len(buf)
+            t += timedelta(seconds=TICK_SECONDS)
+            tick += 1
+            if tick % 3600 == 0:
+                print(f"  Progress: {tick//3600}h / {hours}h ({row_count:,} rows, {len(anomaly_last)} types injected)")
+
+        f.write("\n]\n")
+
+    total_mb = out.stat().st_size / 1e6
+    print(f"Dataset complete: {row_count:,} rows, {total_mb:.1f} MB, {len(anomaly_last)} types injected")
+    return row_count
+
 
 def main() -> None:
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    rows = generate(DURATION_HOURS)
-    OUTPUT_PATH.write_text(json.dumps(rows))
-    size_mb = OUTPUT_PATH.stat().st_size / 1e6
-    print(f"Saved to {OUTPUT_PATH} ({size_mb:.1f} MB)")
+    generate(DURATION_HOURS)
+    print(f"Saved to {OUTPUT_PATH}")
 
 if __name__ == "__main__":
     main()

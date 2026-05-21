@@ -19,7 +19,7 @@ UNIQUE_ATMS_KEY = "stats:unique:atms"
 
 @router.get("/events")
 def get_events_timeline(
-    hours: int = Query(24, ge=1, le=168),
+    hours: int = Query(24, ge=0, le=168),
     bucket_minutes: int = Query(60, ge=5, le=1440),
     sources: Optional[str] = Query(None, description="Comma-separated sources: ATM_APP,HARDWARE,TERMINAL_HANDLER")
 ):
@@ -29,7 +29,7 @@ def get_events_timeline(
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = datetime(2000, 1, 1) if hours == 0 else datetime.now() - timedelta(hours=hours)
             bucket_seconds = bucket_minutes * 60
 
             source_list = []
@@ -125,7 +125,7 @@ def get_events_timeline(
 
 @router.get("/metrics")
 def get_metrics_timeline(
-    hours: int = Query(24, ge=1, le=168),
+    hours: int = Query(24, ge=0, le=168),
     bucket_minutes: int = Query(60, ge=5, le=1440),
     sources: Optional[str] = Query(None, description="Comma-separated sources: KAFKA,PROMETHEUS,OS,CLOUD")
 ):
@@ -135,7 +135,7 @@ def get_metrics_timeline(
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = datetime(2000, 1, 1) if hours == 0 else datetime.now() - timedelta(hours=hours)
             bucket_seconds = bucket_minutes * 60
 
             source_list = []
@@ -310,62 +310,104 @@ def get_unique_atm_count() -> int:
 
 
 @router.get("/stats/realtime")
-def get_realtime_stats():
+def get_realtime_stats(
+    hours: int = Query(24, ge=0, le=168),
+):
     """Get real-time analytics stats from Redis counters.
 
     Returns event counts by source, anomaly type frequency, and unique ATM count.
     Falls back to PostgreSQL queries when Redis counters are empty or unavailable.
+    When hours=0, returns all-time stats directly from the database.
     """
     client = get_redis_client()
     events_by_source = {}
     anomaly_types = {}
     unique_atms = 0
 
-    if client is not None:
+    all_time = hours == 0
+
+    # For time-bounded queries, try Redis counters first
+    if not all_time and client is not None:
         try:
+            cutoff_time = datetime.now() - timedelta(hours=hours)
             event_keys = client.keys(f"{EVENT_COUNTER_PREFIX}*")
             for key in event_keys:
                 value = client.get(key)
                 if value:
                     parts = key.replace(EVENT_COUNTER_PREFIX, "").split(":")
                     source = parts[0]
+                    # Filter by hour bucket from key: stats:events:{source}:{hour}
+                    if len(parts) > 1:
+                        try:
+                            key_hour = datetime.strptime(parts[1], "%Y-%m-%dT%H")
+                            if cutoff_time and key_hour < cutoff_time:
+                                continue
+                        except ValueError:
+                            pass
                     events_by_source[source] = events_by_source.get(source, 0) + int(value)
 
             anomaly_keys = client.keys(f"{ANOMALY_COUNTER_PREFIX}type:*")
             for key in anomaly_keys:
+                # Filter by hour bucket from key: stats:anomaly:type:{hour}
+                hour_str = key.replace(f"{ANOMALY_COUNTER_PREFIX}type:", "")
+                try:
+                    key_hour = datetime.strptime(hour_str, "%Y-%m-%dT%H")
+                    if cutoff_time and key_hour < cutoff_time:
+                        continue
+                except ValueError:
+                    pass
                 entries = client.zrange(key, 0, -1, withscores=True)
                 for atype, score in entries:
                     anomaly_types[atype] = anomaly_types.get(atype, 0) + int(score)
-
-            unique_atms = get_unique_atm_count()
         except Exception as e:
             logger.warning(f"Redis stats failed, falling back to DB: {e}")
 
-    if not events_by_source:
+    # DB fallback: all-time query or when Redis returned nothing
+    if all_time or not events_by_source:
+        cutoff = datetime.now() - timedelta(hours=hours) if not all_time else None
         conn = get_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cutoff = datetime.now() - timedelta(hours=24)
-                cur.execute(
-                    "SELECT source, COUNT(*) as cnt FROM events WHERE timestamp >= %s GROUP BY source",
-                    (cutoff,),
-                )
+                if cutoff is not None:
+                    cur.execute(
+                        "SELECT source, COUNT(*) as cnt FROM events WHERE timestamp >= %s GROUP BY source",
+                        (cutoff,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT source, COUNT(*) as cnt FROM events GROUP BY source",
+                    )
                 for row in cur.fetchall():
                     events_by_source[row["source"]] = row["cnt"]
 
-                cur.execute(
-                    "SELECT anomaly_type, COUNT(*) as cnt FROM anomalies WHERE detected_at >= %s GROUP BY anomaly_type",
-                    (cutoff,),
-                )
+                if cutoff is not None:
+                    cur.execute(
+                        "SELECT anomaly_type, COUNT(*) as cnt FROM anomalies WHERE detected_at >= %s GROUP BY anomaly_type",
+                        (cutoff,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT anomaly_type, COUNT(*) as cnt FROM anomalies GROUP BY anomaly_type",
+                    )
                 for row in cur.fetchall():
                     anomaly_types[row["anomaly_type"]] = row["cnt"]
-
-                cur.execute("SELECT COUNT(DISTINCT atm_id) as cnt FROM events WHERE atm_id IS NOT NULL AND timestamp >= %s", (cutoff,))
-                row = cur.fetchone()
-                unique_atms = row["cnt"] if row else 0
         except Exception as e:
             logger.error(f"DB fallback for realtime stats failed: {e}", exc_info=True)
         finally:
+            release_conn(conn)
+
+    # Always count total monitored entities (ATMs + Servers) from the atms table
+    conn = None
+    try:
+        conn = get_conn()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT COUNT(*) as cnt FROM atms")
+            row = cur.fetchone()
+            unique_atms = row["cnt"] if row else 0
+    except Exception as e:
+        logger.error(f"Failed to count monitored entities: {e}", exc_info=True)
+    finally:
+        if conn is not None:
             release_conn(conn)
 
     return {
@@ -373,3 +415,19 @@ def get_realtime_stats():
         "anomaly_types": anomaly_types,
         "unique_atms": unique_atms,
     }
+
+
+@router.get("/entities")
+def list_entities():
+    """Return all ATM and server entity IDs from the atms table."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT atm_id, os_version, location_code FROM atms ORDER BY atm_id")
+            rows = cur.fetchall()
+        return {"entities": [dict(r) for r in rows]}
+    except Exception as e:
+        logger.error(f"Failed to fetch entities: {e}", exc_info=True)
+        return {"entities": []}
+    finally:
+        release_conn(conn)

@@ -67,7 +67,7 @@ class TestExtractFeatures:
                  "metric_name": "windows_os_snapshot", "metric_value": 75.5,
                  "event_type": None, "severity": None, "raw_payload": {}}]
         feat = extract_features(rows)
-        assert feat[7] == 75.5, f"os_mem_mean should be 75.5, got {feat[7]}"
+        assert feat[8] == 75.5, f"os_mem_mean should be 75.5, got {feat[8]}"
 
     def test_error_counts_per_source(self):
         rows = [

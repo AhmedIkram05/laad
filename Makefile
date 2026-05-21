@@ -1,4 +1,4 @@
-.PHONY: help all rebuild rebuild-backend clean logs retrain-offline pytest generate-training-data redis
+.PHONY: help all rebuild rebuild-backend clean logs train pytest redis
 
 help:
 	@echo "LAAD Makefile — Essential commands"
@@ -8,8 +8,7 @@ help:
 	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
 	@echo "  make clean       		Stop all containers and remove volumes"
 	@echo "  make logs         		Follow all service logs"
-	@echo "  make retrain-offline  	 Retrain ML on offline dataset (all A1-A7 guaranteed)"
-	@echo "  make training-data  	Generate offline training dataset (24h, all A1-A7)"
+	@echo "  make train        		Generate training data + retrain ML models (XGBoost & IF)"
 	@echo "  make pytest       		Run all tests in Docker (postgres_test + pytest containers)"
 	@echo "  make redis        		Start Redis service (for RAG caching)"
 	@echo ""
@@ -41,12 +40,12 @@ all: ml-up redis
 
 rebuild:
 	@echo "==> Stopping all containers and removing all volumes/images..."
-	-docker compose --profile ml down -v 2>/dev/null; true
+	-docker compose --profile ml down 2>/dev/null; true
 	-docker compose --profile test down -v 2>/dev/null; true
-	-docker compose down -v 2>/dev/null; true
+	-docker compose down 2>/dev/null; true
 	-docker compose down --remove-orphans 2>/dev/null; true
-	@echo "==> Removing all LAAD volumes..."
-	-docker volume rm laad_postgres_data laad_mlflow_artifacts laad_postgres_test_data laad_kafka_data laad_chroma_data laad_redis_data 2>/dev/null; true
+	@echo "==> Removing LAAD volumes (preserving mlflow_artifacts)..."
+	-docker volume rm laad_postgres_data laad_postgres_test_data laad_kafka_data laad_chroma_data laad_redis_data 2>/dev/null; true
 	@echo "==> Removing orphaned containers..."
 	-docker compose down --remove-orphans 2>/dev/null; true
 	@echo "==> Starting fresh (mlflow starts with --profile ml)..."
@@ -84,13 +83,15 @@ clean:
 logs:
 	docker compose logs -f
 
-# ── Retrain ML Models ──────────────────────────────────────────────────────
+# ── Train ML Models ────────────────────────────────────────────────────────
 
-retrain-offline:
-	@echo "==> Retraining ML models on OFFLINE dataset..."
-	docker compose exec -e USE_OFFLINE_DATA=true backend python -m backend.src.anomaly_detection.ml.train
+train:
+	@echo "==> Generating offline training dataset..."
+	docker compose exec -T backend python -u -m backend.generator.training_dataset
+	@echo "==> Training ML models (XGBoost + Isolation Forest)..."
+	docker compose exec -T -e USE_OFFLINE_DATA=true -e TRAINING_DATA_PATH=/app/backend/src/anomaly_detection/ml/artifacts/training_data.json backend python -u -m backend.src.anomaly_detection.ml.train
 	@echo ""
-	@echo "✓ Retrain complete!"
+	@echo "✓ Training complete!"
 	@echo "  View training run at: http://localhost:5001"
 
 # ── Run Tests ──────────────────────────────────────────────────────────────

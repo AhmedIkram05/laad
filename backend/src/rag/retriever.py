@@ -14,6 +14,12 @@ from chromadb.config import Settings
 
 from backend.src.rag.config import config
 
+try:
+    from sentence_transformers import CrossEncoder
+    _HAS_CROSS_ENCODER = True
+except ImportError:
+    _HAS_CROSS_ENCODER = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +40,48 @@ class RAGRetriever:
     def __init__(self):
         self.client = self._build_client()
         self.collection = self._get_collection()
+        self._cross_encoder = None
+
+    def _load_cross_encoder(self) -> None:
+        """Lazy-load cross-encoder for reranking. Gracefully degrades if unavailable."""
+        if self._cross_encoder is not None:
+            return
+        if not _HAS_CROSS_ENCODER:
+            logger.warning("sentence-transformers not installed — cross-encoder reranking disabled. Install with: pip install sentence-transformers")
+            return
+        if not config.cross_encoder_enabled:
+            return
+        try:
+            model_name = config.cross_encoder_model
+            logger.info(f"Loading cross-encoder: {model_name}")
+            self._cross_encoder = CrossEncoder(model_name)
+            logger.info(f"Cross-encoder loaded successfully: {model_name}")
+        except Exception as e:
+            logger.warning(f"Failed to load cross-encoder {config.cross_encoder_model}: {e}. Reranking disabled.")
+
+    def _rerank_with_cross_encoder(self, query: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        """Rerank chunks using cross-encoder for precise relevance scoring.
+
+        Cross-encoders jointly attend to query + chunk text, producing more accurate
+        relevance scores than bi-encoder cosine distance alone.
+        """
+        if self._cross_encoder is None:
+            return chunks
+
+        pairs = [(query, c.text[:512]) for c in chunks]
+        try:
+            scores = self._cross_encoder.predict(pairs)
+        except Exception as e:
+            logger.warning(f"Cross-encoder reranking failed: {e}. Falling back to original order.")
+            return chunks
+
+        for i, chunk in enumerate(chunks):
+            ce_score = float(scores[i])
+            chunk.distance = max(0.0, 1.0 - ce_score)
+            chunk.confidence_score = self._calculate_confidence(chunk.distance)
+
+        chunks.sort(key=lambda c: c.distance)
+        return chunks
 
     def _build_client(self) -> chromadb.HttpClient:
         """Build ChromaDB client."""
@@ -136,12 +184,17 @@ class RAGRetriever:
             if temporal_boost and chunks:
                 chunks = self._apply_temporal_boost(chunks)
 
+            if config.cross_encoder_enabled and chunks:
+                self._load_cross_encoder()
+                chunks = self._rerank_with_cross_encoder(query, chunks)
+
             if most_recent_first and chunks:
                 chunks = self._sort_by_most_recent(chunks)
-            
+
             chunks = chunks[:top_k]
 
-            logger.info(f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id}, anomaly_type={anomaly_type}, error_only={error_only}, most_recent_first={most_recent_first})")
+            ce_used = self._cross_encoder is not None
+            logger.info(f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id}, anomaly_type={anomaly_type}, ce_rerank={ce_used})")
             return chunks
 
         except Exception as e:

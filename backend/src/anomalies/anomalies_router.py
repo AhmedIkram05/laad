@@ -92,6 +92,7 @@ def listAnomalies(
     group_by: Optional[str] = Query(None),
     detection_source: Optional[str] = Query(None, description="Filter by detection source: CLASSIFIER, ZSCORE, SIGNAL_CORRELATOR"),
     is_starred: Optional[int] = Query(None, description="Filter by starred state: 1=starred, 0=unstarred"),
+    entity_type: Optional[str] = Query(None, description="Filter by entity type: 'atm' (ATM-GB-*) or 'server' (ATM-SERVER-*)"),
     sort_by: Optional[str] = Query(default="score", description="Sort by: score (default, criticality), detected_at (most recent), severity"),
     limit: int = Query(default=None, ge=0),
     offset: int = Query(default=0, ge=0),
@@ -108,7 +109,8 @@ def listAnomalies(
         "atm_id": atm_id, "severity": severity, "is_active": is_active,
         "anomaly_type": anomaly_type, "from_date": from_date, "to_date": to_date,
         "group_by": group_by, "detection_source": detection_source,
-        "is_starred": is_starred, "sort_by": sort_by, "limit": limit, "offset": offset,
+        "is_starred": is_starred, "entity_type": entity_type,
+        "sort_by": sort_by, "limit": limit, "offset": offset,
     }
     cached = _get_cached_result(cache_params)
     if cached:
@@ -141,7 +143,14 @@ def listAnomalies(
     if is_starred is not None:
         where_clauses.append("is_starred = %s")
         params.append(is_starred)
-
+    if entity_type:
+        if entity_type.lower() == "atm":
+            where_clauses.append("atm_id LIKE %s")
+            params.append("ATM-GB-%")
+        elif entity_type.lower() == "server":
+            where_clauses.append("atm_id LIKE %s")
+            params.append("ATM-SERVER-%")
+    
     where_sql = " AND ".join(where_clauses)
 
     if group_by:
@@ -151,7 +160,7 @@ def listAnomalies(
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY atm_id)",
-                    params,
+                    params or None,
                 )
                 countRow = cur.fetchone()
             total = countRow[0] if countRow else 0
@@ -198,7 +207,7 @@ def listAnomalies(
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY atm_id, anomaly_type)",
-                    params,
+                    params or None,
                 )
                 countRow = cur.fetchone()
             total = countRow[0] if countRow else 0
@@ -285,7 +294,7 @@ def listAnomalies(
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql} GROUP BY title, atm_id)",
-                    params,
+                    params or None,
                 )
                 countRow = cur.fetchone()
             total = countRow[0] if countRow else 0
@@ -330,7 +339,7 @@ def listAnomalies(
     # Default — raw paginated anomalies, no grouping
     with conn.cursor() as cur:
         cur.execute(
-            f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql})", params
+            f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql})", params or None
         )
         countRow = cur.fetchone()
     total = countRow[0] if countRow else 0

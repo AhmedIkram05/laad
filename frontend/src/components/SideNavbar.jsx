@@ -6,7 +6,7 @@
 
 /* External Libraries */
 import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../auth/AuthProvider";
+import { useAuth } from "../auth/useAuth";
 import { GoHome, GoStar, GoCheckCircle, GoSignOut } from "react-icons/go";
 import { FiSettings } from "react-icons/fi";
 import { FiActivity } from "react-icons/fi";

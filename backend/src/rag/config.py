@@ -35,7 +35,7 @@ class RAGConfig:
         self.chroma_collection: str = os.getenv("CHROMA_COLLECTION", "atm_logs")
 
         try:
-            self.retrieval_top_k: int = int(os.getenv("RAG_TOP_K", "3"))
+            self.retrieval_top_k: int = int(os.getenv("RAG_TOP_K", "10"))
             self.self_consistency_samples: int = int(os.getenv("RAG_SAMPLES", "1"))
             self.temperature: float = float(os.getenv("RAG_TEMPERATURE", "0.6"))
             self.confidence_high_threshold: float = float(os.getenv("CONF_HIGH", "0.8"))
@@ -44,9 +44,15 @@ class RAGConfig:
             self.error_only: bool = os.getenv("RAG_ERROR_ONLY", "true").lower() == "true"
             self.anomaly_types: list[str] = [t.strip() for t in os.getenv("RAG_ANOMALY_TYPES", "A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL").split(",") if t.strip()]
             self.most_recent_first: bool = os.getenv("RAG_MOST_RECENT_FIRST", "true").lower() == "true"
+
+            self.reflexion_enabled: bool = os.getenv("RAG_REFLEXION", "true").lower() == "true"
+            self.citation_grounding_enabled: bool = os.getenv("RAG_CITATION_GROUNDING", "true").lower() == "true"
+            self.self_consistency_enabled: bool = os.getenv("RAG_SELF_CONSISTENCY", "true").lower() == "true"
+            self.cross_encoder_enabled: bool = os.getenv("RAG_CROSS_ENCODER", "true").lower() == "true"
+            self.cross_encoder_model: str = os.getenv("RAG_CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-2-v2")
         except (ValueError, TypeError):
             logger.warning("Invalid numeric config value, using defaults")
-            self.retrieval_top_k = 3
+            self.retrieval_top_k = 10
             self.self_consistency_samples = 1
             self.temperature = 0.6
             self.confidence_high_threshold = 0.8
@@ -55,6 +61,11 @@ class RAGConfig:
             self.error_only = True
             self.anomaly_types = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "UNKNOWN", "NORMAL"]
             self.most_recent_first = True
+            self.reflexion_enabled = True
+            self.citation_grounding_enabled = True
+            self.self_consistency_enabled = True
+            self.cross_encoder_enabled = True
+            self.cross_encoder_model = "cross-encoder/ms-marco-MiniLM-L-2-v2"
 
         self.redis_host: str = os.getenv("REDIS_HOST", "localhost")
         try:

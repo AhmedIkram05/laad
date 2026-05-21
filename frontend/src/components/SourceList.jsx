@@ -54,7 +54,7 @@ function SourceList({sources}) {
                             aria-expanded={!!expanded[index]}
                         >
                             <span className="source-atm">
-                                {source.atm_id || "Unknown ATM"}
+                                {source.atm_id || "Unknown Entity"}
                             </span>
                             {source.timestamp && (
                                 <span className="source-time">

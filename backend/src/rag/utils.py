@@ -31,6 +31,7 @@ def detect_query_intent(query: str) -> QueryIntent:
     
     Detects:
     - error_only: Query mentions issues/errors/problems → filter for ERROR/FATAL
+      (overridden to False when query is comprehensive, e.g. "all issues")
     - most_recent_first: Query asks for recent/latest issues → sort by timestamp
     """
     query_lower = query.lower()
@@ -42,12 +43,20 @@ def detect_query_intent(query: str) -> QueryIntent:
         "critical", "warning", "exception", "timeout", "disconnect",
     ]
     
+    comprehensive_keywords = [
+        "all issue", "all problem", "complete list", "every issue",
+        "full list", "all anomaly", "everything", "all the issue",
+    ]
+    
     recent_keywords = [
         "most recent", "latest", "recent", "last", "newest", 
         "current", "today", "yesterday", "last hour", "last 6 hours",
     ]
     
-    error_only = any(kw in query_lower for kw in error_keywords)
+    # Comprehensive queries ("all issues", "every problem") should retrieve
+    # everything — not just ERROR/FATAL chunks — so the generator has full context.
+    is_comprehensive = any(kw in query_lower for kw in comprehensive_keywords)
+    error_only = not is_comprehensive and any(kw in query_lower for kw in error_keywords)
     most_recent_first = any(kw in query_lower for kw in recent_keywords)
     
     return QueryIntent(error_only=error_only, most_recent_first=most_recent_first)

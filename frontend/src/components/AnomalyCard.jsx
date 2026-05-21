@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, CheckCircle, Circle, Star } from "lucide-react";
+import { AlertTriangle, CheckCircle, Circle, Star, Server } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -10,6 +10,11 @@ const severityColors = {
   HIGH: "bg-blue-500 text-white",
   LOW: "bg-muted text-muted-foreground",
 };
+
+function getEntityType(atm_id) {
+  if (!atm_id || atm_id.startsWith("ATM-SERVER-")) return "Server";
+  return "ATM";
+}
 
 export default function AnomalyCard({
   id,
@@ -24,6 +29,7 @@ export default function AnomalyCard({
   onCompleted,
 }) {
   const navigate = useNavigate();
+  const entityType = getEntityType(atm_id);
 
   return (
     <div className={cn(
@@ -38,6 +44,15 @@ export default function AnomalyCard({
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-mono text-muted-foreground">{atm_id}</span>
+            <Badge variant="outline" className={cn(
+              "text-xs",
+              entityType === "Server"
+                ? "border-violet-400 text-violet-600 dark:text-violet-400"
+                : "border-sky-400 text-sky-600 dark:text-sky-400"
+            )}>
+              {entityType === "Server" && <Server className="w-3 h-3 mr-1 inline" />}
+              {entityType}
+            </Badge>
             <Badge variant="secondary" className={cn("text-xs", severityColors[severity])}>
               {severity}
             </Badge>

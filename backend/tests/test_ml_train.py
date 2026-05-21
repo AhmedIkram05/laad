@@ -40,7 +40,7 @@ class TestTrain:
         assert not (tmp_path / "isolation_forest.joblib").exists()
         assert not (tmp_path / "xgb_classifier.joblib").exists()
 
-    def test_saves_all_three_artifacts(self, tmp_path):
+    def test_saves_all_artifacts(self, tmp_path):
         now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         rows = []
@@ -70,24 +70,27 @@ class TestTrain:
                      severity="INFO", raw_payload={}),
             ])
 
-            with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
-                mock_cur = MagicMock()
-                mock_cur.__enter__ = MagicMock(return_value=mock_cur)
-                mock_cur.__exit__ = MagicMock(return_value=None)
-                mock_cur.fetchall.return_value = rows
-                mock_gc.return_value = mock_cur
-                with patch("backend.src.anomaly_detection.ml.train.ARTIFACT_DIR", tmp_path):
-                    with patch("backend.src.anomaly_detection.ml.train.mlflow"):
-                        def noop_alias(*args, **kwargs): pass
-                        mock_client = MagicMock()
-                        mock_client.set_registered_model_alias = noop_alias
-                        with patch("mlflow.tracking.MlflowClient", return_value=mock_client):
-                            train()
+        with patch("backend.src.anomaly_detection.ml.train.get_cursor") as mock_gc:
+            mock_cur = MagicMock()
+            mock_cur.__enter__ = MagicMock(return_value=mock_cur)
+            mock_cur.__exit__ = MagicMock(return_value=None)
+            mock_cur.fetchall.return_value = rows
+            mock_gc.return_value = mock_cur
+            with patch("backend.src.anomaly_detection.ml.train.ARTIFACT_DIR", tmp_path):
+                with patch("backend.src.anomaly_detection.ml.train.mlflow"):
+                    def noop_alias(*args, **kwargs): pass
+                    mock_client = MagicMock()
+                    mock_client.set_registered_model_alias = noop_alias
+                    with patch("mlflow.tracking.MlflowClient", return_value=mock_client):
+                        train()
 
         assert (tmp_path / "isolation_forest.joblib").exists()
         assert (tmp_path / "xgb_classifier.joblib").exists()
         assert (tmp_path / "label_encoder.joblib").exists()
         assert (tmp_path / "feature_names.json").exists()
+        assert (tmp_path / "if_feature_indices.json").exists()
+        assert (tmp_path / "if_unknown_threshold.json").exists()
+        assert (tmp_path / "scaler.joblib").exists()
 
 
 class TestConstants:

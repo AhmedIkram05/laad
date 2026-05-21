@@ -1,4 +1,4 @@
-"""FastAPI router for RAG diagnostic assistant."""
+"""FastAPI router for Agentic RAG diagnostic assistant."""
 
 from __future__ import annotations
 
@@ -86,15 +86,23 @@ async def query(
     req: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    """Query the diagnostic assistant with uncertainty estimation."""
+    """Query the diagnostic assistant with Agentic RAG capabilities.
+
+    Features:
+    - Self-consistency scoring via multi-sample generation
+    - LLM verbalized confidence estimation
+    - Reflexion (self-critique with automatic regeneration)
+    - Citation grounding verification
+    - Cross-encoder reranking (if sentence-transformers available)
+    """
     try:
         user_key = current_user.get("sub", "anonymous")
         _check_rate_limit(user_key)
 
         sanitized_query = sanitize_query(request.query)
-        
+
         query_type = classify_query_type(request.query)
-        
+
         if query_type == QueryType.STATS:
             return await _handle_stats_query(
                 query=request.query,
@@ -105,7 +113,7 @@ async def query(
 
         atm_id = request.atm_id or extract_atm_id_from_query(request.query)
         anomaly_type = _extract_anomaly_type_from_query(request.query)
-        
+
         query_intent = detect_query_intent(request.query)
         error_only = query_intent.error_only if request.error_only is None else request.error_only
         most_recent_first = query_intent.most_recent_first if request.most_recent_first is None else request.most_recent_first
@@ -135,10 +143,16 @@ async def query(
                 ],
                 uncertainty_score=cached.get("uncertainty_score", 0.5),
                 confidence_level=cached.get("confidence_level", "medium"),
-                
+
                 is_uncertain=cached.get("is_uncertain", False),
                 recommendation=cached.get("recommendation", "Review recommended"),
                 model_used="cache",
+                self_consistency_score=cached.get("self_consistency_score"),
+                verbalized_confidence=cached.get("verbalized_confidence"),
+                grounding_score=cached.get("grounding_score"),
+                cross_encoder_used=cached.get("cross_encoder_used", False),
+                was_revised=cached.get("was_revised", False),
+                critique_text=cached.get("critique_text"),
             )
 
         retriever = get_retriever()
@@ -165,6 +179,9 @@ async def query(
             query=request.query,
             chunks=chunks,
             query_type=query_type,
+            enable_reflexion=request.enable_reflexion,
+            enable_citation_grounding=request.enable_citation_grounding,
+            enable_self_consistency=request.enable_self_consistency,
         )
 
         uncertainty = None
@@ -172,6 +189,9 @@ async def query(
             uncertainty = uncertainty_estimator.estimate(
                 query=request.query,
                 chunks=chunks,
+                self_consistency_score=response.self_consistency_score,
+                verbalized_confidence=response.verbalized_confidence,
+                grounding_score=response.grounding_score,
             )
 
         user_id = _get_user_id_from_username(current_user.get("sub", ""))
@@ -207,6 +227,13 @@ async def query(
             is_uncertain=uncertainty.is_uncertain if uncertainty else False,
             recommendation=uncertainty.recommendation if uncertainty else "Review recommended",
             model_used=response.model,
+            self_consistency_score=response.self_consistency_score,
+            verbalized_confidence=response.verbalized_confidence,
+            grounding_score=response.grounding_score,
+            generation_variance=uncertainty.generation_variance if uncertainty else None,
+            cross_encoder_used=response.cross_encoder_used,
+            was_revised=response.was_revised,
+            critique_text=response.critique_text if response.critique_text else None,
         )
 
         cache_payload = {
@@ -227,6 +254,12 @@ async def query(
             "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
             "recommendation": uncertainty.recommendation if uncertainty else "Review recommended",
             "model_used": response.model,
+            "self_consistency_score": response.self_consistency_score,
+            "verbalized_confidence": response.verbalized_confidence,
+            "grounding_score": response.grounding_score,
+            "cross_encoder_used": response.cross_encoder_used,
+            "was_revised": response.was_revised,
+            "critique_text": response.critique_text,
         }
         set_cached_response(sanitized_query, cache_payload)
 

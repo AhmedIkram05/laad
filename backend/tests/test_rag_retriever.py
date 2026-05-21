@@ -221,3 +221,48 @@ class TestRetrievedChunk:
                 chunks = retriever.retrieve(query="test", temporal_boost=False)
 
         assert len(chunks) == 1
+
+    def test_cross_encoder_graceful_degradation(self):
+        """Test that missing sentence-transformers doesn't crash retrieval."""
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.query.return_value = {
+            "documents": [["log entry 1", "log entry 2"]],
+            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}, {"atm_id": "ATM-GB-0002", "last_timestamp": "2026-05-15T10:01:00Z"}]],
+            "distances": [[0.2, 0.3]],
+            "ids": [["doc_1", "doc_2"]],
+        }
+
+        with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
+            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+                with patch("backend.src.rag.retriever._HAS_CROSS_ENCODER", False):
+                    retriever = RAGRetriever()
+                    chunks = retriever.retrieve(query="test", top_k=2, temporal_boost=False)
+
+        assert len(chunks) == 2
+        assert retriever._cross_encoder is None
+
+    def test_cross_encoder_skipped_when_disabled(self):
+        """Test that cross-encoder is skipped when config disables it."""
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.query.return_value = {
+            "documents": [["log entry"]],
+            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]],
+            "distances": [[0.3]],
+            "ids": [["doc_1"]],
+        }
+
+        with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
+            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+                with patch("backend.src.rag.retriever.config") as mock_config:
+                    mock_config.cross_encoder_enabled = False
+                    mock_config.retrieval_top_k = 3
+                    mock_config.error_only = False
+                    mock_config.most_recent_first = False
+                    retriever = RAGRetriever()
+                    chunks = retriever.retrieve(query="test")
+
+        assert len(chunks) == 1

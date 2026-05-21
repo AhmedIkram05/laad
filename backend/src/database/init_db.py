@@ -20,16 +20,22 @@ def _read_schema(schema_path: str = "schema.sql") -> str:
 
 def seed_atms(conn) -> None:
     atms = [(f"ATM-GB-{str(i).zfill(4)}", "linux-5.19", f"LOC-{str(i).zfill(4)}") for i in range(1, 11)]
+    servers = [
+        ("ATM-SERVER-001", "Windows-Server-2019", "SRV-001"),
+        ("ATM-SERVER-002", "Windows-Server-2019", "SRV-002"),
+        ("ATM-SERVER-003", "Windows-Server-2019", "SRV-003"),
+    ]
+    all_entities = atms + servers
     with conn.cursor() as cur:
         cur.executemany(
             "INSERT INTO atms (atm_id, os_version, location_code) VALUES (%s, %s, %s) ON CONFLICT (atm_id) DO NOTHING",
-            atms,
+            all_entities,
         )
         affected = cur.rowcount
         if affected > 0:
-            logger.info(f"Seeded {affected} ATM(s): ATM-GB-0001 through ATM-GB-0010")
+            logger.info(f"Seeded {affected} entities: ATM-GB-0001 through ATM-GB-0010, ATM-SERVER-001 through ATM-SERVER-003")
         else:
-            logger.info("ATMs already exist, skipping")
+            logger.info("Entities already exist, skipping")
 
 
 def seed_atm_fleet() -> None:

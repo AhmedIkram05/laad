@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "../auth/AuthProvider";
+import { useAuth } from "../auth/useAuth";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -34,14 +34,14 @@ function AdminSettings() {
   const [ingestionErrors, setIngestionErrors] = useState([]);
   const [ingestionTotal, setIngestionTotal] = useState(0);
   const [ingestionPage, setIngestionPage] = useState(1);
-  const [ingestionLoading, setIngestionLoading] = useState(false);
+  const [ingestionLoading, setIngestionLoading] = useState(true);
   const [expandedError, setExpandedError] = useState(null);
 
   const INGESTION_PER_PAGE = 10;
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
+    async function loadRetention() {
       try {
         const res = await fetch("/api/admin/retention", { headers: { Authorization: `Bearer ${jwt}` }});
         const data = await res.json();
@@ -50,15 +50,29 @@ function AdminSettings() {
           setRetentionUpdatedAt(data.updated_at);
         }
       } catch {
-        console.error("Failed to load retention");
+        if (!cancelled) console.error("Failed to load retention");
       }
     }
-    load();
+    async function loadErrors() {
+      try {
+        const res = await fetch(`/api/admin/ingestion-errors?limit=${INGESTION_PER_PAGE}&offset=0`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        const data = await res.json();
+        if (!cancelled && res.ok) {
+          setIngestionErrors(data.data || []);
+          setIngestionTotal(data.total || 0);
+          setIngestionPage(1);
+        }
+      } catch {
+        if (!cancelled) console.error("Failed to load ingestion errors");
+      } finally {
+        if (!cancelled) setIngestionLoading(false);
+      }
+    }
+    loadRetention();
+    loadErrors();
     return () => { cancelled = true; };
-  }, [jwt]);
-
-  useEffect(() => {
-    loadIngestionErrors(1);
   }, [jwt]);
 
   const loadRetention = useCallback(async () => {
@@ -76,8 +90,8 @@ function AdminSettings() {
 
   const loadIngestionErrors = async (page) => {
     setIngestionLoading(true);
+    const offset = (page - 1) * INGESTION_PER_PAGE;
     try {
-      const offset = (page - 1) * INGESTION_PER_PAGE;
       const res = await fetch(`/api/admin/ingestion-errors?limit=${INGESTION_PER_PAGE}&offset=${offset}`, {
         headers: { Authorization: `Bearer ${jwt}` },
       });
