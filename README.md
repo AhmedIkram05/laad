@@ -25,7 +25,7 @@
 | Metric | Value |
 |---|---|
 | **Log Sources** | 7 simultaneous sources (ATM_APP, HARDWARE, TERMINAL_HANDLER, KAFKA, PROMETHEUS, OS, CLOUD) |
-| **ATMs Monitored** | 10 (`ATM-GB-0001` through `ATM-GB-0010`) across 10 locations |
+| **ATMs Monitored** | 10 ATMs + 3 Servers (`ATM-GB-0001`–`ATM-GB-0010` + `ATM-SERVER-001`–`ATM-SERVER-003`) |
 | **Anomaly Types** | 7 known (A1–A7) + UNKNOWN (novel pattern detection) |
 | **Detection Layers** | 3 (CLASSIFIER → ZSCORE → SIGNAL_CORRELATOR) |
 | **ML Features** | 47 engineered features across 7 groups |
@@ -199,6 +199,8 @@ The continuous generator (`backend/generator/continuous_generator.py`) is a pure
 | `ANOMALY_PROB` | 0.02 (2%) | Live anomaly injection probability |
 | `BACKFILL_ANOMALY_PROB` | 0.01 (1%) | Backfill anomaly probability |
 | `ATMS` | 10 | `ATM-GB-0001` through `ATM-GB-0010` |
+| `SERVERS` | 3 | `ATM-SERVER-001` through `ATM-SERVER-003` |
+| `ALL_ENTITIES` | 13 | Combined list of ATMs + Servers |
 | `ATM_LOCATIONS` | 10 | `LOC-001` through `LOC-010` |
 | `POD_NAME` | `terminal-handler-pod-0` | Kubernetes pod identifier |
 | `OS_VERSION` | `Windows-Server-2019` | Simulated OS version |
@@ -264,6 +266,7 @@ flowchart LR
 - **Pure Kafka producer:** No direct database writes. The generator only produces to Kafka topics. This decouples data generation from ingestion — if the consumer falls behind, data is safely buffered in Kafka (7-day retention).
 - **Batch anomaly emission:** A3 (JVM Memory Leak) and A6 (OS Memory Pressure) emit all their historical ticks in a single call with timestamps spread over the past 90/120 minutes respectively. This ensures the full progressive degradation pattern is immediately available for detection rather than requiring multiple generator cycles to accumulate.
 - **Anomaly cooldowns:** Each anomaly type has a cooldown period (300s–600s) to prevent overlapping injections that would corrupt detection signals.
+- **Server entity support:** A3 (JVM Memory Leak), A4 (Container Restart Loop), and A6 (OS Memory Pressure) can target server entities (`ATM-SERVER-001`–`ATM-SERVER-003`) with 40% probability. A1, A2, A5, A7 remain ATM-only. Server entity IDs use the `ATM-SERVER-*` prefix for backward compatibility with frontend fallback logic.
 - **Backfill mode:** On startup, generates historical data based on `BACKFILL_MINUTES` (default: 0 for production). When enabled, anomaly probability is halved during backfill (0.01 vs 0.02) to avoid flooding the initial window.
 - **Graceful shutdown:** Handles SIGTERM/SIGINT with producer flush before exit, ensuring no in-flight messages are lost.
 
@@ -273,10 +276,10 @@ flowchart LR
 |---|---|---|---|---|
 | A1 | Network Timeout Cascade | `NETWORK_DISCONNECT` + Kafka `Offline` + `NETWORK_TIMEOUT` across 3+ sources | 300s | correlation_id=`corr-0030-nnet-disc-0001`, error_code=ERR-0040, response_time_ms=30000 |
 | A2 | Cash Cassette Depletion → Out of Service | `CASSETTE_LOW`×2 + `CASSETTE_EMPTY`×2 + Kafka `Out of Service` | 600s | atm_status="Out of Service", transaction_failure_reason="CASH_DISPENSE_ERROR", transaction_rate_tps=0.0, transaction_success_rate=0.0 |
-| A3 | JVM Memory Leak → OOM | Batch `jvm_memory_used_bytes` 300MB→1040MB + GC 0.45s→24.7s over 90 ticks | Single call (batch) | 270 metrics + 1 event, OutOfMemoryError FATAL |
-| A4 | Container Restart Loop | GCP `restart_count` 1→2 + ≥3 STARTUP events + 2× FATAL | 300s | container_id changes each STARTUP, 2× OutOfMemoryError FATAL |
+| A3 | JVM Memory Leak → OOM | Batch `jvm_memory_used_bytes` 300MB→1040MB + GC 0.45s→24.7s over 90 ticks | Single call (batch) | 270 metrics + 1 event, OutOfMemoryError FATAL. 40% probability on server entities |
+| A4 | Container Restart Loop | GCP `restart_count` 1→2 + ≥3 STARTUP events + 2× FATAL | 300s | container_id changes each STARTUP, 2× OutOfMemoryError FATAL. 40% probability on server entities |
 | A5 | High Response Time Spike | Kafka `response_time_ms` 3200→30000ms + success_rate 100%→50% | 300s | corr_ids=`corr-0010-xxyy-aabb-1234`,`corr-0011-xyzw-ccdd-5678`, failure_count 8,14, error_code=ERR-0012 |
-| A6 | OS Memory Pressure → Timeout | Batch `memory_usage_percent` 46%→98.75% + `network_errors` 0→22 + cpu 91.5% over 120 ticks | Single call (batch) | 120 metrics + 1 event, error_detail contains "ThreadAbortException" |
+| A6 | OS Memory Pressure → Timeout | Batch `memory_usage_percent` 46%→98.75% + `network_errors` 0→22 + cpu 91.5% over 120 ticks | Single call (batch) | 120 metrics + 1 event, error_detail contains "ThreadAbortException". 40% probability on server entities |
 | A7 | Malformed / Out-of-Order Kafka | Kafka offset 4050 out-of-order + offset 4051 null fields + Prometheus malformed | 300s | metric_value="890iembre" (non-numeric) |
 
 ---
@@ -1349,17 +1352,16 @@ The main dashboard displays all anomalies with criticality-based ordering and fi
 |---|---|
 | **Criticality Score** (default) | Ranked by operation gravity (A1=7 → A7=1, UNKNOWN=0) + severity (CRITICAL=3 → LOW=0) + age bonus |
 | **Most Recent** | Chronological order (newest first) |
-| **Severity** | CRITICAL → HIGH → MAJOR → LOW |
+| **Severity** | CRITICAL → HIGH → MAJOR |
 
 **Filters:**
 
 | Filter | Options | Description |
 |---|---|---|
-| **Detection Source** | All Sources, CLASSIFIER, ZSCORE, SIGNAL_CORRELATOR | Filter by detection layer |
-| **ATM ID** | All ATMs, ATM-GB-0001 through ATM-GB-0010 | Filter by specific ATM |
+| **Entity** | All Entities, ATMs Only, Servers Only, or specific ATM/server ID | Filter by entity type (ATM vs server) or by specific entity |
 | **Anomaly Type** | All Types, A1-A7, UNKNOWN | Filter by anomaly type |
-| **Severity** | All Severities, CRITICAL, HIGH, MAJOR, LOW | Filter by severity level |
-| **Search** | Title | Text search across anomaly titles |
+| **Severity** | All Severities, CRITICAL, HIGH, MAJOR | Filter by severity level |
+| **Search** | Title, entity ID | Text search across anomaly titles and entity identifiers |
 
 **Key Features:**
 - 20 items per page with pagination
@@ -1425,7 +1427,7 @@ flowchart TD
 |---|---|---|---|
 | **Total Events** | Redis `stats:events:*` counters | 5 seconds | Sum of all events across all sources (last 7 days of hourly buckets) |
 | **Total Anomalies** | Redis `stats:anomaly:type:*` sorted sets | 5 seconds | Frequency count of each anomaly type (A1-A7) |
-| **Unique ATMs** | Redis HyperLogLog `stats:unique:atms` | 5 seconds | Cardinality estimate of unique ATMs seen (last 30 days) |
+| **Unique ATMs & Servers** | Redis HyperLogLog `stats:unique:atms` | 5 seconds | Cardinality estimate of unique entities seen (last 30 days) |
 | **Metric Types** | PostgreSQL `metrics` table | On mount | Count of distinct metric names available for monitoring |
 
 #### Charts
@@ -1505,8 +1507,8 @@ make pytest        # runs all tests in Docker with isolated test DB
 
 | Metric | Value |
 |---|---|
-| **Total tests** | 351 |
-| **Test files** | 48 |
+| **Total tests** | 401 |
+| **Test files** | 50 |
 | **Test database** | Isolated (`atm_platform_test`, port 5433) |
 | **Test runner** | pytest via `make pytest` |
 | **ML tests** | Mock `mlflow` at module level via `pytest.fixture(autouse=True)` |
@@ -1572,6 +1574,47 @@ Frequently-accessed anomaly list queries are cached in Redis with 15-second TTL.
 
 **Dead Letter Queue via Redis Streams**
 Failed ingestion messages are stored in a Redis Stream (`ingestion:dlq`) with retry count, error details, and exponential backoff. Messages are retried up to 3 times before being marked as exhausted. Provides better visibility and retry capability compared to the previous `ingestion_errors` table-only approach.
+
+---
+
+## Server Anomaly Support
+
+The platform now supports anomaly detection across both ATMs and server entities. Server entities (`ATM-SERVER-001`–`ATM-SERVER-003`) model cloud infrastructure components such as terminal handler pods and container hosts.
+
+### Entity Model
+
+| Entity Type | IDs | Count | Description |
+|---|---|---|---|
+| **ATMs** | `ATM-GB-0001`–`ATM-GB-0010` | 10 | Physical ATM machines across 10 locations |
+| **Servers** | `ATM-SERVER-001`–`ATM-SERVER-003` | 3 | Server/cloud infrastructure entities |
+| **Total** | — | 13 | All monitored entities |
+
+Server IDs use the `ATM-SERVER-*` prefix for backward compatibility with existing frontend fallback logic that checks `atm_id ?? "SERVER"`.
+
+### Anomaly Targeting
+
+| Injector | Targets Servers? | Probability | Rationale |
+|---|---|---|---|
+| A3 (JVM Memory Leak) | Yes | 40% | JVM memory leaks affect containerised app servers, not physical ATMs |
+| A4 (Container Restart Loop) | Yes | 40% | Container restarts are a server/infrastructure issue |
+| A6 (OS Memory Pressure) | Yes | 40% | OS resource exhaustion applies to both ATMs and servers |
+| A1, A2, A5, A7 | No | 0% | Network/Cassette/Response/Out-of-order are ATM-specific |
+
+### Frontend Integration
+
+- **Entity Type Filter:** `All Entities` / `ATMs Only` / `Servers Only` dropdown in the anomaly list page
+- **Dynamic Entity List:** Entity dropdown populated from `/api/analytics/entities` endpoint (13 entities)
+- **Entity Badge:** Anomaly cards display a purple `Server` badge (with `Server` icon) or blue `ATM` badge
+- **Search:** Searching "server" matches server anomalies via entity type label in search metadata
+- **Analytics KPI:** Header reads "ATMs & Servers Being Monitored" (combined count)
+- **Fallback:** "Unknown Entity" displayed when entity type cannot be determined
+
+### API Changes
+
+| Endpoint | Change |
+|---|---|
+| `GET /anomalies` | Added `entity_type` query parameter (`atm` / `server`) — filters via `atm_id LIKE 'ATM-GB-%'` or `ATM-SERVER-%'` |
+| `GET /analytics/entities` | New endpoint: returns all 13 entities with `atm_id`, `os_version`, `location_code` |
 
 ---
 
