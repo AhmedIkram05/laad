@@ -327,9 +327,9 @@ def get_realtime_stats(
     all_time = hours == 0
 
     # For time-bounded queries, try Redis counters first
-    cutoff_time = None if all_time else datetime.now() - timedelta(hours=hours)
     if not all_time and client is not None:
         try:
+            cutoff_time = datetime.now() - timedelta(hours=hours)
             event_keys = client.keys(f"{EVENT_COUNTER_PREFIX}*")
             for key in event_keys:
                 value = client.get(key)
@@ -359,8 +359,6 @@ def get_realtime_stats(
                 entries = client.zrange(key, 0, -1, withscores=True)
                 for atype, score in entries:
                     anomaly_types[atype] = anomaly_types.get(atype, 0) + int(score)
-
-            unique_atms = get_unique_atm_count()
         except Exception as e:
             logger.warning(f"Redis stats failed, falling back to DB: {e}")
 
@@ -393,16 +391,23 @@ def get_realtime_stats(
                     )
                 for row in cur.fetchall():
                     anomaly_types[row["anomaly_type"]] = row["cnt"]
-
-                if cutoff is not None:
-                    cur.execute("SELECT COUNT(DISTINCT atm_id) as cnt FROM events WHERE atm_id IS NOT NULL AND timestamp >= %s", (cutoff,))
-                else:
-                    cur.execute("SELECT COUNT(DISTINCT atm_id) as cnt FROM events WHERE atm_id IS NOT NULL")
-                row = cur.fetchone()
-                unique_atms = row["cnt"] if row else 0
         except Exception as e:
             logger.error(f"DB fallback for realtime stats failed: {e}", exc_info=True)
         finally:
+            release_conn(conn)
+
+    # Always count total monitored entities (ATMs + Servers) from the atms table
+    conn = None
+    try:
+        conn = get_conn()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT COUNT(*) as cnt FROM atms")
+            row = cur.fetchone()
+            unique_atms = row["cnt"] if row else 0
+    except Exception as e:
+        logger.error(f"Failed to count monitored entities: {e}", exc_info=True)
+    finally:
+        if conn is not None:
             release_conn(conn)
 
     return {
