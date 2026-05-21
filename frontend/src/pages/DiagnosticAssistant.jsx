@@ -1,21 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { queryRAG, getRAGStats, getRAGHistory } from "../api/api";
+import { getRAGStats, getRAGHistory } from "../api/api";
+import { useRAG } from "../providers/useRAG";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Skeleton } from "../components/ui/skeleton";
-import { Send, Plus, MessageCircle, History, Sparkles, ChevronDown, ChevronUp, Brain, Wrench, AlertTriangle, Clock } from "lucide-react";
-import { toast } from "sonner";
+import {
+  Send, Plus, MessageCircle, History, Sparkles, ChevronDown, ChevronUp,
+  Brain, Wrench, AlertTriangle, Clock, CheckCircle, XCircle,
+  AlertCircle, RefreshCw, Layers, Target, FileSearch,
+} from "lucide-react";
 import { formatUKDateTime } from "../lib/utils";
-
-const INITIAL_MESSAGE = {
-  id: 0,
-  role: "assistant",
-  content: "Hello! I'm your ATM diagnostic assistant. Ask me about any ATM issues, error messages, or anomalies. I'll analyze the log data and provide recommendations.",
-};
 
 function TypingIndicator() {
   return (
@@ -27,19 +25,120 @@ function TypingIndicator() {
   );
 }
 
-function ConfidenceBadge({ level, score }) {
-  const config = {
-    HIGH: { color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", icon: "✓" },
-    MEDIUM: { color: "bg-amber-500/10 text-amber-600 border-amber-500/20", icon: "!" },
-    LOW: { color: "bg-red-500/10 text-red-600 border-red-500/20", icon: "✕" },
-  };
-  const { color, icon } = config[level] || config.LOW;
+function ConfidenceBreakdown({ uncertainty }) {
+  const [expanded, setExpanded] = useState(false);
+  const signals = [
+    { key: "retrieval", label: "Retrieval", score: uncertainty.uncertainty_score, color: "bg-blue-500" },
+    { key: "consistency", label: "Consistency", score: uncertainty.selfConsistencyScore, color: "bg-violet-500" },
+    { key: "verbalized", label: "Verbalized", score: uncertainty.verbalizedConfidence, color: "bg-amber-500" },
+    { key: "grounding", label: "Grounding", score: uncertainty.groundingScore, color: "bg-emerald-500" },
+  ].filter(s => s.score != null);
+
   return (
-    <Badge variant="outline" className={`text-xs font-medium ${color}`}>
-      <span className="mr-1">{icon}</span>
-      {level} confidence
-      {score !== undefined && <span className="ml-1 opacity-60">({(score * 100).toFixed(0)}%)</span>}
-    </Badge>
+    <div className="mt-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Layers className="w-3 h-3" />
+        Confidence breakdown
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1.5 p-2 rounded-md bg-secondary/50 border border-border">
+          {signals.map((s) => (
+            <div key={s.key} className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">{s.label}</span>
+              <div className="flex-1 h-2 rounded-full bg-secondary">
+                <div
+                  className={`h-full rounded-full transition-all ${s.color}`}
+                  style={{ width: `${(s.score * 100).toFixed(0)}%` }}
+                />
+              </div>
+              <span className="text-xs font-mono w-10 text-right">{(s.score * 100).toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgenticBadges({ uncertainty }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {uncertainty.crossEncoderUsed && (
+        <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-600 bg-blue-500/5">
+          <Target className="w-2.5 h-2.5 mr-1" />
+          Reranked
+        </Badge>
+      )}
+      {uncertainty.wasRevised && (
+        <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-600 bg-amber-500/5">
+          <RefreshCw className="w-2.5 h-2.5 mr-1" />
+          Revised after critique
+        </Badge>
+      )}
+      {!uncertainty.wasRevised && uncertainty.modelUsed !== "cache" && uncertainty.modelUsed !== "db_stats" && (
+        <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-600 bg-emerald-500/5">
+          <CheckCircle className="w-2.5 h-2.5 mr-1" />
+          Self-reviewed
+        </Badge>
+      )}
+      {uncertainty.groundingScore != null && (
+        <Badge variant="outline" className={`text-[10px] ${
+          uncertainty.groundingScore >= 0.8
+            ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5"
+            : uncertainty.groundingScore >= 0.5
+            ? "border-amber-500/30 text-amber-600 bg-amber-500/5"
+            : "border-red-500/30 text-red-600 bg-red-500/5"
+        }`}>
+          <FileSearch className="w-2.5 h-2.5 mr-1" />
+          Grounding: {(uncertainty.groundingScore * 100).toFixed(0)}%
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+function CritiqueSection({ critiqueText }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!critiqueText) return null;
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <AlertCircle className="w-3 h-3" />
+        {expanded ? "Hide" : "Show"} critique
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+      {expanded && (
+        <div className="mt-1.5 text-xs p-2 rounded-md bg-red-500/5 border border-red-500/20 text-muted-foreground whitespace-pre-wrap">
+          {critiqueText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfidenceBadge({ level, score, uncertainty }) {
+  const config = {
+    HIGH: { color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", icon: CheckCircle },
+    MEDIUM: { color: "bg-amber-500/10 text-amber-600 border-amber-500/20", icon: AlertCircle },
+    LOW: { color: "bg-red-500/10 text-red-600 border-red-500/20", icon: XCircle },
+  };
+  const { color, icon: Icon } = config[level] || config.LOW;
+  return (
+    <div>
+      <Badge variant="outline" className={`text-xs font-medium ${color}`}>
+        <Icon className="w-3 h-3 mr-1" />
+        {level} confidence
+        {score !== undefined && <span className="ml-1 opacity-60">({(score * 100).toFixed(0)}%)</span>}
+      </Badge>
+      {uncertainty && <ConfidenceBreakdown uncertainty={uncertainty} />}
+    </div>
   );
 }
 
@@ -109,41 +208,20 @@ function HistoryItem({ query }) {
 }
 
 function DiagnosticAssistant() {
-  const [messages, setMessages] = useState([INITIAL_MESSAGE]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("chat");
+  const {
+    messages,
+    input, setInput,
+    loading,
+    activeTab, setActiveTab,
+    submitQuery,
+    handleNewChat,
+  } = useRAG();
+
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const messagesEndRef = useRef(null);
-
-  useEffect(() => {
-    setMessages([INITIAL_MESSAGE]);
-    setInput("");
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        await getRAGStats();
-      } catch (err) {
-        console.error("Failed to fetch stats:", err);
-      }
-    };
-    fetchStats();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === "history") {
-      fetchHistory(1);
-    }
-  }, [activeTab]);
 
   const fetchHistory = async (page) => {
     setHistoryLoading(true);
@@ -165,36 +243,30 @@ function DiagnosticAssistant() {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-    const userMessage = { id: Date.now(), role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setLoading(true);
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        await getRAGStats();
+      } catch (err) {
+        console.error("Failed to fetch stats:", err);
+      }
+    };
+    fetchStats();
+  }, []);
 
-    try {
-      const response = await queryRAG(input, null, 5, true);
-      const assistantMessage = {
-        id: Date.now() + 1,
-        role: "assistant",
-        content: response.answer,
-        uncertainty: { level: response.confidence_level, score: response.uncertainty_score },
-        sources: response.sources || [],
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      setMessages((prev) => [...prev, { id: Date.now() + 1, role: "assistant", content: `Error: ${err.message}` }]);
-      toast.error("Failed to get response");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (activeTab === "history") {
+      fetchHistory(1);
     }
-  };
+  }, [activeTab, fetchHistory]);
 
-  const handleNewChat = () => {
-    setMessages([INITIAL_MESSAGE]);
-    setInput("");
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    submitQuery(input);
   };
 
   const exampleQueries = [
@@ -251,9 +323,15 @@ function DiagnosticAssistant() {
                   </div>
                   {msg.uncertainty && (
                     <div className="mt-2">
-                      <ConfidenceBadge level={msg.uncertainty.level} score={msg.uncertainty.score} />
+                      <ConfidenceBadge
+                        level={msg.uncertainty.level}
+                        score={msg.uncertainty.score}
+                        uncertainty={msg.uncertainty}
+                      />
+                      <AgenticBadges uncertainty={msg.uncertainty} />
                     </div>
                   )}
+                  {msg.critiqueText && <CritiqueSection critiqueText={msg.critiqueText} />}
                   <SourceList sources={msg.sources} />
                 </div>
               </div>
