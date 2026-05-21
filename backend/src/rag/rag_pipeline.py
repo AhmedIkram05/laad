@@ -1,4 +1,4 @@
-"""Simple RAG pipeline that ties all components together."""
+"""Simple RAG pipeline that ties all components together with Agentic RAG."""
 
 from __future__ import annotations
 
@@ -17,8 +17,21 @@ def process_query(
     atm_id: Optional[str] = None,
     top_k: int = 3,
     include_uncertainty: bool = True,
+    enable_reflexion: Optional[bool] = None,
+    enable_citation_grounding: Optional[bool] = None,
+    enable_self_consistency: Optional[bool] = None,
 ) -> dict:
-    """Process a RAG query through the full pipeline."""
+    """Process a RAG query through the full Agentic RAG pipeline.
+
+    Args:
+        query: User query
+        atm_id: Optional ATM ID filter
+        top_k: Number of chunks to retrieve
+        include_uncertainty: Whether to include uncertainty estimation
+        enable_reflexion: Enable self-critique and regeneration
+        enable_citation_grounding: Enable citation verification
+        enable_self_consistency: Enable multi-sample consistency scoring
+    """
     try:
         retriever = get_retriever()
         generator = get_generator()
@@ -32,11 +45,23 @@ def process_query(
                 "answer": "I couldn't find any relevant log data for your query.",
             }
 
-        response = generator.generate(query=query, chunks=chunks)
+        response = generator.generate(
+            query=query,
+            chunks=chunks,
+            enable_reflexion=enable_reflexion,
+            enable_citation_grounding=enable_citation_grounding,
+            enable_self_consistency=enable_self_consistency,
+        )
 
         uncertainty = None
         if include_uncertainty:
-            uncertainty = uncertainty_estimator.estimate(query=query, chunks=chunks)
+            uncertainty = uncertainty_estimator.estimate(
+                query=query,
+                chunks=chunks,
+                self_consistency_score=response.self_consistency_score,
+                verbalized_confidence=response.verbalized_confidence,
+                grounding_score=response.grounding_score,
+            )
 
         return {
             "answer": response.text,
@@ -55,6 +80,12 @@ def process_query(
             "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
             "recommendation": uncertainty.recommendation if uncertainty else "Review recommended",
             "model_used": response.model,
+            "self_consistency_score": response.self_consistency_score,
+            "verbalized_confidence": response.verbalized_confidence,
+            "grounding_score": response.grounding_score,
+            "generation_variance": uncertainty.generation_variance if uncertainty else None,
+            "cross_encoder_used": response.cross_encoder_used,
+            "was_revised": response.was_revised,
         }
 
     except Exception as e:

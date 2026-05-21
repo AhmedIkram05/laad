@@ -1,4 +1,9 @@
-"""Uncertainty estimation using retrieval-based confidence only."""
+"""Uncertainty estimation using multi-signal confidence fusion.
+
+Combines retrieval-based confidence, self-consistency, LLM verbalized confidence,
+and citation grounding into a unified uncertainty score. Each signal is weighted
+to produce a robust final confidence estimate.
+"""
 
 from __future__ import annotations
 
@@ -10,21 +15,32 @@ from backend.src.rag.retriever import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
+# Default fusion weights — sum to 1.0
+W_RETRIEVAL = 0.30
+W_CONSISTENCY = 0.25
+W_VERBALIZED = 0.25
+W_GROUNDING = 0.20
+
 
 @dataclass
 class UncertaintyEstimate:
-    """Uncertainty estimate with multiple signals."""
+    """Uncertainty estimate with multiple signals fused."""
     final_confidence: float
     confidence_level: str
-    self_consistency_score: float
-    verbalized_confidence: Optional[float]
-    generation_variance: Optional[float]
-    is_uncertain: bool
-    recommendation: str
+    self_consistency_score: Optional[float] = None
+    verbalized_confidence: Optional[float] = None
+    generation_variance: Optional[float] = None
+    grounding_score: Optional[float] = None
+    is_uncertain: bool = True
+    recommendation: str = "Insufficient information"
 
 
 class UncertaintyEstimator:
-    """Estimates uncertainty using retrieval-based confidence only."""
+    """Estimates uncertainty by fusing multiple confidence signals.
+
+    Fuses retrieval quality, self-consistency, LLM verbalized confidence,
+    and citation grounding into a single calibrated confidence score.
+    """
 
     def __init__(self):
         pass
@@ -33,36 +49,89 @@ class UncertaintyEstimator:
         self,
         query: str,
         chunks: list[RetrievedChunk],
+        self_consistency_score: Optional[float] = None,
+        verbalized_confidence: Optional[float] = None,
+        grounding_score: Optional[float] = None,
     ) -> UncertaintyEstimate:
-        """Estimate confidence based purely on retrieval quality."""
+        """Estimate confidence by fusing multiple signals.
+
+        Args:
+            query: User query (unused, kept for API compatibility)
+            chunks: Retrieved chunks for retrieval-based confidence
+            self_consistency_score: From multi-sample generation
+            verbalized_confidence: LLM's self-rated confidence
+            grounding_score: Entity citation verification score
+        """
         if not chunks:
             return UncertaintyEstimate(
                 final_confidence=0.0,
                 confidence_level="low",
-                self_consistency_score=0.0,
-                verbalized_confidence=None,
-                generation_variance=None,
+                self_consistency_score=self_consistency_score,
+                verbalized_confidence=verbalized_confidence,
+                grounding_score=grounding_score,
                 is_uncertain=True,
                 recommendation="Insufficient context - escalate to human review",
             )
 
         retrieval_confidence = compute_retrieval_confidence(chunks)
 
-        confidence_level = self._classify_confidence(retrieval_confidence)
-        is_uncertain = retrieval_confidence < 0.5
-        recommendation = self._get_recommendation(retrieval_confidence, confidence_level)
+        return self._fuse_signals(
+            retrieval_confidence=retrieval_confidence,
+            self_consistency_score=self_consistency_score,
+            verbalized_confidence=verbalized_confidence,
+            grounding_score=grounding_score,
+        )
+
+    def _fuse_signals(
+        self,
+        retrieval_confidence: float,
+        self_consistency_score: Optional[float] = None,
+        verbalized_confidence: Optional[float] = None,
+        grounding_score: Optional[float] = None,
+    ) -> UncertaintyEstimate:
+        """Fuse multiple confidence signals into a single score.
+
+        Uses weighted average with configurable weights. Missing signals are
+        skipped and remaining weights are renormalized.
+        """
+        signals: list[tuple[float, float]] = [
+            (retrieval_confidence, W_RETRIEVAL),
+        ]
+
+        if self_consistency_score is not None:
+            signals.append((self_consistency_score, W_CONSISTENCY))
+        if verbalized_confidence is not None:
+            signals.append((verbalized_confidence, W_VERBALIZED))
+        if grounding_score is not None:
+            signals.append((grounding_score, W_GROUNDING))
+
+        total_weight = sum(w for _, w in signals)
+        if total_weight == 0:
+            fused = retrieval_confidence
+        else:
+            normalized_signals = [(s * w / total_weight) for s, w in signals]
+            fused = sum(normalized_signals)
+
+        final_confidence = round(max(0.0, min(1.0, fused)), 3)
+        confidence_level = self._classify_confidence(final_confidence)
+        is_uncertain = final_confidence < 0.5
+        recommendation = self._get_recommendation(final_confidence, confidence_level)
 
         logger.info(
-            f"Uncertainty estimate: confidence={retrieval_confidence:.2f}, "
-            f"level={confidence_level}"
+            f"Fused confidence: {final_confidence:.3f} (level={confidence_level}) "
+            f"signals: retrieval={retrieval_confidence:.3f}, "
+            f"consistency={self_consistency_score}, "
+            f"verbalized={verbalized_confidence}, "
+            f"grounding={grounding_score}"
         )
 
         return UncertaintyEstimate(
-            final_confidence=round(retrieval_confidence, 3),
+            final_confidence=final_confidence,
             confidence_level=confidence_level,
-            self_consistency_score=round(retrieval_confidence, 3),
-            verbalized_confidence=None,
-            generation_variance=None,
+            self_consistency_score=round(self_consistency_score, 3) if self_consistency_score is not None else None,
+            verbalized_confidence=round(verbalized_confidence, 3) if verbalized_confidence is not None else None,
+            generation_variance=1.0 - round(self_consistency_score, 3) if self_consistency_score is not None else None,
+            grounding_score=round(grounding_score, 3) if grounding_score is not None else None,
             is_uncertain=is_uncertain,
             recommendation=recommendation,
         )
@@ -77,7 +146,7 @@ class UncertaintyEstimator:
             return "low"
 
     def _get_recommendation(self, confidence: float, level: str) -> str:
-        """Get recommendation based on confidence level."""
+        """Get recommendation based on confidence level and available signals."""
         if level == "high":
             return "Auto-respond - high confidence in answer quality"
         elif level == "medium":
@@ -88,7 +157,7 @@ class UncertaintyEstimator:
 
 def compute_retrieval_confidence(chunks: list[RetrievedChunk]) -> float:
     """Compute confidence score from retrieval quality signals.
-    
+
     Combines:
     - Distance score: 1.0 - avg_distance (base signal)
     - Count bonus: more relevant chunks = higher confidence (up to +0.1)
