@@ -34,7 +34,7 @@
 | **Messages Processed** | 190,000+ per backfill cycle, 100+ messages/sec live |
 | **Database Tables** | 10 tables + 3 views + 13 indexes |
 | **Connection Pool** | ThreadedConnectionPool (minconn=5, maxconn=50) with exponential backoff |
-| **API Endpoints** | 28+ across 7 routers (auth, anomalies, analysis, admin, analytics, events, metrics, RAG) |
+| **API Endpoints** | 31+ across 8 routers (auth, anomalies, analysis, admin, analytics, events, metrics, RAG) |
 | **Anomaly List Limit** | 500 default, 2000 max (increased from 100) |
 | **Test Coverage** | 351 tests across 48 files, 10 tiers, isolated test DB |
 | **Docker Services** | 8 production + 2 test-only services |
@@ -43,7 +43,7 @@
 | **RAG Response Time** | <10s (uncached), <100ms (cached) |
 | **Calibration** | Platt scaling, ECE < 0.10 target, 20-sample minimum |
 | **MLflow Tracking** | All training runs + inference cycles logged, 2 registered models with "champion" alias |
-| **Frontend Pages** | 10 pages (React 19 + Vite 8 + Tailwind v4 + shadcn/ui components) |
+| **Frontend Pages** | 11 pages (React 19 + Vite 8 + Tailwind v4 + shadcn/ui components + Chart.js) |
 | **Model Training** | Manual retraining via `make retrain` (live) or `make retrain-offline` (offline dataset) |
 
 ---
@@ -1290,7 +1290,7 @@ React 19 + Vite 8 dashboard with 10 pages, built with Tailwind CSS v4 and shadcn
 | Page | Route | Description |
 |---|---|---|
 | Dashboard | `/dashboard` | Main anomaly list with criticality ranking, severity badges, ATM status |
-| Analytics | `/analytics` | Event and metrics timeline (placeholder for future charts) |
+| Analytics | `/analytics` | Live analytics dashboard with Chart.js — real-time stats, event volume, metrics timeline, anomaly distribution |
 | Starred | `/starred` | Filtered view of starred anomalies (is_starred=1) |
 | Completed | `/completed` | Filtered view of resolved anomalies (is_active=0) |
 | Anomaly Data | `/data/:anomaly_type` | Detailed view for specific anomaly type |
@@ -1335,6 +1335,8 @@ React 19 + Vite 8 dashboard with 10 pages, built with Tailwind CSS v4 and shadcn
 | `sonner` | 2.0.7 | Toast notifications |
 | `react-markdown` | latest | Markdown rendering for RAG responses |
 | `remark-gfm` | latest | GitHub Flavored Markdown support |
+| `chart.js` | latest | Charting library for analytics dashboard |
+| `react-chartjs-2` | latest | React wrapper for Chart.js |
 | `vite` | 8.0.1 | Build tool, dev server |
 
 ### Dashboard Features
@@ -1368,8 +1370,109 @@ The main dashboard displays all anomalies with criticality-based ordering and fi
 - Sidebar: Collapsible with dynamic main content expansion
 - Loading states: Skeleton components throughout
 - Diagnostic Assistant: Full-height chat, markdown rendering, animated typing indicator, confidence badges, collapsible sources
-- Form UX: Example-based placeholders (e.g., "e.g. admin")
+- Form UX: Example-based placeholders (e.g. "e.g. admin")
 - Unlimited anomalies (no 500 limit)
+
+### Analytics Dashboard
+
+The Analytics page (`/analytics`) provides a real-time, lightweight monitoring dashboard powered by Redis counters and PostgreSQL time-series queries, visualized with Chart.js.
+
+#### Architecture
+
+```mermaid
+flowchart TD
+  subgraph Frontend ["Analytics.jsx"]
+    RTC["Real-Time Stats Card\n5s polling interval"]
+    EVC["Events Chart\nStacked BarChart"]
+    MTC["Metrics Chart\nLineChart with fill"]
+    ADC["Anomaly Doughnut\nDistribution chart"]
+  end
+
+  subgraph Backend ["analytics_router.py"]
+    RTS["/stats/realtime\nRedis counters"]
+    EVT["/events\nTime-bucketed events"]
+    MET["/metrics\nTime-bucketed averages"]
+    MLS["/metrics/list\nAvailable metrics"]
+  end
+
+  subgraph Storage ["Data Layer"]
+    REDIS[("Redis 7\nINCR counters\nHyperLogLog\nSorted Sets")]
+    PG[("PostgreSQL\nevents table\nmetrics table\nanomalies table")]
+  end
+
+  RTC --> RTS
+  EVC --> EVT
+  MTC --> MET
+  ADC --> RTS
+
+  RTS --> REDIS
+  EVT --> PG
+  MET --> PG
+  MLS --> PG
+
+  classDef fe fill:#1f2937,stroke:#6b7280,color:#ffffff;
+  classDef be fill:#009688,stroke:#009688,color:#ffffff;
+  classDef store fill:#0f766e,stroke:#14b8a6,color:#ffffff;
+
+  class RTC,EVC,MTC,ADC fe;
+  class RTS,EVT,MET,MLS be;
+  class REDIS,PG store;
+```
+
+#### KPIs Displayed
+
+| KPI | Source | Update Frequency | Description |
+|---|---|---|---|
+| **Total Events** | Redis `stats:events:*` counters | 5 seconds | Sum of all events across all sources (last 7 days of hourly buckets) |
+| **Total Anomalies** | Redis `stats:anomaly:type:*` sorted sets | 5 seconds | Frequency count of each anomaly type (A1-A7) |
+| **Unique ATMs** | Redis HyperLogLog `stats:unique:atms` | 5 seconds | Cardinality estimate of unique ATMs seen (last 30 days) |
+| **Metric Types** | PostgreSQL `metrics` table | On mount | Count of distinct metric names available for monitoring |
+
+#### Charts
+
+| Chart | Type | Data Source | Features |
+|---|---|---|---|
+| **Event Volume by Source** | Stacked BarChart | `/api/analytics/events` | Time-bucketed counts per source (ATM_APP, HARDWARE, TERMINAL_HANDLER), clickable source filters |
+| **Metrics Timeline** | LineChart (filled) | `/api/analytics/metrics` | Time-bucketed averages per metric, multi-metric overlay, dynamic metric selector |
+| **Anomaly Distribution** | DoughnutChart | Redis anomaly counters | Proportional breakdown of anomaly types (A1-A7), color-coded by type |
+| **Events by Source Breakdown** | List with color indicators | Redis event counters | Ranked list of sources by event count, real-time updates |
+| **Anomaly Type Frequency** | List with badges | Redis anomaly counters | Ranked list of anomaly types by frequency |
+
+#### Controls
+
+| Control | Options | Effect |
+|---|---|---|
+| **Time Range** | 1 Hour, 6 Hours, 24 Hours, 7 Days | Adjusts `hours` parameter for time-series queries |
+| **Source Filters** | ATM_APP, HARDWARE, TERMINAL_HANDLER (toggleable) | Filters events chart by selected sources |
+| **Metric Selector** | Dynamic dropdown from available metrics | Adds/removes metrics from the timeline chart |
+| **Refresh Button** | Manual trigger | Re-fetches all data immediately |
+
+#### Redis Analytics Patterns
+
+| Pattern | Key Format | TTL | Purpose |
+|---|---|---|---|
+| **Event Counters** | `stats:events:{source}:{hour}` | 7 days | Per-source hourly event counts via `INCR` |
+| **Anomaly Counters** | `stats:anomaly:type:{hour}` | 7 days | Per-hour anomaly type frequency via `ZINCRBY` |
+| **Unique ATMs** | `stats:unique:atms` | 30 days | HyperLogLog for cardinality estimation via `PFADD`/`PFCOUNT` |
+
+#### API Endpoints
+
+| Method | Endpoint | Parameters | Description |
+|---|---|---|---|
+| GET | `/api/analytics/stats/realtime` | None | Real-time stats from Redis (events by source, anomaly types, unique ATMs) |
+| GET | `/api/analytics/events` | `hours`, `bucket_minutes`, `sources` | Time-bucketed event counts with anomaly markers |
+| GET | `/api/analytics/metrics` | `hours`, `bucket_minutes`, `sources` | Time-bucketed metric averages with anomaly markers |
+| GET | `/api/analytics/metrics/list` | None | List of all unique metric names in the database |
+
+#### Design Decisions
+
+- **Chart.js over Recharts:** Chosen for better visual aesthetics, smoother animations, and more polished default styling. The `react-chartjs-2` wrapper provides clean React integration.
+- **5-second polling for real-time stats:** Balances responsiveness with server load. Redis counter reads are O(1) operations, making frequent polling inexpensive.
+- **Redis counters + PostgreSQL time-series:** Redis provides instant real-time aggregates without expensive DB queries. PostgreSQL provides historical time-series data with flexible bucketing.
+- **Graceful degradation:** All Redis operations check `if client is None` and fall back to zeros. Chart components show skeletons during loading and empty-state messages when no data is available.
+- **Stacked bar chart for events:** Shows total volume while preserving source breakdown — operators can see both overall load and per-source distribution at a glance.
+- **Filled line chart for metrics:** Area fill emphasizes trend magnitude and makes it easier to spot spikes or drops in metric values.
+- **Doughnut for anomaly distribution:** Compact, visually clear proportional breakdown — operators instantly see which anomaly types dominate.
 
 ---
 
@@ -1714,7 +1817,7 @@ make rebuild
 | Anomaly detection | 3-layer hybrid (CLASSIFIER + ZSCORE + SIGNAL_CORRELATOR) | XGBoost + Isolation Forest, rolling Z-score, entity-aware attribution, 47 features, git SHA tracking, auto-retrain on startup (if models missing/corrupted), inference logged to MLflow. Detection triggered by Kafka consumer every 30s with 5-min dedup window |
 | MLOps | MLflow (`v3.1.1`) | Experiment tracking, run metrics, model registry with "champion" alias + version descriptions, git SHA tagging, artifact storage on Docker named volume |
 | Training pipeline | `train.py` | Sliding windows (60s/30s), StratifiedKFold CV, artifact serialization to `ml/artifacts/`. LIVE mode (default, on real generator data) and OFFLINE mode (`USE_OFFLINE_DATA=true`, on `data/training_data.json` with guaranteed A1-A7) |
-| Frontend | React 19 + Vite 8 | 10 pages, Tailwind v4, shadcn/ui, sonner, react-markdown, React Router, system theme, dynamic sidebar |
+| Frontend | React 19 + Vite 8 | 11 pages, Tailwind v4, shadcn/ui, sonner, react-markdown, Chart.js, React Router, system theme, dynamic sidebar |
 | RAG | OpenRouter + ChromaDB | Uncertainty-aware RAG with self-consistency sampling (1 sample), verbalized confidence (30%), response variance (20%), retrieval confidence fallback, Platt scaling calibration. Graceful degradation when LLM unavailable. ChromaDB populated by Kafka consumer. Per-user rate limiting (10 req/min), retry with Retry-After, 90s timeouts |
 | Testing | Pytest | 351 tests across 48 files, 10 tiers, isolated test DB in Docker |
 | Redis | Redis 7 | 8 patterns: sorted sets (rate limiting), sets (dedup), Pub/Sub (alerts), streams (DLQ), HyperLogLog (cardinality), distributed locks, caching, token blacklists |
