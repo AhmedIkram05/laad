@@ -3,7 +3,7 @@ import { AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import SearchBar from "./SearchBar";
 import AnomalyCard from "./AnomalyCard";
-import { fetchAnomalies, toggleStar } from "../api/api";
+import { fetchAnomalies, toggleStar, fetchEntities } from "../api/api";
 import { Skeleton } from "./ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { useGlobalSearch } from "./SearchContext";
@@ -16,16 +16,23 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
   const [sortBy, setSortBy] = useState("score");
-  const [detectionSource, setDetectionSource] = useState("all");
   const [atmIdFilter, setAtmIdFilter] = useState("all");
   const [anomalyTypeFilter, setAnomalyTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
+  const [entityTypeFilter, setEntityTypeFilter] = useState("all");
+  const [entities, setEntities] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
 
   const handleQueryChange = (newQuery) => {
     setQuery(newQuery);
     setCurrentPage(1);
   };
+
+  useEffect(() => {
+    fetchEntities()
+      .then((data) => setEntities(data.entities || []))
+      .catch(() => toast.error("Failed to load entities"));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,11 +43,12 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
           isActive,
           undefined,
           sortBy,
-          detectionSource !== "all" ? detectionSource : undefined,
+          undefined,
           isStarred,
           atmIdFilter !== "all" ? atmIdFilter : undefined,
           anomalyTypeFilter !== "all" ? anomalyTypeFilter : undefined,
-          severityFilter !== "all" ? severityFilter : undefined
+          severityFilter !== "all" ? severityFilter : undefined,
+          entityTypeFilter !== "all" ? entityTypeFilter : undefined
         );
         if (cancelled) return;
         setAllAnomalies(anomalyRes?.data || []);
@@ -52,7 +60,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
     };
     load();
     return () => { cancelled = true; };
-  }, [isActive, isStarred, sortBy, detectionSource, atmIdFilter, anomalyTypeFilter, severityFilter]);
+  }, [isActive, isStarred, sortBy, atmIdFilter, anomalyTypeFilter, severityFilter, entityTypeFilter]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -84,9 +92,12 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const filtered = useMemo(() => {
     if (!query) return allAnomalies;
     const q = query.toLowerCase();
-    return allAnomalies.filter(a =>
-      [a.title, a.anomaly_type, a.atm_id, a.severity].filter(Boolean).join(" ").toLowerCase().includes(q)
-    );
+    return allAnomalies.filter(a => {
+      const displayEntityType = a.atm_id?.startsWith("ATM-SERVER-") ? "server" : "atm";
+      const displayAtmId = a.atm_id ?? "";
+      return [a.title, a.anomaly_type, displayAtmId, displayEntityType, a.severity]
+        .filter(Boolean).join(" ").toLowerCase().includes(q);
+    });
   }, [allAnomalies, query]);
 
   const totalCount = filtered.length;
@@ -94,16 +105,19 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const pageAnomalies = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
+  const atms = entities.filter(e => e.atm_id.startsWith("ATM-GB-"));
+  const servers = entities.filter(e => e.atm_id.startsWith("ATM-SERVER-"));
+
   const clearFilters = () => {
-    setDetectionSource("all");
     setAtmIdFilter("all");
     setAnomalyTypeFilter("all");
     setSeverityFilter("all");
+    setEntityTypeFilter("all");
     setSortBy("score");
     setCurrentPage(1);
   };
 
-  const hasActiveFilters = detectionSource !== "all" || atmIdFilter !== "all" || anomalyTypeFilter !== "all" || severityFilter !== "all" || sortBy !== "score";
+  const hasActiveFilters = atmIdFilter !== "all" || anomalyTypeFilter !== "all" || severityFilter !== "all" || entityTypeFilter !== "all" || sortBy !== "score";
 
   return (
     <div className="space-y-6">
@@ -136,37 +150,42 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Source:</span>
-          <Select value={detectionSource} onValueChange={setDetectionSource}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="All Sources" />
+          <span className="text-sm text-muted-foreground">Entity:</span>
+          <Select value={atmIdFilter === "all" && entityTypeFilter === "all" ? "all" : entityTypeFilter !== "all" ? entityTypeFilter : atmIdFilter} onValueChange={(v) => {
+            if (v === "all") { setEntityTypeFilter("all"); setAtmIdFilter("all"); }
+            else if (v === "atm") { setEntityTypeFilter("atm"); setAtmIdFilter("all"); }
+            else if (v === "server") { setEntityTypeFilter("server"); setAtmIdFilter("all"); }
+            else { setEntityTypeFilter("all"); setAtmIdFilter(v); }
+          }}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Entities" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="classifier">Classifier</SelectItem>
-              <SelectItem value="zscore">Zscore</SelectItem>
-              <SelectItem value="signal correlator">Signal Correlator</SelectItem>
+              <SelectItem value="all">All Entities</SelectItem>
+              <SelectItem value="atm">ATMs Only</SelectItem>
+              <SelectItem value="server">Servers Only</SelectItem>
+              {atms.length > 0 && (
+                <>
+                  <SelectItem value="__sep_atms" disabled>── ATMs ──</SelectItem>
+                  {atms.map((e) => (
+                    <SelectItem key={e.atm_id} value={e.atm_id}>{e.atm_id}</SelectItem>
+                  ))}
+                </>
+              )}
+              {servers.length > 0 && (
+                <>
+                  <SelectItem value="__sep_servers" disabled>── Servers ──</SelectItem>
+                  {servers.map((e) => (
+                    <SelectItem key={e.atm_id} value={e.atm_id}>{e.atm_id}</SelectItem>
+                  ))}
+                </>
+              )}
             </SelectContent>
           </Select>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">ATM:</span>
-          <Select value={atmIdFilter} onValueChange={setAtmIdFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="All ATMs" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All ATMs</SelectItem>
-              {Array.from({ length: 10 }, (_, i) => `ATM-GB-${String(i + 1).padStart(4, "0")}`).map((atm) => (
-                <SelectItem key={atm} value={atm}>{atm}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Type:</span>
+          <span className="text-sm text-muted-foreground">Anomaly:</span>
           <Select value={anomalyTypeFilter} onValueChange={setAnomalyTypeFilter}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="All Types" />
@@ -196,7 +215,6 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
               <SelectItem value="CRITICAL">CRITICAL</SelectItem>
               <SelectItem value="HIGH">HIGH</SelectItem>
               <SelectItem value="MAJOR">MAJOR</SelectItem>
-              <SelectItem value="LOW">LOW</SelectItem>
             </SelectContent>
           </Select>
         </div>

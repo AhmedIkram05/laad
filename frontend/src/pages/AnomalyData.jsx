@@ -87,6 +87,13 @@ function AnomalyData() {
   const confidence = data.model_confidence_score ?? dbAnomaly?.model_confidence_score ?? null;
   const sources = data.sources_involved ?? dbAnomaly?.sources_involved ?? [];
   const recommendedAction = data.recommended_action || data.Recommended_Action;
+  let detectionSource = data.detection_source;
+  if (!detectionSource && dbAnomaly?.explanation) {
+    try {
+      const exp = JSON.parse(dbAnomaly.explanation);
+      detectionSource = exp.source;
+    } catch { /* explanation may be empty or non-JSON */ }
+  }
 
   return (
     <div className="space-y-6">
@@ -184,6 +191,12 @@ function AnomalyData() {
                       style={{ width: `${confidence * 100}%` }}
                     />
                   </div>
+                </div>
+              )}
+              {detectionSource && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Detected By:</span>
+                  <Badge variant="outline">{detectionSource}</Badge>
                 </div>
               )}
               {sources.length > 0 && (

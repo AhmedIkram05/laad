@@ -422,7 +422,7 @@ function Analytics() {
         />
         <StatCard
           icon={<Server className="h-4 w-4 text-muted-foreground" />}
-          title="ATMs Being Monitored"
+          title="ATMs & Servers Being Monitored"
           value={realtimeStats.unique_atms}
           loading={loadingRealtime}
         />

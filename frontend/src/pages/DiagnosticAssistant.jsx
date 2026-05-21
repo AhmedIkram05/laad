@@ -60,7 +60,7 @@ function SourceList({ sources }) {
           {sources.map((src, i) => (
             <div key={i} className="text-xs p-2 rounded-md bg-secondary/50 border border-border">
               <div className="flex items-center justify-between mb-1">
-                <span className="font-medium text-foreground">{src.atm_id || "Unknown ATM"}</span>
+                <span className="font-medium text-foreground">{src.atm_id || "Unknown Entity"}</span>
                 <span className="text-muted-foreground">{src.confidence_score ? `Confidence: ${(src.confidence_score * 100).toFixed(0)}%` : ""}</span>
               </div>
               <div className="text-muted-foreground mb-1">{src.timestamp ? formatUKDateTime(src.timestamp) : ""}</div>
