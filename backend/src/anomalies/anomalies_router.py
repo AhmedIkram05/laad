@@ -7,6 +7,8 @@ Endpoints:
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from typing import Optional
 
@@ -15,14 +17,68 @@ from pydantic import BaseModel
 from psycopg2.extras import RealDictCursor
 
 from backend.src.auth.auth_router import get_current_user, get_db_connection
+from backend.src.cache import get_redis_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
 
+CACHE_TTL = 15
+CACHE_PREFIX = "anomaly:list:"
+
 
 class FeedbackRequest(BaseModel):
     rating: str     # 'LIKE' or 'DISLIKE'
+
+
+def _get_cache_key(params: dict) -> str:
+    """Generate a cache key from query parameters."""
+    param_str = json.dumps(params, sort_keys=True)
+    param_hash = hashlib.sha256(param_str.encode()).hexdigest()[:16]
+    return f"{CACHE_PREFIX}{param_hash}"
+
+
+def _get_cached_result(params: dict) -> Optional[dict]:
+    """Get cached anomaly list result."""
+    client = get_redis_client()
+    if client is None:
+        return None
+    try:
+        key = _get_cache_key(params)
+        cached = client.get(key)
+        if cached:
+            logger.info(f"Anomaly list cache hit for {key}")
+            return json.loads(cached)
+        return None
+    except Exception as e:
+        logger.warning(f"Anomaly cache get failed: {e}")
+        return None
+
+
+def _cache_result(params: dict, result: dict) -> None:
+    """Cache anomaly list result."""
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        key = _get_cache_key(params)
+        client.setex(key, CACHE_TTL, json.dumps(result))
+    except Exception as e:
+        logger.warning(f"Anomaly cache set failed: {e}")
+
+
+def _invalidate_anomaly_cache() -> None:
+    """Invalidate all anomaly list cache entries."""
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        keys = client.keys(f"{CACHE_PREFIX}*")
+        if keys:
+            client.delete(*keys)
+            logger.info(f"Invalidated {len(keys)} anomaly cache entries")
+    except Exception as e:
+        logger.warning(f"Anomaly cache invalidation failed: {e}")
 
 
 @router.get("")
@@ -46,7 +102,18 @@ def listAnomalies(
     Supports grouping modes: `atm`, `atm_anomaly`, `title_atm`.
     Default sort is by criticality score (score), not by most recent.
     Unknown anomalies (UNKNOWN type) are ranked lowest (score=0 + severity + age).
+    Results are cached in Redis for {CACHE_TTL} seconds.
     """
+    cache_params = {
+        "atm_id": atm_id, "severity": severity, "is_active": is_active,
+        "anomaly_type": anomaly_type, "from_date": from_date, "to_date": to_date,
+        "group_by": group_by, "detection_source": detection_source,
+        "is_starred": is_starred, "sort_by": sort_by, "limit": limit, "offset": offset,
+    }
+    cached = _get_cached_result(cache_params)
+    if cached:
+        return cached
+
     where_clauses = ["1=1"]
     params: list = []
 
@@ -124,9 +191,9 @@ def listAnomalies(
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params + [limit, offset])
                 rows = cur.fetchall()
-            return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
-
-        # group_by=atm_anomaly — one row per ATM + anomaly_type combo
+            result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            _cache_result(cache_params, result)
+            return result
         if gb in ("atm_anomaly", "atm-anomaly", "atm_anom"):
             with conn.cursor() as cur:
                 cur.execute(
@@ -209,7 +276,9 @@ def listAnomalies(
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params + [limit, offset])
                 rows = cur.fetchall()
-            return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            _cache_result(cache_params, result)
+            return result
 
         # group_by=title_atm — one row per title + ATM combo
         if gb in ("title_atm", "title-atm", "by_title_atm", "title"):
@@ -254,7 +323,9 @@ def listAnomalies(
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params + [limit, offset])
                 rows = cur.fetchall()
-            return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            _cache_result(cache_params, result)
+            return result
 
     # Default — raw paginated anomalies, no grouping
     with conn.cursor() as cur:
@@ -304,7 +375,9 @@ def listAnomalies(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params + [offset])
             rows = cur.fetchall()
-    return {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+    result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+    _cache_result(cache_params, result)
+    return result
 
 
 @router.patch("/{anomalyId}/resolve")
@@ -324,6 +397,7 @@ def resolveAnomaly(
     with conn.cursor() as cur:
         cur.execute("UPDATE anomalies SET is_active = %s WHERE id = %s", (new_active, anomalyId))
     conn.commit()
+    _invalidate_anomaly_cache()
     logger.info(f"Anomaly {anomalyId} active status toggled to {new_active} by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_active": new_active, "message": "Anomaly status toggled"}
 
@@ -349,6 +423,7 @@ def toggleStar(
             (newStarred, anomalyId),
         )
     conn.commit()
+    _invalidate_anomaly_cache()
     logger.info(
         f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_starred": newStarred}
@@ -388,6 +463,7 @@ def setFeedback(
             (rating, fp_count, anomalyId),
         )
     conn.commit()
+    _invalidate_anomaly_cache()
 
     if rating == "DISLIKE":
         logger.info(
