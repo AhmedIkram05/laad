@@ -31,11 +31,11 @@
 | **ML Features** | 47 engineered features across 7 groups |
 | **CV Accuracy** | **99.1% ± 0.2%** (StratifiedKFold, 8 classes) |
 | **Kafka Topics** | 2 (`atm-events`, `atm-metrics`), 3 partitions each, gzip compression |
-| **Messages Processed** | 190,000+ per backfill cycle, 100+ messages/sec live |
+| **Messages Processed** | 930,000+ events, 100+ messages/sec live |
 | **Database Tables** | 10 tables + 3 views + 13 indexes |
 | **Connection Pool** | ThreadedConnectionPool (minconn=5, maxconn=50) with exponential backoff |
 | **API Endpoints** | 31+ across 8 routers (auth, anomalies, analysis, admin, analytics, events, metrics, RAG) |
-| **Anomaly List Limit** | 500 default, 2000 max (increased from 100) |
+| **Anomaly List Limit** | No limit (unlimited: returns all matching anomalies) |
 | **Test Coverage** | 351 tests across 48 files, 10 tiers, isolated test DB |
 | **Docker Services** | 8 production + 2 test-only services |
 | **Redis Patterns** | 8 (sorted sets, sets, Pub/Sub, streams, HyperLogLog, distributed locks, caching, blacklists) |
@@ -43,7 +43,7 @@
 | **RAG Response Time** | <10s (uncached), <100ms (cached) |
 | **Calibration** | Platt scaling, ECE < 0.10 target, 20-sample minimum |
 | **MLflow Tracking** | All training runs + inference cycles logged, 2 registered models with "champion" alias |
-| **Frontend Pages** | 11 pages (React 19 + Vite 8 + Tailwind v4 + shadcn/ui components + Chart.js) |
+| **Frontend Pages** | 11 pages (React 19 + Vite 8 + Tailwind v4 + shadcn/ui + Chart.js) with configurable time-range filtering and "All Time" analytics |
 | **Model Training** | Manual retraining via `make retrain` (live) or `make retrain-offline` (offline dataset) |
 
 ---
@@ -640,7 +640,7 @@ erDiagram
 | `atms` | 10 (seeded) | `atm_id` (PK), `os_version`, `location_code` | ATM fleet registry |
 | `events` | 50,000+ | `timestamp` (TIMESTAMPTZ), `source`, `atm_id` (FK), `event_type`, `severity`, `payload` (JSONB) | Normalised event records |
 | `metrics` | 150,000+ | `timestamp` (TIMESTAMPTZ), `source`, `entity_id`, `metric_name`, `metric_value`, `payload` (JSONB) | Normalised metric records |
-| `anomalies` | 10-50 | `detected_at`, `anomaly_type`, `atm_id` (FK), `model_confidence_score`, `severity`, `explanation` (JSONB), `is_active`, `is_starred`, `false_positive_count` | Detected anomalies |
+| `anomalies` | 2,800+ | `detected_at`, `anomaly_type`, `atm_id` (FK), `model_confidence_score`, `severity`, `explanation` (JSONB), `is_active`, `is_starred`, `false_positive_count` | Detected anomalies |
 | `ingestion_errors` | 0-100 | `timestamp`, `source`, `error_detail`, `raw_input` | Dead-letter queue |
 | `users` | 2+ | `username` (UK), `password_hash` (bcrypt), `role` | Authentication |
 | `retention_config` | 1 | `retention_days` (default: 30) | Configurable retention |

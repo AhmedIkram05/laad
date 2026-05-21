@@ -54,6 +54,7 @@ const TIME_RANGES = [
   { label: "6 Hours", value: 6, bucket: 15 },
   { label: "24 Hours", value: 24, bucket: 60 },
   { label: "7 Days", value: 168, bucket: 360 },
+  { label: "All Time", value: 0, bucket: 1440 },
 ];
 
 const EVENT_SOURCES = ["ATM_APP", "HARDWARE", "TERMINAL_HANDLER"];
@@ -201,7 +202,7 @@ function Analytics() {
         }
 
         const [realtimeRes, eventsRes, metricsRes, metricsListRes] = await Promise.all([
-          fetch("/api/insights/stats/realtime", { headers: getAuthHeaders() }),
+          fetch(`/api/insights/stats/realtime?hours=${timeRange.value}`, { headers: getAuthHeaders() }),
           fetch(
             `/api/insights/events?hours=${timeRange.value}&bucket_minutes=${timeRange.bucket}&sources=${selectedEventSources.join(",")}`,
             { headers: getAuthHeaders() }
