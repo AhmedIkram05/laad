@@ -226,7 +226,6 @@ services:
       sh -c "sleep 3 &&
       python -c 'from backend.src.database.init_db import init_db; init_db(force=True)' &&
       python -m pytest backend/tests/ -v
-      --ignore=backend/tests/test_kafka_producer.py
       --tb=short"
     environment:
       - POSTGRES_HOST=postgres_test
