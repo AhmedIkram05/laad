@@ -4,9 +4,11 @@ Endpoints:
     POST /auth/login          — username + password -> JWT
     GET  /auth/me             — returns current user's info
     POST /auth/register       — create a new user account
+    POST /auth/logout         — blacklist current JWT (requires auth)
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -21,6 +23,7 @@ from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from backend.src.cache import get_redis_client
 from backend.src.database.connection import get_conn, release_conn
 
 logger = logging.getLogger(__name__)
@@ -65,13 +68,39 @@ def create_access_token(username: str, role: str) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def _get_token_hash(token: str) -> str:
+    """Generate a SHA256 hash of the JWT for blacklist storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _is_token_blacklisted(token: str) -> bool:
+    """Check if a token is in the Redis blacklist."""
+    client = get_redis_client()
+    if client is None:
+        return False
+    token_hash = _get_token_hash(token)
+    return bool(client.get(f"blacklist:{token_hash}"))
+
+
+def _blacklist_token(token: str, expires_at: datetime) -> None:
+    """Add a token to the Redis blacklist with TTL = remaining token expiry."""
+    client = get_redis_client()
+    if client is None:
+        return
+    token_hash = _get_token_hash(token)
+    now = datetime.now(timezone.utc)
+    ttl_seconds = max(int((expires_at - now).total_seconds()), 60)
+    client.setex(f"blacklist:{token_hash}", ttl_seconds, "1")
+    logger.info(f"Token blacklisted (TTL={ttl_seconds}s)")
+
+
 # Route dependency injectors
 def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    """Validates JWT. Returns {'sub': username, 'role': role}.
+    """Validates JWT and checks blacklist. Returns {'sub': username, 'role': role}.
     Inject with Depends(get_current_user) on any route requiring login.
     """
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -82,6 +111,14 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
         )
+
+    if _is_token_blacklisted(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked, please log in again",
+        )
+
+    return payload
 
 
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
@@ -166,3 +203,24 @@ def register(request: RegisterRequest, conn=Depends(get_db_connection)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="username already exists")
     logger.info(f"New user created: '{request.username}' (id={user_id})")
     return {"message": "Account created successfully", "username": request.username, "id": user_id}
+
+
+@router.post("/logout")
+def logout(token: str = Depends(oauth2_scheme)):
+    """Revoke the current JWT by adding it to the Redis blacklist.
+
+    The token is stored with TTL = remaining token expiry time.
+    If Redis is unavailable, the endpoint returns success but logs a warning.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+        expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        _blacklist_token(token, expires_at)
+        username = payload.get("sub", "unknown")
+        logger.info(f"Logout: '{username}' — token blacklisted")
+        return {"message": "Successfully logged out"}
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
