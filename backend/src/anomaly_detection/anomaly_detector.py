@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, List
 from psycopg2.extras import Json
 
 from backend.src.database.connection import get_conn, release_conn
+from backend.src.analytics.analytics_router import increment_anomaly_counter
 
 
 def _datetime_safe_json_dumps(data: Any) -> str:
@@ -841,6 +842,8 @@ class AnomalyDetector:
                         ),
                     )
                     saved += 1
+                    hour_bucket = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+                    increment_anomaly_counter(anomaly_type, hour_bucket)
             conn.commit()
         finally:
             try:

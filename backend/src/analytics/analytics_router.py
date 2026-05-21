@@ -314,36 +314,62 @@ def get_realtime_stats():
     """Get real-time analytics stats from Redis counters.
 
     Returns event counts by source, anomaly type frequency, and unique ATM count.
-    Falls back to zeros when Redis is unavailable.
+    Falls back to PostgreSQL queries when Redis counters are empty or unavailable.
     """
     client = get_redis_client()
-    if client is None:
-        return {"events_by_source": {}, "anomaly_types": {}, "unique_atms": 0}
+    events_by_source = {}
+    anomaly_types = {}
+    unique_atms = 0
 
-    try:
-        event_keys = client.keys(f"{EVENT_COUNTER_PREFIX}*")
-        events_by_source = {}
-        for key in event_keys:
-            value = client.get(key)
-            if value:
-                parts = key.replace(EVENT_COUNTER_PREFIX, "").split(":")
-                source = parts[0]
-                events_by_source[source] = events_by_source.get(source, 0) + int(value)
+    if client is not None:
+        try:
+            event_keys = client.keys(f"{EVENT_COUNTER_PREFIX}*")
+            for key in event_keys:
+                value = client.get(key)
+                if value:
+                    parts = key.replace(EVENT_COUNTER_PREFIX, "").split(":")
+                    source = parts[0]
+                    events_by_source[source] = events_by_source.get(source, 0) + int(value)
 
-        anomaly_keys = client.keys(f"{ANOMALY_COUNTER_PREFIX}type:*")
-        anomaly_types = {}
-        for key in anomaly_keys:
-            entries = client.zrange(key, 0, -1, withscores=True)
-            for atype, score in entries:
-                anomaly_types[atype] = anomaly_types.get(atype, 0) + int(score)
+            anomaly_keys = client.keys(f"{ANOMALY_COUNTER_PREFIX}type:*")
+            for key in anomaly_keys:
+                entries = client.zrange(key, 0, -1, withscores=True)
+                for atype, score in entries:
+                    anomaly_types[atype] = anomaly_types.get(atype, 0) + int(score)
 
-        unique_atms = get_unique_atm_count()
+            unique_atms = get_unique_atm_count()
+        except Exception as e:
+            logger.warning(f"Redis stats failed, falling back to DB: {e}")
 
-        return {
-            "events_by_source": events_by_source,
-            "anomaly_types": anomaly_types,
-            "unique_atms": unique_atms,
-        }
-    except Exception as e:
-        logger.error(f"Realtime stats failed: {e}", exc_info=True)
-        return {"events_by_source": {}, "anomaly_types": {}, "unique_atms": 0, "error": str(e)}
+    if not events_by_source:
+        conn = get_conn()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cutoff = datetime.now() - timedelta(hours=24)
+                cur.execute(
+                    "SELECT source, COUNT(*) as cnt FROM events WHERE timestamp >= %s GROUP BY source",
+                    (cutoff,),
+                )
+                for row in cur.fetchall():
+                    events_by_source[row["source"]] = row["cnt"]
+
+                cur.execute(
+                    "SELECT anomaly_type, COUNT(*) as cnt FROM anomalies WHERE detected_at >= %s GROUP BY anomaly_type",
+                    (cutoff,),
+                )
+                for row in cur.fetchall():
+                    anomaly_types[row["anomaly_type"]] = row["cnt"]
+
+                cur.execute("SELECT COUNT(DISTINCT atm_id) as cnt FROM events WHERE atm_id IS NOT NULL AND timestamp >= %s", (cutoff,))
+                row = cur.fetchone()
+                unique_atms = row["cnt"] if row else 0
+        except Exception as e:
+            logger.error(f"DB fallback for realtime stats failed: {e}", exc_info=True)
+        finally:
+            release_conn(conn)
+
+    return {
+        "events_by_source": events_by_source,
+        "anomaly_types": anomaly_types,
+        "unique_atms": unique_atms,
+    }

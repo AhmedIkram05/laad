@@ -43,6 +43,7 @@ import numpy as np
 from backend.src.database.connection import get_cursor
 from backend.src.anomaly_detection.ml.feature_engineering import extract_features, FEATURE_NAMES, FEATURE_COUNT
 from backend.src.anomaly_detection.anomaly_detector import detect_anomalies_from_window
+from backend.src.analytics.analytics_router import increment_anomaly_counter
 
 log = logging.getLogger(__name__)
 
@@ -401,6 +402,8 @@ class MLAnomalyDetector:
             "Saved anomaly %s (atm=%s, confidence=%.2f, source=%s)",
             anomaly_type, atm_id, confidence, source
         )
+        hour_bucket = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+        increment_anomaly_counter(anomaly_type, hour_bucket)
 
     def _detect_heuristic(
         self,
