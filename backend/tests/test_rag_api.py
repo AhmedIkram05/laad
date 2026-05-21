@@ -218,18 +218,19 @@ class TestRAGRouter:
         token_resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
         token = token_resp.json()["access_token"]
 
-        for i in range(rag_router.RATE_LIMIT_MAX_REQUESTS):
+        with patch("backend.src.rag.router.get_redis_client", return_value=None):
+            for i in range(rag_router.RATE_LIMIT_MAX_REQUESTS):
+                resp = client.post(
+                    "/api/rag/query",
+                    json={"query": f"test query {i}"},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                assert resp.status_code == 200
+
             resp = client.post(
                 "/api/rag/query",
-                json={"query": f"test query {i}"},
+                json={"query": "rate limited query"},
                 headers={"Authorization": f"Bearer {token}"},
             )
-            assert resp.status_code == 200
-
-        resp = client.post(
-            "/api/rag/query",
-            json={"query": "rate limited query"},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 429
-        assert "Rate limit exceeded" in resp.json()["detail"]
+            assert resp.status_code == 429
+            assert "Rate limit exceeded" in resp.json()["detail"]

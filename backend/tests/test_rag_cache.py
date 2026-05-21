@@ -8,26 +8,27 @@ import json
 class TestRedisCache:
     """Test cases for Redis caching functions."""
 
-    @patch("backend.src.rag.cache.redis.Redis")
-    def test_get_redis_client_connects(self, mock_redis_class):
-        """Test that Redis client connects successfully."""
-        from backend.src.rag.cache import get_redis_client, _redis_client
+    @patch("backend.src.cache.redis_client.redis.ConnectionPool")
+    @patch("backend.src.cache.redis_client.redis.Redis")
+    def test_get_redis_client_connects(self, mock_redis_class, mock_pool_class):
+        """Test that Redis client connects successfully via shared module."""
+        from backend.src.cache import get_redis_client
 
         mock_instance = MagicMock()
         mock_instance.ping.return_value = True
         mock_redis_class.return_value = mock_instance
 
-        with patch("backend.src.rag.cache._redis_client", None):
-            with patch("backend.src.rag.cache.config") as mock_config:
-                mock_config.redis_host = "localhost"
-                mock_config.redis_port = 6379
+        mock_pool = MagicMock()
+        mock_pool_class.return_value = mock_pool
 
-                from backend.src.rag import cache as cache_module
-                cache_module._redis_client = None
-                client = cache_module.get_redis_client()
+        from backend.src.cache import redis_client
+        redis_client._redis_client = None
+        redis_client._redis_connection_pool = None
 
-                assert client is not None
-                mock_instance.ping.assert_called_once()
+        client = get_redis_client()
+
+        assert client is not None
+        mock_instance.ping.assert_called_once()
 
     def test_get_query_hash_consistent(self):
         """Test that query hash is consistent for same query."""

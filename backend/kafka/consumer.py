@@ -38,6 +38,7 @@ from backend.kafka.chroma_buffer import ChromaBuffer
 from backend.kafka.deduplicator import Deduplicator
 from backend.kafka.handlers import event_handler, metric_handler
 from backend.kafka.handlers.event_handler import _route_to_ingestion_errors as route_raw_ingestion_errors
+from backend.src.cache import get_redis_client
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [CONSUMER] %(message)s")
@@ -73,16 +74,58 @@ def _trigger_anomaly_detection() -> None:
     global _cached_detector
     try:
         from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
+        from backend.src.alerts.pubsub import publish_anomaly
         if _cached_detector is None:
             _cached_detector = MLAnomalyDetector()
         n = _cached_detector.detect_and_save()
         if n:
             log.info("Anomaly detector: %d anomalies saved.", n)
+            anomalies = _cached_detector._get_recent_anomalies(n)
+            for anomaly in anomalies:
+                publish_anomaly(anomaly)
     except Exception as exc:
         log.warning("Anomaly detection failed: %s", exc)
 
 
 _cached_syncer = None
+
+LOCK_KEY = "lock:anomaly_detection"
+LOCK_TIMEOUT_S = ANOMALY_INTERVAL_S - 5
+
+
+def _acquire_detection_lock() -> bool:
+    """Attempt to acquire a distributed lock via Redis SET NX EX.
+
+    Returns True if lock acquired, False if already held by another consumer.
+    Falls back to True (proceed) when Redis is unavailable.
+    """
+    client = get_redis_client()
+    if client is None:
+        log.debug("Redis unavailable — skipping distributed lock for anomaly detection")
+        return True
+
+    try:
+        acquired = client.set(LOCK_KEY, "1", nx=True, ex=LOCK_TIMEOUT_S)
+        if acquired:
+            log.debug("Acquired anomaly detection lock")
+        else:
+            log.debug("Anomaly detection lock held by another consumer — skipping")
+        return bool(acquired)
+    except Exception as e:
+        log.warning(f"Redis lock acquisition failed, proceeding without lock: {e}")
+        return True
+
+
+def _release_detection_lock() -> None:
+    """Release the distributed detection lock."""
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        client.delete(LOCK_KEY)
+        log.debug("Released anomaly detection lock")
+    except Exception as e:
+        log.warning(f"Failed to release detection lock: {e}")
 
 
 def _trigger_anomaly_sync() -> None:
@@ -172,10 +215,16 @@ def run_consumer() -> None:
 
             now = time.monotonic()
             if processed > 0 and (now - last_anomaly_trigger) >= ANOMALY_INTERVAL_S:
-                log.info("Triggering anomaly detection (processed=%d, last_trigger=%.1fs ago)", processed, now - last_anomaly_trigger)
-                _trigger_anomaly_detection()
-                _trigger_anomaly_sync()
-                last_anomaly_trigger = now
+                if _acquire_detection_lock():
+                    try:
+                        log.info("Triggering anomaly detection (processed=%d, last_trigger=%.1fs ago)", processed, now - last_anomaly_trigger)
+                        _trigger_anomaly_detection()
+                        _trigger_anomaly_sync()
+                    finally:
+                        _release_detection_lock()
+                    last_anomaly_trigger = now
+                else:
+                    log.debug("Skipping anomaly detection — another consumer holds the lock")
 
             if processed % 500 == 0 and processed > 0:
                 log.info("Processed %d messages (%d errors).", processed, errors)

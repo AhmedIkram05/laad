@@ -6,10 +6,15 @@ from datetime import datetime, timedelta
 from psycopg2.extras import RealDictCursor
 
 from backend.src.database.connection import get_conn, release_conn
+from backend.src.cache import get_redis_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+EVENT_COUNTER_PREFIX = "stats:events:"
+ANOMALY_COUNTER_PREFIX = "stats:anomaly:"
+UNIQUE_ATMS_KEY = "stats:unique:atms"
 
 
 @router.get("/events")
@@ -252,3 +257,93 @@ def get_available_metrics():
         return {"metrics": [], "error": str(e)}
     finally:
         release_conn(conn)
+
+
+def increment_event_counter(source: str, hour: str) -> None:
+    """Increment the event counter for a source in a given hour bucket."""
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        key = f"{EVENT_COUNTER_PREFIX}{source}:{hour}"
+        client.incr(key)
+        client.expire(key, 86400 * 7)
+    except Exception as e:
+        logger.warning(f"Failed to increment event counter: {e}")
+
+
+def increment_anomaly_counter(anomaly_type: str, hour: str) -> None:
+    """Increment the anomaly counter for a type in a given hour bucket."""
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        key = f"{ANOMALY_COUNTER_PREFIX}type:{hour}"
+        client.zincrby(key, 1, anomaly_type)
+        client.expire(key, 86400 * 7)
+    except Exception as e:
+        logger.warning(f"Failed to increment anomaly counter: {e}")
+
+
+def track_unique_atm(atm_id: str) -> None:
+    """Add an ATM ID to the HyperLogLog for unique ATM cardinality."""
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        client.pfadd(UNIQUE_ATMS_KEY, atm_id)
+        client.expire(UNIQUE_ATMS_KEY, 86400 * 30)
+    except Exception as e:
+        logger.warning(f"Failed to track unique ATM: {e}")
+
+
+def get_unique_atm_count() -> int:
+    """Get the unique ATM count from HyperLogLog."""
+    client = get_redis_client()
+    if client is None:
+        return 0
+    try:
+        return client.pfcount(UNIQUE_ATMS_KEY)
+    except Exception as e:
+        logger.warning(f"Failed to get unique ATM count: {e}")
+        return 0
+
+
+@router.get("/stats/realtime")
+def get_realtime_stats():
+    """Get real-time analytics stats from Redis counters.
+
+    Returns event counts by source, anomaly type frequency, and unique ATM count.
+    Falls back to zeros when Redis is unavailable.
+    """
+    client = get_redis_client()
+    if client is None:
+        return {"events_by_source": {}, "anomaly_types": {}, "unique_atms": 0}
+
+    try:
+        event_keys = client.keys(f"{EVENT_COUNTER_PREFIX}*")
+        events_by_source = {}
+        for key in event_keys:
+            value = client.get(key)
+            if value:
+                parts = key.replace(EVENT_COUNTER_PREFIX, "").split(":")
+                source = parts[0]
+                events_by_source[source] = events_by_source.get(source, 0) + int(value)
+
+        anomaly_keys = client.keys(f"{ANOMALY_COUNTER_PREFIX}type:*")
+        anomaly_types = {}
+        for key in anomaly_keys:
+            entries = client.zrange(key, 0, -1, withscores=True)
+            for atype, score in entries:
+                anomaly_types[atype] = anomaly_types.get(atype, 0) + int(score)
+
+        unique_atms = get_unique_atm_count()
+
+        return {
+            "events_by_source": events_by_source,
+            "anomaly_types": anomaly_types,
+            "unique_atms": unique_atms,
+        }
+    except Exception as e:
+        logger.error(f"Realtime stats failed: {e}", exc_info=True)
+        return {"events_by_source": {}, "anomaly_types": {}, "unique_atms": 0, "error": str(e)}

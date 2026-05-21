@@ -7,33 +7,10 @@ import json
 import logging
 from typing import Optional
 
-import redis
-
+from backend.src.cache import get_redis_client
 from backend.src.rag.config import config
 
 logger = logging.getLogger(__name__)
-
-_redis_client: Optional[redis.Redis] = None
-
-
-def get_redis_client() -> Optional[redis.Redis]:
-    """Get singleton Redis client."""
-    global _redis_client
-    if _redis_client is None:
-        try:
-            _redis_client = redis.Redis(
-                host=config.redis_host,
-                port=config.redis_port,
-                decode_responses=True,
-                socket_connect_timeout=2,
-                socket_timeout=2,
-            )
-            _redis_client.ping()
-            logger.info(f"Connected to Redis at {config.redis_host}:{config.redis_port}")
-        except Exception as e:
-            logger.warning(f"Redis connection failed: {e}. Caching disabled.")
-            _redis_client = None
-    return _redis_client
 
 
 def get_query_hash(query: str) -> str:

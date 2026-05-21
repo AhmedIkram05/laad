@@ -8,8 +8,8 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
-import redis
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from backend.src.cache import get_redis_client
 from backend.src.rag.config import config
 
 from backend.src.database.connection import get_cursor
@@ -38,31 +38,36 @@ RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX_REQUESTS = 10
 _query_timestamps: dict[str, list[float]] = defaultdict(list)
 
-_redis_rate_limit_client: Optional[redis.Redis] = None
-
-
-def _get_redis_client() -> Optional[redis.Redis]:
-    """Get Redis client for distributed rate limiting."""
-    global _redis_rate_limit_client
-    if _redis_rate_limit_client is None:
-        try:
-            _redis_rate_limit_client = redis.Redis(
-                host=config.redis_host,
-                port=config.redis_port,
-                decode_responses=True,
-                socket_connect_timeout=2,
-                socket_timeout=2,
-            )
-            _redis_rate_limit_client.ping()
-        except Exception:
-            _redis_rate_limit_client = None
-    return _redis_rate_limit_client
-
 
 def _check_rate_limit(user_key: str) -> None:
-    """Check if user has exceeded rate limit using in‑memory counters.
-    This avoids cross‑test contamination when a Redis instance is present.
+    """Check if user has exceeded rate limit using Redis sorted sets (distributed)
+    with in-memory fallback when Redis is unavailable.
     """
+    client = get_redis_client()
+    if client is None:
+        return _check_rate_limit_in_memory(user_key)
+
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+    key = f"ratelimit:{user_key}"
+
+    pipe = client.pipeline()
+    pipe.zremrangebyscore(key, 0, window_start)
+    pipe.zadd(key, {f"{now}:{id(user_key)}": now})
+    pipe.zcard(key)
+    pipe.expire(key, RATE_LIMIT_WINDOW + 10)
+    results = pipe.execute()
+
+    request_count = results[2]
+    if request_count > RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded ({RATE_LIMIT_MAX_REQUESTS} requests per minute). Please wait before trying again.",
+        )
+
+
+def _check_rate_limit_in_memory(user_key: str) -> None:
+    """In-memory rate limit fallback when Redis is unavailable."""
     now = time.time()
     cutoff = now - RATE_LIMIT_WINDOW
     _query_timestamps[user_key] = [t for t in _query_timestamps[user_key] if t > cutoff]
