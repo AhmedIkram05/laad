@@ -102,6 +102,9 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - GIT_COMMIT_SHA=${GIT_COMMIT_SHA:-}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-300}
     depends_on:
       kafka:
         condition: service_healthy
@@ -261,6 +264,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_CACHE_TTL=300
+      - TEST_DATA_DIR=backend/custom_synthetic_data_sources
     depends_on:
       postgres_test:
         condition: service_started
