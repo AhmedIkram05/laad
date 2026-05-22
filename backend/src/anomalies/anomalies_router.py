@@ -90,7 +90,7 @@ def listAnomalies(
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
     group_by: Optional[str] = Query(None),
-    detection_source: Optional[str] = Query(None, description="Filter by detection source: CLASSIFIER, ZSCORE, SIGNAL_CORRELATOR"),
+    detection_source: Optional[str] = Query(None, description="Filter by detection source: ML_ENSEMBLE, ZSCORE, HEURISTIC"),
     is_starred: Optional[int] = Query(None, description="Filter by starred state: 1=starred, 0=unstarred"),
     entity_type: Optional[str] = Query(None, description="Filter by entity type: 'atm' (ATM-GB-*) or 'server' (ATM-SERVER-*)"),
     sort_by: Optional[str] = Query(default="score", description="Sort by: score (default, criticality), detected_at (most recent), severity"),
@@ -138,8 +138,23 @@ def listAnomalies(
         where_clauses.append("detected_at <= %s")
         params.append(to_date)
     if detection_source:
-        where_clauses.append("(explanation::jsonb)->>'source' = %s")
-        params.append(detection_source.upper())
+        source_normalized = detection_source.upper()
+        if source_normalized == "CLASSIFIER":
+            source_normalized = "ML_ENSEMBLE"
+        elif source_normalized in ("SIGNAL_CORRELATOR", "SIGNALCORRELATOR"):
+            source_normalized = "HEURISTIC"
+
+        if source_normalized == "ML_ENSEMBLE":
+            where_clauses.append("(explanation::jsonb)->>'source' IN (%s, %s)")
+            params.append("ML_ENSEMBLE")
+            params.append("CLASSIFIER")
+        elif source_normalized == "HEURISTIC":
+            where_clauses.append("(explanation::jsonb)->>'source' IN (%s, %s)")
+            params.append("HEURISTIC")
+            params.append("SIGNAL_CORRELATOR")
+        else:
+            where_clauses.append("(explanation::jsonb)->>'source' = %s")
+            params.append(source_normalized)
     if is_starred is not None:
         where_clauses.append("is_starred = %s")
         params.append(is_starred)
