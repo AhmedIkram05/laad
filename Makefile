@@ -1,18 +1,22 @@
-.PHONY: help all rebuild rebuild-backend clean logs train pytest redis
+.PHONY: help all rebuild rebuild-backend rebuild-frontend clean logs train pytest redis
 
 help:
 	@echo "LAAD Makefile — Essential commands"
 	@echo ""
-	@echo "  make all          		Start all services (postgres, kafka, chromadb, redis, backend, generator, kafka-consumer, mlflow)"
+	@echo "  make all          		Start all services (postgres, kafka, chromadb, redis, backend, generator, kafka-consumer, mlflow, frontend)"
 	@echo "  make rebuild      		Full rebuild: remove ALL containers/volumes/images, then start fresh"
 	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
+	@echo "  make rebuild-frontend 	Rebuild frontend image only, keep other services running"
 	@echo "  make clean       		Stop all containers and remove volumes"
 	@echo "  make logs         		Follow all service logs"
 	@echo "  make train        		Generate training data + retrain ML models (XGBoost & IF)"
-	@echo "  make pytest       		Run all tests in Docker (postgres_test + pytest containers)"
+	@echo "  make test         		Run ALL tests (backend + frontend) in Docker"
+	@echo "  make test-backend 		Run backend tests only"
+	@echo "  make test-frontend 		Run frontend tests only"
 	@echo "  make redis        		Start Redis service (for RAG caching)"
 	@echo ""
 	@echo "Services:"
+	@echo "  Frontend UI:       		http://localhost:5173"
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:            		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
@@ -20,13 +24,15 @@ help:
 	@echo "  PostgreSQL:     		http://localhost:5434"
 	@echo "  Test DB:         		http://localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
+	@echo ""
 
 # ── Start All ────────────────────────────────────────────────────────────────
 
 all: ml-up redis
-	docker compose up -d --build postgres kafka kafka-init chromadb backend generator kafka-consumer
+	docker compose up -d --build postgres kafka kafka-init chromadb backend generator kafka-consumer frontend
 	@echo ""
 	@echo "✓ All services started!"
+	@echo "  Frontend UI:       		http://localhost:5173"
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:            		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
@@ -49,13 +55,14 @@ rebuild:
 	@echo "==> Removing orphaned containers..."
 	-docker compose down --remove-orphans 2>/dev/null; true
 	@echo "==> Starting fresh (mlflow starts with --profile ml)..."
-	docker compose up -d --build postgres kafka kafka-init chromadb redis backend generator kafka-consumer
+	docker compose up -d --build postgres kafka kafka-init chromadb redis backend generator kafka-consumer frontend
 	docker compose --profile ml up -d
 	@echo ""
 	@echo "✓ Rebuild complete!"
+	@echo "  Frontend UI:       		http://localhost:5173"
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:           		http://localhost:9092"
-	@echo "  ChromaDB:         		http://localhost:8001"
+	@echo "  ChromaDB:        		http://localhost:8001"
 	@echo "  Redis:           		http://localhost:6379"
 	@echo "  PostgreSQL:     		http://localhost:5434"
 	@echo "  Test DB:         		http://localhost:5433"
@@ -64,9 +71,16 @@ rebuild:
 # ── Backend-only Rebuild ───────────────────────────────────────────────────
 
 rebuild-backend:
-	docker compose build backend generator kafka-consumer
+	docker compose build backend
 	docker compose up -d --no-deps backend generator kafka-consumer
-	@echo "✓ Backend and related images rebuilt and containers restarted"
+	@echo "✓ Backend image rebuilt and containers restarted (backend, generator, kafka-consumer all share ./backend/Dockerfile)"
+
+# ── Frontend-only Rebuild ──────────────────────────────────────────────────
+
+rebuild-frontend:
+	docker compose build frontend
+	docker compose up -d --no-deps frontend
+	@echo "✓ Frontend image rebuilt and container restarted"
 
 # ── Stop All ─────────────────────────────────────────────────────────────
 
@@ -96,20 +110,28 @@ train:
 
 # ── Run Tests ──────────────────────────────────────────────────────────────
 
-pytest:
+test: test-backend test-frontend
+
+test-backend:
 	@echo "==> Stopping any leftover test containers..."
 	-docker compose stop postgres_test pytest 2>/dev/null; true
 	-docker compose rm -f postgres_test pytest 2>/dev/null; true
-	@echo "==> Starting test environment and running tests..."
+	@echo "==> Starting backend test environment..."
 	docker compose --profile test up -d postgres_test
 	@echo "==> Waiting for test DB to be ready..."
 	@sleep 5
 	docker compose run --rm --no-deps pytest
-	@echo "==> Stopping test environment..."
+	@echo "==> Stopping backend test environment..."
 	-docker compose stop postgres_test pytest 2>/dev/null; true
 	-docker compose rm -f postgres_test pytest 2>/dev/null; true
 	@echo ""
-	@echo "✓ Tests complete!"
+	@echo "✓ Backend tests complete!"
+
+test-frontend:
+	@echo "==> Running frontend tests..."
+	docker compose run --rm frontend-test
+	@echo ""
+	@echo "✓ Frontend tests complete!"
 
 # ── MLflow profile shortcut ─────────────────────────────────────────────────
 
