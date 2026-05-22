@@ -490,29 +490,34 @@ function Analytics() {
       <ChartCard
         title="Metrics Timeline"
         loading={loadingMetrics}
-        actions={
-          <Select
-            value={selectedMetrics[0] || ""}
-            onValueChange={(val) => {
-              if (val && !selectedMetrics.includes(val)) {
-                setSelectedMetrics((prev) => [...prev.slice(-2), val]);
-              }
-            }}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Add metric..." />
-            </SelectTrigger>
-            <SelectContent>
-              {availableMetrics
-                .filter((m) => !selectedMetrics.includes(m))
-                .map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {normaliseMetricName(m)}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        }
+          actions={
+            <Select
+              onValueChange={(val) => {
+                if (val && !selectedMetrics.includes(val)) {
+                  setSelectedMetrics((prev) => [...prev.slice(-2), val]);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[240px]">
+                <span className="truncate text-left">
+                  {selectedMetrics.length === 0 ? (
+                    <span className="text-muted-foreground">Add metric...</span>
+                  ) : (
+                    normaliseMetricName(selectedMetrics[0])
+                  )}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {availableMetrics
+                  .filter((m) => !selectedMetrics.includes(m))
+                  .map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {normaliseMetricName(m)}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          }
       >
         <div className="flex gap-1 mb-2 flex-wrap">
           {selectedMetrics.map((m) => (
