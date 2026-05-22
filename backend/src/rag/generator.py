@@ -95,6 +95,7 @@ SYSTEM_PROMPT = """You are an expert ATM diagnostics assistant for a financial i
 Your role is to help operators and engineers diagnose and resolve ATM issues using log data.
 
 Guidelines:
+- Be concise — use short paragraphs and avoid repetition
 - Use the provided log context to answer questions accurately
 - Be specific about ATM IDs, timestamps, and error codes when available
 - Provide actionable troubleshooting steps
@@ -113,6 +114,7 @@ DIAGNOSTIC_PROMPT = """You are an expert ATM diagnostics assistant for a financi
 Your role is to help operators and engineers diagnose and resolve ATM issues using log data.
 
 Guidelines:
+- Be concise — use short paragraphs and avoid repetition
 - Use the provided log context to answer questions accurately
 - Be specific about ATM IDs, timestamps, and error codes when available
 - Provide actionable troubleshooting steps
@@ -131,6 +133,7 @@ TROUBLESHOOTING_PROMPT = """You are an expert ATM troubleshooting assistant for 
 Your role is to provide step-by-step solutions for ATM issues using log data.
 
 Guidelines:
+- Be concise — use short paragraphs and avoid repetition
 - Use the provided log context to identify the exact problem
 - Provide clear, numbered troubleshooting steps the operator can follow
 - Include specific commands, checks, or actions at each step
@@ -261,6 +264,7 @@ class RAGGenerator:
         context = self._build_context(chunks, query_type)
         system_prompt = _get_system_prompt_for_query_type(query_type)
 
+        critique = None
         self_consistency_score = None
         samples = []
         if enable_self_consistency:
@@ -298,8 +302,8 @@ class RAGGenerator:
             self_consistency_score=self_consistency_score,
             verbalized_confidence=verbalized_confidence,
             grounding_score=grounding_score,
-            critique_text=response.text if enable_reflexion else None,
-            was_revised=enable_reflexion and bool(critique) if enable_reflexion else False,
+            critique_text=critique if enable_reflexion else None,
+            was_revised=bool(critique),
             cross_encoder_used=cross_encoder_used,
         )
 
@@ -344,7 +348,7 @@ class RAGGenerator:
         context: str,
         system_prompt: str,
         query_type: QueryType,
-        num_samples: int = 3,
+        num_samples: int = config.self_consistency_samples,
     ) -> Tuple[Optional[float], list[str]]:
         """Compute self-consistency score by generating multiple samples in parallel.
 
