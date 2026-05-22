@@ -16,12 +16,14 @@ The MLflow service supports production-grade storage via RDS PostgreSQL + S3.
 ## Git SHA: Two Options
 
 **Option A — Auto-inject at runtime (Recommended):**
+
 ```bash
 export GIT_COMMIT_SHA=$(git rev-parse HEAD | cut -c1-8)
 docker compose --profile ml up -d
 ```
 
 **Option B — Hardcoded in `.env`:**
+
 ```env
 GIT_COMMIT_SHA=ceecc5c7
 ```
@@ -43,6 +45,7 @@ aws s3 rm s3://laad-mlflow-artifacts/test-upload.txt
 ```
 
 **If this fails:**
+
 - Verify IAM user has `s3:ListBucket`, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`
 - Verify bucket policy allows your IAM user/account
 - Verify `AWS_DEFAULT_REGION` matches your bucket's region
@@ -50,10 +53,11 @@ aws s3 rm s3://laad-mlflow-artifacts/test-upload.txt
 ### Step 2: Test RDS connectivity
 
 ```bash
-psql "postgresql://mlflow_admin:laadmlflow@laad-mlflow-postgres.cz6ckmy2u089.eu-west-2.rds.amazonaws.com:5432/mlflow_db" -c "SELECT 1;"
+psql "postgresql://db-user:db-password@db-endpoint:5432/db-name" -c "SELECT 1;"
 ```
 
 **"Connection refused" — debug checklist:**
+
 1. **VPC Security Group Inbound Rules:** Type=PostgreSQL (5432), Source=your IP or `0.0.0.0/0` for testing
 2. **VPC Subnet Route Tables:** Subnets must have a route to an Internet Gateway
 3. **VPC Network ACLs:** TCP 5432 inbound from your IP, ephemeral ports outbound
@@ -67,6 +71,7 @@ docker compose --profile ml up -d mlflow
 ```
 
 **Verify:**
+
 1. Open `http://localhost:5001`
 2. Go to **Experiments** → `atm-anomaly-detection`
 3. Go to **Models** → confirm `atm-xgb-classifier` and `atm-isolation-forest`

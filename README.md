@@ -354,22 +354,26 @@ flowchart TD
 ```
 
 **Hybrid deduplication** (`backend/kafka/deduplicator.py:1-86`):
+
 - Primary: Redis Set with `SADD`/`SISMEMBER` + 1-hour TTL — persists across consumer restarts, eliminating duplicate inserts after restart
 - Fallback: in-memory LRU `OrderedDict` (max 10,000 entries) — auto-evicts oldest when full
 - Lazy Redis availability check: if Redis fails mid-operation, permanently switches to in-memory to avoid repeated `try/except` overhead
 
 **Distributed detection lock** (`backend/kafka/consumer.py:92-128`):
+
 - Redis `SET NX EX` key `lock:anomaly_detection` with 25s timeout (5s buffer before 30s trigger interval)
 - Prevents concurrent detection cycles in multi-consumer deployments
 - Falls back to `True` (proceed without lock) when Redis is unavailable
 
 **Dead letter queue** (`backend/kafka/dlq.py:1-134`):
+
 - Redis Stream `ingestion:dlq` with `retry_count`, `created_at`, `status` metadata
 - Exponential backoff: `BASE_BACKOFF * (2^retry_count)` = 5s to 10s to 20s
 - Max 3 retries, then marked as `exhausted`
 - Batch processing of 10 messages per cycle
 
 **Consumer configuration:**
+
 - Manual offset commit after batch processing (at-least-once delivery)
 - `auto_offset_reset=latest` — skip historical messages on restarts to prevent data flood
 - `max_poll_records=500` — balances throughput vs memory per cycle
@@ -418,6 +422,7 @@ flowchart TD
 - **Dead-letter routing** — malformed records route to `ingestion_errors` table rather than raising exceptions. The consumer also routes undeserializable bytes via `_route_to_ingestion_errors()`.
 
 **ChromaDB buffer** (`backend/kafka/chroma_buffer.py:1-181`):
+
 - Per-ATM event buffer with window size 10 events
 - LangChain `SemanticChunker` with `nomic-embed-text` (Ollama) for 384-dim embeddings, falling back to word-based chunking at 500-char max
 - Severity dominance logic with priority: `FATAL=5 > CRITICAL=4 > ERROR=3 > WARNING=2 > INFO=1`
@@ -815,6 +820,7 @@ All modules use a shared Redis client singleton (`backend/src/cache/redis_client
 | AWS S3 | Standard bucket | MLflow artifact store (`s3://laad-mlflow-artifacts`) |
 
 **Key infrastructure decisions:**
+
 - **9 Docker services + 2 test services** with health check cascading (postgres -> kafka -> backend/consumer/generator -> frontend)
 - **6 named volumes** for data persistence across restarts
 - **Profile-based Docker Compose**: `ml` and `test` profiles keep optional services separate
@@ -931,12 +937,14 @@ make all                           # Start ALL services (frontend + backend)
 Default credentials: username=`admin`, password=`admin`
 
 **Production-like frontend deployment:**
+
 - Multi-stage Docker build: Node.js builder → nginx alpine (no Node.js at runtime)
 - All assets minified + hashed filenames
 - nginx reverse proxy replicates Vite's `/api/*` rewrite logic
 - Same origin for frontend and API calls
 
 Services run on:
+
 - Frontend UI: `http://localhost:5173` (nginx)
 - Backend API: `http://localhost:8000` (docs at `/docs`)
 - MLflow UI: `http://localhost:5001`
