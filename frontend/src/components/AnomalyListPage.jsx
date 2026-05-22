@@ -233,12 +233,12 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="All Detectors" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Detectors</SelectItem>
-              <SelectItem value="CLASSIFIER">Classifier</SelectItem>
-              <SelectItem value="SIGNAL_CORRELATOR">Signal Correlator</SelectItem>
-              <SelectItem value="ZSCORE">ZScore</SelectItem>
-            </SelectContent>
+             <SelectContent>
+               <SelectItem value="all">All Detectors</SelectItem>
+               <SelectItem value="ML_ENSEMBLE">ML Ensemble</SelectItem>
+               <SelectItem value="HEURISTIC">Heuristic</SelectItem>
+               <SelectItem value="ZSCORE">ZScore</SelectItem>
+             </SelectContent>
           </Select>
         </div>
 
