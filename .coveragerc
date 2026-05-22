@@ -1,0 +1,17 @@
+[run]
+source = backend/src,backend/generator,backend/kafka
+omit = 
+    */__pycache__/*
+    */tests/*
+    */.pytest_cache/*
+    */migrations/*
+    conftest.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == "__main__":
+    raise NotImplementedError
+    raise ImportError
+    except ImportError
+    pass
