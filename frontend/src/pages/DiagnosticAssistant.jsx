@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getRAGStats, getRAGHistory } from "../api/api";
@@ -200,7 +200,11 @@ function HistoryItem({ query }) {
       </button>
       {expanded && (
         <div className="px-3 pb-3 border-t border-border">
-          <div className="mt-3 text-sm text-muted-foreground whitespace-pre-wrap">{query.answer_text}</div>
+          <div className="mt-3 text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:mb-2 prose-p:mb-2 prose-ul:mb-2 prose-ol:mb-2 prose-li:mb-0.5 prose-code:bg-secondary prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-secondary prose-pre:p-3 prose-pre:rounded-lg prose-blockquote:border-l-2 prose-blockquote:border-primary/30 prose-blockquote:pl-3 prose-blockquote:text-muted-foreground prose-strong:font-semibold prose-a:text-primary prose-a:underline">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {query.answer_text}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
     </div>
@@ -223,7 +227,7 @@ function DiagnosticAssistant() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const messagesEndRef = useRef(null);
 
-  const fetchHistory = async (page) => {
+  const fetchHistory = useCallback(async (page) => {
     setHistoryLoading(true);
     try {
       const limit = 20;
@@ -241,7 +245,7 @@ function DiagnosticAssistant() {
     } finally {
       setHistoryLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -260,7 +264,7 @@ function DiagnosticAssistant() {
 
   useEffect(() => {
     if (activeTab === "history") {
-      fetchHistory(1);
+      queueMicrotask(() => fetchHistory(1));
     }
   }, [activeTab, fetchHistory]);
 
