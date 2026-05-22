@@ -3,7 +3,7 @@ import { AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import SearchBar from "./SearchBar";
 import AnomalyCard from "./AnomalyCard";
-import { fetchAnomalies, toggleStar, fetchEntities } from "../api/api";
+import { fetchAnomalies, toggleStar, toggleComplete, fetchEntities } from "../api/api";
 import { Skeleton } from "./ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { useGlobalSearch } from "./SearchContext";
@@ -20,6 +20,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const [anomalyTypeFilter, setAnomalyTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
+  const [detectorTypeFilter, setDetectorTypeFilter] = useState("all");
   const [entities, setEntities] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -43,7 +44,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
           isActive,
           undefined,
           sortBy,
-          undefined,
+          detectorTypeFilter !== "all" ? detectorTypeFilter : undefined,
           isStarred,
           atmIdFilter !== "all" ? atmIdFilter : undefined,
           anomalyTypeFilter !== "all" ? anomalyTypeFilter : undefined,
@@ -60,7 +61,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
     };
     load();
     return () => { cancelled = true; };
-  }, [isActive, isStarred, sortBy, atmIdFilter, anomalyTypeFilter, severityFilter, entityTypeFilter]);
+  }, [isActive, isStarred, sortBy, atmIdFilter, anomalyTypeFilter, severityFilter, entityTypeFilter, detectorTypeFilter]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -76,8 +77,14 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
     }
   };
 
-  const handleCompleted = (id) => {
+  const handleCompleted = async (id) => {
     setAllAnomalies(prev => prev.map(a => a.id === id ? { ...a, is_active: a.is_active === 0 ? 1 : 0 } : a));
+    try {
+      await toggleComplete(id);
+    } catch {
+      setAllAnomalies(prev => prev.map(a => a.id === id ? { ...a, is_active: a.is_active === 0 ? 1 : 0 } : a));
+      toast.error("Failed to update completion status");
+    }
   };
 
   const formatTime = (ts) => {
@@ -113,11 +120,12 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
     setAnomalyTypeFilter("all");
     setSeverityFilter("all");
     setEntityTypeFilter("all");
+    setDetectorTypeFilter("all");
     setSortBy("score");
     setCurrentPage(1);
   };
 
-  const hasActiveFilters = atmIdFilter !== "all" || anomalyTypeFilter !== "all" || severityFilter !== "all" || entityTypeFilter !== "all" || sortBy !== "score";
+  const hasActiveFilters = atmIdFilter !== "all" || anomalyTypeFilter !== "all" || severityFilter !== "all" || entityTypeFilter !== "all" || detectorTypeFilter !== "all" || sortBy !== "score";
 
   return (
     <div className="space-y-6">
@@ -215,6 +223,21 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
               <SelectItem value="CRITICAL">CRITICAL</SelectItem>
               <SelectItem value="HIGH">HIGH</SelectItem>
               <SelectItem value="MAJOR">MAJOR</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Detector:</span>
+          <Select value={detectorTypeFilter} onValueChange={setDetectorTypeFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="All Detectors" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Detectors</SelectItem>
+              <SelectItem value="CLASSIFIER">Classifier</SelectItem>
+              <SelectItem value="SIGNAL_CORRELATOR">Signal Correlator</SelectItem>
+              <SelectItem value="ZSCORE">ZScore</SelectItem>
             </SelectContent>
           </Select>
         </div>
