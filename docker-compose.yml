@@ -84,7 +84,7 @@ services:
       - redis_data:/data
 
   kafka-consumer:
-    build: .
+    build: ./backend
     command: python -m backend.kafka.consumer
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
@@ -101,6 +101,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-atm_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - GIT_COMMIT_SHA=${GIT_COMMIT_SHA:-}
     depends_on:
       kafka:
         condition: service_healthy
@@ -113,7 +114,7 @@ services:
       - ./backend:/app/backend
 
   backend:
-    build: .
+    build: ./backend
     ports:
       - "8000:8000"
     environment:
@@ -124,6 +125,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-change-in-production}
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - GIT_COMMIT_SHA=${GIT_COMMIT_SHA:-}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -149,6 +151,9 @@ services:
       - TEST_POSTGRES_DB=atm_platform_test
       - TEST_POSTGRES_USER=atm_user
       - TEST_POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD:-your_password_here}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,12 +165,11 @@ services:
       start_period: 20s
     restart: unless-stopped
     volumes:
-      - ./backend/src:/app/backend/src
-      - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
+      - ./backend:/app/backend
       - ./data:/app/data
 
   generator:
-    build: .
+    build: ./backend
     command: python -m backend.generator.continuous_generator
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
@@ -186,22 +190,38 @@ services:
       kafka-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v3.1.1
+    build: ./mlflow
     profiles:
       - ml
     ports:
       - "5001:5000"
     command: >
       mlflow server
-      --backend-store-uri sqlite:////mlflow/artifacts/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --backend-store-uri ${MLFLOW_BACKEND_STORE_URI:-sqlite:////mlflow/artifacts/mlflow.db}
+      --default-artifact-root ${MLFLOW_S3_ARTIFACT_ROOT:-/mlflow/artifacts}
       --serve-artifacts
       --host 0.0.0.0
       --port 5000
+      --gunicorn-opts "--timeout 120 --workers 2"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - MLFLOW_S3_UPLOAD_EXTRA_ARGS={"ServerSideEncryption":"AES256"}
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
     restart: unless-stopped
 
   postgres_test:
@@ -226,7 +246,9 @@ services:
       sh -c "sleep 3 &&
       python -c 'from backend.src.database.init_db import init_db; init_db(force=True)' &&
       python -m pytest backend/tests/ -v
-      --tb=short"
+      --tb=short
+      --cov=backend/src --cov=backend/generator --cov=backend/kafka
+      --cov-report=term --cov-report=term-missing"
     environment:
       - POSTGRES_HOST=postgres_test
       - POSTGRES_PORT=5432
@@ -240,11 +262,22 @@ services:
       - REDIS_PORT=6379
       - REDIS_CACHE_TTL=300
     depends_on:
-      - postgres_test
+      postgres_test:
+        condition: service_started
     volumes:
       - ./backend:/app/backend
       - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
       - ./backend/custom_synthetic_data_sources:/app/backend/custom_synthetic_data_sources
+
+  frontend-test:
+    image: node:22-alpine
+    profiles:
+      - test
+    working_dir: /frontend
+    command: >
+      sh -c "cp -r /src/. /frontend/ && npm ci && npx vitest run --coverage"
+    volumes:
+      - ./frontend:/src
 
 volumes:
   postgres_data:

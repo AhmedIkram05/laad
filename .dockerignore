@@ -1,0 +1,15 @@
+# Build context optimization - exclude these from Docker builds
+.git/
+.gitignore
+*.md
+docs/
+frontend/node_modules/
+data/
+.DS_Store
+Thumbs.db
+.opencode/
+.agents/
+*.png
+frontend-full.png
+analytics.png
+mlflow-runs.png
