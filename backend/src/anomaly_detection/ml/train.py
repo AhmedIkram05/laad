@@ -91,6 +91,9 @@ def _grid_search_if(
     if len(y_val) == 0:
         log.warning("No validation data for grid search — using default params")
         return {}
+    if len(np.unique(y_val)) < 2:
+        log.warning("Only one class in validation data (need both normal + anomaly) — using default params")
+        return {}
 
     best_params: dict = {}
     best_auc = -1.0
@@ -170,10 +173,12 @@ def train() -> None:
 
     ARTIFACT_DIR.mkdir(exist_ok=True)
 
-    try:
-        git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
-    except Exception:
-        git_sha = "unknown"
+    git_sha = os.getenv("GIT_COMMIT_SHA", "").strip()[:8]
+    if not git_sha:
+        try:
+            git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
+        except Exception:
+            git_sha = "unknown"
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
@@ -188,6 +193,7 @@ def train() -> None:
             "n_features":        FEATURE_COUNT,
             "use_offline_data":  USE_OFFLINE_DATA,
             "if_feature_selection_k": IF_FEATURE_SELECTION_K,
+            "random_state": 42,
         })
 
         if USE_OFFLINE_DATA:
@@ -412,8 +418,8 @@ def train() -> None:
         # to avoid UNIQUE constraint conflicts (MLflow v3.1.1 re-logs
         # existing run metrics internally).
         # ─────────────────────────────────────────────────────────────────────
-        xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier", registered_model_name=XGB_MODEL_NAME)
-        if_uri  = mlflow.sklearn.log_model(iso_forest, "isolation_forest", registered_model_name=IF_MODEL_NAME)
+        xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier")
+        if_uri  = mlflow.sklearn.log_model(iso_forest, "isolation_forest")
 
         # ─────────────────────────────────────────────────────────────────────
         # Log remaining metrics and save artifacts
