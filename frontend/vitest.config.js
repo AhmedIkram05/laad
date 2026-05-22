@@ -5,8 +5,21 @@ import path from "path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** Stub CSS imports during test — no empty files needed. */
+function cssStubPlugin() {
+  return {
+    name: "css-stub",
+    resolveId(id) {
+      if (id.endsWith(".css")) return id;
+    },
+    load(id) {
+      if (id.endsWith(".css")) return { code: "export default {}", map: null };
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), cssStubPlugin()],
   test: {
     globals: true,
     environment: "jsdom",
