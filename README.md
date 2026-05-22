@@ -12,6 +12,7 @@ Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnos
   <img src="https://img.shields.io/badge/ChromaDB-000000?style=for-the-badge&labelColor=5F3DC8">
   <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&labelColor=000000&logo=redis">
   <img src="https://img.shields.io/badge/XGBoost-0052CC?style=for-the-badge&labelColor=000000&logo=xgboost">
+  <img src="https://img.shields.io/badge/Isolation Forest-0052CC?style=for-the-badge&labelColor=000000&logo=isolationforest">
   <img src="https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&labelColor=000000&logo=mlflow">
   <img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&labelColor=FF6B35">
   <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&labelColor=000000&logo=docker">
