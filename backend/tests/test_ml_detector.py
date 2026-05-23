@@ -277,6 +277,7 @@ class TestDetectAndSave:
     def test_ml_detects_unknown_when_iso_score_extreme(self):
         detector = MLAnomalyDetector()
         detector._loaded = True
+        detector._warmup_cycles = 21
 
         fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
@@ -437,8 +438,8 @@ class TestConstants:
     def test_confidence_threshold_is_070(self):
         assert CONFIDENCE_THRESHOLD == 0.70
 
-    def test_window_seconds_is_60(self):
-        assert WINDOW_SECONDS == 60
+    def test_window_seconds_is_600(self):
+        assert WINDOW_SECONDS == 600
 
     def test_artifact_dir_points_to_backend_ml(self):
         assert "backend" in str(ARTIFACT_DIR) and "ml" in str(ARTIFACT_DIR)
