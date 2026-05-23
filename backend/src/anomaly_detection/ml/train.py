@@ -7,7 +7,7 @@ Steps:
     4. Select top-K features from XGBoost feature importance for Isolation Forest
     5. Grid-search IF hyperparameters on held-out validation split
     6. Train Isolation Forest on normal windows only (selected features)
-    7. Calibrate UNKNOWN anomaly threshold via Youden's J statistic
+    7. Calibrate UNKNOWN anomaly threshold via F1 score maximization
     8. Log parameters, metrics, and model artifacts to MLflow
     9. Save models to ml/artifacts/
 
@@ -393,7 +393,7 @@ def train() -> None:
         iso_forest = IsolationForest(**final_params)
         iso_forest.fit(X_normal_scaled_if)
 
-        # Evaluate IF anomaly detection precision on all windows
+        # Evaluate IF anomaly detection accuracy on all windows
         X_all_scaled = scaler.transform(X_all)
         X_all_scaled_if = X_all_scaled[:, if_feature_indices]
         if_scores = iso_forest.predict(X_all_scaled_if)
@@ -404,7 +404,7 @@ def train() -> None:
         mlflow.log_metric("if_anomaly_precision", if_precision)
         print(f"Isolation Forest anomaly detection precision: {if_precision:.3f}")
 
-        # Calibrate UNKNOWN anomaly threshold via Youden's J
+        # Calibrate UNKNOWN anomaly threshold via F1 score maximization
         all_if_density_scores = iso_forest.score_samples(X_all_scaled_if)
         y_anomaly_binary = (~normal_mask).astype(int)
         unknown_threshold = _calibrate_unknown_threshold(all_if_density_scores, y_anomaly_binary)
