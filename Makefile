@@ -3,7 +3,7 @@
 help:
 	@echo "LAAD Makefile — Essential commands"
 	@echo ""
-	@echo "  make all          		Start all services (postgres, kafka, chromadb, redis, backend, generator, kafka-consumer, mlflow, frontend)"
+	@echo "  make all          		Start all services (postgres, kafka, chromadb, redis, ollama, backend, generator, kafka-consumer, mlflow, frontend)"
 	@echo "  make rebuild      		Full rebuild: remove ALL containers/volumes/images, then start fresh"
 	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
 	@echo "  make rebuild-frontend 	Rebuild frontend image only, keep other services running"
@@ -29,17 +29,18 @@ help:
 
 all:
 	docker compose --profile ml up -d
-	docker compose up -d --build postgres kafka kafka-init chromadb redis backend generator kafka-consumer frontend
+	docker compose up -d --build postgres kafka kafka-init chromadb redis ollama ollama-init backend generator kafka-consumer frontend
 	@echo ""
 	@echo "✓ All services started!"
 	@echo "  Frontend UI:       		http://localhost:5173"
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:            		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
+	@echo "  Ollama:           		http://localhost:11435"
 	@echo "  Redis:           		http://localhost:6379"
 	@echo "  PostgreSQL:     		http://localhost:5434"
 	@echo "  Test DB:         		http://localhost:5433"
-	@echo "  MLflow UI:       		 http://localhost:5001"
+	@echo "  MLflow UI:        		http://localhost:5001"
 	@echo ""
 
 # ── Full Rebuild ────────────────────────────────────────────────────────────
@@ -50,9 +51,9 @@ rebuild:
 	-docker compose --profile test down -v --remove-orphans 2>/dev/null; true
 	-docker compose down -v --remove-orphans 2>/dev/null; true
 	@echo "==> Removing all LAAD volumes..."
-	-docker volume rm laad_postgres_data laad_postgres_test_data laad_kafka_data laad_chroma_data laad_redis_data laad_mlflow_artifacts 2>/dev/null; true
+	-docker volume rm laad_postgres_data laad_postgres_test_data laad_kafka_data laad_chroma_data laad_ollama_data laad_redis_data laad_mlflow_artifacts 2>/dev/null; true
 	@echo "==> Starting fresh..."
-	docker compose up -d --build postgres kafka kafka-init chromadb redis backend generator kafka-consumer frontend
+	docker compose up -d --build postgres kafka kafka-init chromadb redis ollama ollama-init backend generator kafka-consumer frontend
 	docker compose --profile ml up -d
 	@echo ""
 	@echo "✓ Rebuild complete!"
@@ -60,10 +61,11 @@ rebuild:
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:           		http://localhost:9092"
 	@echo "  ChromaDB:        		http://localhost:8001"
+	@echo "  Ollama:          		http://localhost:11435"
 	@echo "  Redis:           		http://localhost:6379"
 	@echo "  PostgreSQL:     		http://localhost:5434"
 	@echo "  Test DB:         		http://localhost:5433"
-	@echo "  MLflow UI:       		 http://localhost:5001"
+	@echo "  MLflow UI:       		http://localhost:5001"
 
 # ── Backend-only Rebuild ───────────────────────────────────────────────────
 
