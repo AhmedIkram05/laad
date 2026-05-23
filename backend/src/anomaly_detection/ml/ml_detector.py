@@ -47,9 +47,10 @@ from backend.src.analytics.analytics_router import increment_anomaly_counter
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS            = int(os.getenv("ML_WINDOW_SECONDS", "60"))
+WINDOW_SECONDS            = int(os.getenv("ML_WINDOW_SECONDS", "600"))
 CONFIDENCE_THRESHOLD      = 0.70
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.75"))
+WARMUP_SKIP_CYCLES        = int(os.getenv("ML_WARMUP_CYCLES", "20"))
 MLFLOW_TRACKING_URI       = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 MLFLOW_EXPERIMENT         = "atm-anomaly-detection"
 ZSCORE_WINDOW_SIZE        = 20
@@ -199,6 +200,7 @@ class MLAnomalyDetector:
         self._mlflow_available = False
         self._baseline = RollingBaseline()
         self._last_saved_anomalies: list[dict] = []
+        self._warmup_cycles = 0
 
         import subprocess
         git_sha = os.getenv("GIT_COMMIT_SHA", "").strip()[:8]
@@ -478,10 +480,16 @@ class MLAnomalyDetector:
             Total number of anomalies saved this cycle.
         """
         self._last_saved_anomalies = []
+        self._warmup_cycles += 1
         rows, window_start, window_end = self._query_window()
         if len(rows) < 5:
             log.debug("Not enough data in window (%d rows) — skipping.", len(rows))
             return 0
+
+        in_warmup = self._warmup_cycles <= WARMUP_SKIP_CYCLES
+        if in_warmup:
+            log.info("Warmup cycle %d/%d — skipping UNKNOWN savings (typed anomalies still active).",
+                     self._warmup_cycles, WARMUP_SKIP_CYCLES)
 
         saved = 0
         heur_anomalies: list = []
@@ -506,8 +514,9 @@ class MLAnomalyDetector:
         self._baseline.update(global_features.flatten())
 
         # Most frequent ATM for ZSCORE UNKNOWN attribution
-        atm_ids_with_data = [k for k in atm_groups if k is not None]
-        most_frequent_atm = max(set(atm_ids_with_data), key=lambda k: len(atm_groups[k])) if atm_ids_with_data else None
+        # NOTE: Z-score is a global detector — it can't identify the culprit entity.
+        # Using the most frequent ATM is misleading, so we attribute to None.
+        # The ML ensemble (per-entity) is responsible for correct attribution.
 
         # ─────────────────────────────────────────────────────────────────────────
         # Layer 1: ML_ENSEMBLE DETECTION (Primary — XGBoost + IF ensemble)
@@ -557,7 +566,7 @@ class MLAnomalyDetector:
                         ml_ensemble_detections.add((label, entity_id))
                         log.info("ML Ensemble detected: %s (atm=%s, conf=%.2f)", label, entity_id, confidence)
 
-                elif label == "NORMAL" and if_score <= self._if_unknown_threshold:
+                elif not in_warmup and label == "NORMAL" and if_score <= self._if_unknown_threshold:
                     unknown_confidence = min(abs(if_score) / abs(self._if_unknown_threshold), 1.0) if self._if_unknown_threshold != 0 else 0.5
                     if not self._is_active("UNKNOWN", entity_id):
                         self._save_anomaly(
@@ -585,9 +594,9 @@ class MLAnomalyDetector:
             z_scores = self._baseline.compute_z_scores(global_features.flatten())
             max_z = float(np.max(np.abs(z_scores)))
             n_deviating = int(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD))
-            if max_z > ZSCORE_THRESHOLD:
+            if not in_warmup and max_z > ZSCORE_THRESHOLD:
                 base_confidence = min(max_z / 5.0, 1.0)
-                attributed_atm = max(set(atm_groups.keys() - {None}), key=lambda k: len(atm_groups[k])) if len(atm_groups) > 1 else None
+                attributed_atm = None  # Z-score is global — can't identify the culprit entity
                 if not self._is_active("UNKNOWN", attributed_atm):
                     self._save_anomaly(
                         anomaly_type="UNKNOWN",
