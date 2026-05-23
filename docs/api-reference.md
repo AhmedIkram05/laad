@@ -1,6 +1,6 @@
 # API Reference
 
-31+ endpoints across 8 routers. All endpoints return JSON. Authenticated endpoints require `Authorization: Bearer <jwt>` header.
+30 endpoints across 6 routers. All endpoints return JSON. Authenticated endpoints require `Authorization: Bearer <jwt>` header.
 
 ## Authentication — `/api/auth`
 
@@ -48,9 +48,12 @@ bcrypt password hashing, 2 roles (`admin`, `user`), `require_admin` dependency g
 |---|---|---|---|
 | GET | `/admin/retention` | Admin JWT | Get current retention period |
 | PUT | `/admin/retention` | Admin JWT | Set retention period (1–365 days) |
-| POST | `/admin/cleanup/run` | Admin JWT | Manually trigger retention cleanup (batched DELETE 5,000/batch + VACUUM) |
+| POST | `/admin/cleanup/run` | Admin JWT | Manually trigger retention cleanup (batched DELETE 5,000/batch) |
 | POST | `/admin/cleanup/wipe` | Admin JWT | Wipe all data |
 | POST | `/admin/users` | Admin JWT | Create user |
+| GET | `/admin/ingestion-errors` | Admin JWT | List ingestion errors |
+| DELETE | `/admin/ingestion-errors` | Admin JWT | Clear all ingestion errors |
+| POST | `/admin/training` | Admin JWT | Trigger model retraining |
 
 ## RAG — `/api/rag`
 
@@ -61,7 +64,6 @@ bcrypt password hashing, 2 roles (`admin`, `user`), `require_admin` dependency g
 | POST | `/api/rag/feedback` | JWT | Submit feedback (helpful/not_helpful/uncertain) |
 | GET | `/api/rag/history` | JWT | Query history (paginated, limit/offset) |
 | GET | `/api/rag/stats` | JWT | Collection chunks, total queries |
-| POST | `/api/rag/recalibrate` | Admin JWT | Manual recalibration trigger |
 
 ## Analytics — `/api/analytics`
 
@@ -72,19 +74,6 @@ bcrypt password hashing, 2 roles (`admin`, `user`), `require_admin` dependency g
 | GET | `/api/analytics/metrics` | `hours`, `bucket_minutes`, `sources` | Time-bucketed metric averages with anomaly markers |
 | GET | `/api/analytics/metrics/list` | None | List of all unique metric names in the database |
 | GET | `/api/analytics/entities` | None | All 13 entities with `atm_id`, `os_version`, `location_code` |
-
-## Events — `/api/events`
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/events` | JWT | Paginated event list |
-| GET | `/events/stats` | JWT | Event statistics |
-
-## Metrics — `/api/metrics`
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/metrics` | JWT | Paginated metric list |
 
 ## Health
 
