@@ -78,7 +78,7 @@ class LLMClient:
             self.providers = self._initialize_providers()
 
     def _initialize_providers(self) -> list[dict]:
-        """Initialize available providers in priority order: Ollama first, then OpenRouter, then Gemini, then Groq."""
+        """Initialize available providers in priority order: Ollama first, then OpenRouter"""
         providers = []
 
         if config.ollama_api_key:
@@ -112,27 +112,6 @@ class LLMClient:
         if fallback.startswith("openrouter/"):
             fallback = fallback.replace("openrouter/", "")
 
-        if config.gemini_api_key:
-            providers.append({
-                "name": "gemini",
-                "model": config.primary_model if not config.openrouter_api_key else fallback,
-                "api_key": config.gemini_api_key,
-                "base_url": "https://generativelanguage.googleapis.com/v1beta",
-            })
-
-        if config.groq_api_key:
-            groq_model = fallback
-            if groq_model.startswith("groq/"):
-                groq_model = groq_model.replace("groq/", "")
-            elif groq_model.startswith("meta-llama/"):
-                groq_model = groq_model.split("/")[-1]
-            providers.append({
-                "name": "groq",
-                "model": groq_model,
-                "api_key": config.groq_api_key,
-                "base_url": "https://api.groq.com/openai/v1",
-            })
-
         if not providers:
             logger.warning("No LLM providers available - RAG will return error messages")
 
@@ -148,7 +127,7 @@ class LLMClient:
     ) -> LLMResponse:
         """Generate response with automatic fallback to next provider on failure."""
         if not self.providers:
-                raise RuntimeError("No LLM providers configured. Set at least one of OLLAMA_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY environment variables.")
+                raise RuntimeError("No LLM providers configured. Set at least one of OLLAMA_API_KEY or OPENROUTER_API_KEY environment variables.")
 
         if _rate_limiter.is_rate_limited():
             wait = _rate_limiter.wait_time()
@@ -215,10 +194,6 @@ class LLMClient:
 
         if provider_name == "ollama":
             return self._call_ollama(provider, prompt, system_prompt, temperature, max_tokens)
-        elif provider_name == "gemini":
-            return self._call_gemini(provider, prompt, system_prompt, temperature, max_tokens)
-        elif provider_name == "groq":
-            return self._call_groq(provider, prompt, system_prompt, temperature, max_tokens)
         elif provider_name == "openrouter":
             return self._call_openrouter(provider, prompt, system_prompt, temperature, max_tokens)
         else:
@@ -275,106 +250,6 @@ class LLMClient:
             finish_reason=data.get("done_reason", "STOP"),
             prompt_tokens=data.get("prompt_tokens"),
             completion_tokens=data.get("eval_tokens"),
-        )
-
-    def _call_gemini(
-        self,
-        provider: dict,
-        prompt: str,
-        system_prompt: Optional[str],
-        temperature: float,
-        max_tokens: int,
-    ) -> LLMResponse:
-        """Call Google Gemini API."""
-        url = f"{provider['base_url']}/models/{provider['model']}:generateContent"
-
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": provider["api_key"],
-        }
-
-        contents = []
-        contents.append({"role": "user", "parts": [{"text": prompt}]})
-
-        payload = {
-            "contents": contents,
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens,
-                "topP": 0.95,
-                "topK": 40,
-            },
-        }
-
-        if system_prompt:
-            payload["systemInstruction"] = {
-                "parts": [{"text": system_prompt}]
-            }
-
-        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-
-        data = response.json()
-
-        text = ""
-        finish_reason = "STOP"
-        if "candidates" in data and data["candidates"]:
-            candidate = data["candidates"][0]
-            if "content" in candidate and "parts" in candidate["content"]:
-                text = candidate["content"]["parts"][0].get("text", "")
-            finish_reason = candidate.get("finishReason", "STOP")
-
-        usage = data.get("usageMetadata", {})
-        return LLMResponse(
-            text=text,
-            raw_response=data,
-            model=provider["model"],
-            finish_reason=finish_reason,
-            prompt_tokens=usage.get("promptTokenCount"),
-            completion_tokens=usage.get("candidatesTokenCount"),
-        )
-
-    def _call_groq(
-        self,
-        provider: dict,
-        prompt: str,
-        system_prompt: Optional[str],
-        temperature: float,
-        max_tokens: int,
-    ) -> LLMResponse:
-        """Call Groq API (OpenAI-compatible)."""
-        url = f"{provider['base_url']}/chat/completions"
-
-        headers = {
-            "Authorization": f"Bearer {provider['api_key']}",
-            "Content-Type": "application/json",
-        }
-
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        payload = {
-            "model": provider["model"],
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-
-        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-
-        data = response.json()
-
-        choice = data["choices"][0]
-        return LLMResponse(
-            text=choice["message"]["content"],
-            raw_response=data,
-            model=provider["model"],
-            finish_reason=choice.get("finish_reason", "STOP"),
-            prompt_tokens=data.get("usage", {}).get("prompt_tokens"),
-            completion_tokens=data.get("usage", {}).get("completion_tokens"),
         )
 
     def _call_openrouter(
