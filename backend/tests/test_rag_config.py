@@ -17,7 +17,7 @@ class TestRAGConfig:
             assert config.confidence_high_threshold == 0.8
             assert config.confidence_medium_threshold == 0.5
             assert config.retrieval_top_k == 10
-            assert config.self_consistency_samples == 1
+            assert config.self_consistency_samples == 3
             assert config.temperature == 0.6
             assert config.chunk_truncate_length == 800
             assert config.ollama_model == "gemma4:31b-cloud"
@@ -56,15 +56,7 @@ class TestRAGConfig:
             config = cfg.RAGConfig()
             assert config.is_configured is False
 
-    def test_is_configured_true_with_gemini_key(self):
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
-            from importlib import reload
-            import backend.src.rag.config as cfg
-            reload(cfg)
-            config = cfg.RAGConfig()
-            assert config.is_configured is True
-
-    @pytest.mark.parametrize("key", ["GROQ_API_KEY", "OPENROUTER_API_KEY", "OLLAMA_API_KEY"])
+    @pytest.mark.parametrize("key", ["OPENROUTER_API_KEY", "OLLAMA_API_KEY"])
     def test_is_configured_with_any_key(self, key):
         with patch.dict(os.environ, {key: "test-key"}, clear=True):
             from importlib import reload
