@@ -69,7 +69,7 @@
 | Parameter | Value | Description |
 |---|---|---|
 | Window size | 10 events per ATM | Flushes when buffer reaches 10 |
-| Embedding model | `nomic-embed-text` (Ollama) | 384-dimensional embeddings |
+| Embedding model | `nomic-embed-text` (Ollama container) | 384-dimensional embeddings, served by local `ollama` service |
 | Chunker | LangChain `SemanticChunker` | Semantic boundary-based chunking |
 | Collection | `atm_logs` | Single collection |
 | Vector space | Cosine similarity (HNSW) | Default HNSW index |
@@ -84,6 +84,14 @@
 | Retry attempts | 3 |
 | Backoff | Exponential (100ms → 200ms) |
 | Cursor type | `RealDictCursor` |
+
+## ML Inference
+
+| Parameter | Default | Description |
+|---|---|---|
+| `ML_WINDOW_SECONDS` | 600 | Data window for inference queries (was 60s, bumped to 600s to capture longer anomaly cascades) |
+| `ML_UNKNOWN_THRESHOLD` | -0.75 | IF score threshold for UNKNOWN classification (overridden by trained artifact `if_unknown_threshold.json`) |
+| `ML_WARMUP_CYCLES` | 2 | Number of initial detection cycles to skip UNKNOWN savings (prevents cold-start flood; typed A1-A7 still save) |
 
 ## ML Training
 
@@ -145,6 +153,7 @@
 | Test PostgreSQL | 5433 | 5432 |
 | Kafka | 9092 | 9092 |
 | ChromaDB | 8001 | 8000 |
+| Ollama | 11435 | 11434 |
 | Backend API | 8000 | 8000 |
 | MLflow | 5001 | 5000 |
 
@@ -155,5 +164,6 @@
 | `postgres_data` | postgres | Persistent database data |
 | `kafka_data` | kafka | Kafka log segments |
 | `chroma_data` | chromadb | ChromaDB collection data |
+| `ollama_data` | ollama | Ollama model storage (nomic-embed-text, ~274MB) |
 | `mlflow_artifacts` | mlflow | MLflow model artifacts |
 | `postgres_test_data` | postgres_test | Test database data |
