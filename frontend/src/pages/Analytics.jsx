@@ -83,8 +83,15 @@ function formatNumber(num) {
   return num?.toString() || "0";
 }
 
-function formatTimeLabel(dateStr) {
+function formatTimeLabel(dateStr, hours) {
   const d = new Date(dateStr);
+  if (hours === 0) {
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  if (hours >= 168) {
+    return d.toLocaleDateString([], { month: "short", day: "numeric" }) +
+      " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -272,7 +279,7 @@ function Analytics() {
   );
 
   const eventsChartData = {
-    labels: eventsData.map((d) => formatTimeLabel(d.bucket_start)),
+    labels: eventsData.map((d) => formatTimeLabel(d.bucket_start, timeRange.value)),
     datasets: selectedEventSources.map((source) => ({
       label: normaliseSource(source),
       data: eventsData.map((d) => d.sources[source] || 0),
@@ -305,7 +312,7 @@ function Analytics() {
   )];
 
   const metricsChartData = {
-    labels: metricsData.map((d) => formatTimeLabel(d.bucket_start)),
+    labels: metricsData.map((d) => formatTimeLabel(d.bucket_start, timeRange.value)),
     datasets: selectedMetrics
       .filter((m) => allMetricNames.includes(m))
       .map((metric, idx) => {
