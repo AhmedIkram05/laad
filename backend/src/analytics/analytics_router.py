@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 from fastapi import APIRouter, Query
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from psycopg2.extras import RealDictCursor
 
 from backend.src.database.connection import get_conn, release_conn
@@ -29,7 +29,7 @@ def get_events_timeline(
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cutoff_time = datetime(2000, 1, 1) if hours == 0 else datetime.now() - timedelta(hours=hours)
+            cutoff_time = datetime(2000, 1, 1, tzinfo=timezone.utc) if hours == 0 else datetime.now(timezone.utc) - timedelta(hours=hours)
             bucket_seconds = bucket_minutes * 60
 
             source_list = []
@@ -135,7 +135,7 @@ def get_metrics_timeline(
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cutoff_time = datetime(2000, 1, 1) if hours == 0 else datetime.now() - timedelta(hours=hours)
+            cutoff_time = datetime(2000, 1, 1, tzinfo=timezone.utc) if hours == 0 else datetime.now(timezone.utc) - timedelta(hours=hours)
             bucket_seconds = bucket_minutes * 60
 
             source_list = []
@@ -329,7 +329,7 @@ def get_realtime_stats(
     # For time-bounded queries, try Redis counters first
     if not all_time and client is not None:
         try:
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
             event_keys = client.keys(f"{EVENT_COUNTER_PREFIX}*")
             for key in event_keys:
                 value = client.get(key)
@@ -339,11 +339,11 @@ def get_realtime_stats(
                     # Filter by hour bucket from key: stats:events:{source}:{hour}
                     if len(parts) > 1:
                         try:
-                            key_hour = datetime.strptime(parts[1], "%Y-%m-%dT%H")
+                            key_hour = datetime.strptime(parts[1], "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
                             if cutoff_time and key_hour < cutoff_time:
                                 continue
                         except ValueError:
-                            pass
+                            continue
                     events_by_source[source] = events_by_source.get(source, 0) + int(value)
 
             anomaly_keys = client.keys(f"{ANOMALY_COUNTER_PREFIX}type:*")
@@ -351,11 +351,11 @@ def get_realtime_stats(
                 # Filter by hour bucket from key: stats:anomaly:type:{hour}
                 hour_str = key.replace(f"{ANOMALY_COUNTER_PREFIX}type:", "")
                 try:
-                    key_hour = datetime.strptime(hour_str, "%Y-%m-%dT%H")
+                    key_hour = datetime.strptime(hour_str, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
                     if cutoff_time and key_hour < cutoff_time:
                         continue
                 except ValueError:
-                    pass
+                    continue
                 entries = client.zrange(key, 0, -1, withscores=True)
                 for atype, score in entries:
                     anomaly_types[atype] = anomaly_types.get(atype, 0) + int(score)
@@ -364,7 +364,7 @@ def get_realtime_stats(
 
     # DB fallback: all-time query or when Redis returned nothing
     if all_time or not events_by_source:
-        cutoff = datetime.now() - timedelta(hours=hours) if not all_time else None
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours) if not all_time else None
         conn = get_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -378,7 +378,20 @@ def get_realtime_stats(
                         "SELECT source, COUNT(*) as cnt FROM events GROUP BY source",
                     )
                 for row in cur.fetchall():
-                    events_by_source[row["source"]] = row["cnt"]
+                    events_by_source[row["source"]] = events_by_source.get(row["source"], 0) + row["cnt"]
+
+                # Also count metric sources (increment_event_counter is called from both event and metric handlers)
+                if cutoff is not None:
+                    cur.execute(
+                        "SELECT source, COUNT(*) as cnt FROM metrics WHERE timestamp >= %s GROUP BY source",
+                        (cutoff,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT source, COUNT(*) as cnt FROM metrics GROUP BY source",
+                    )
+                for row in cur.fetchall():
+                    events_by_source[row["source"]] = events_by_source.get(row["source"], 0) + row["cnt"]
 
                 if cutoff is not None:
                     cur.execute(
