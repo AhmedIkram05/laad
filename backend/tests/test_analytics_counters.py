@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
+from datetime import datetime, timezone, timedelta
 
 
 class TestAnalyticsCounters:
@@ -95,17 +96,44 @@ class TestAnalyticsCounters:
         from backend.src.analytics.analytics_router import get_realtime_stats
 
         mock_client = MagicMock()
+        now = datetime.now(timezone.utc)
+        current_hour = now.strftime("%Y-%m-%dT%H")
+        old_hour = (now - timedelta(hours=48)).strftime("%Y-%m-%dT%H")
         mock_client.keys.side_effect = lambda pattern: {
-            "stats:events:*": ["stats:events:ATM_APP:2026-05-20-14"],
-            "stats:anomaly:type:*": ["stats:anomaly:type:2026-05-20-14"],
+            "stats:events:*": [
+                f"stats:events:ATM_APP:{current_hour}",
+                f"stats:events:HARDWARE:{old_hour}",
+            ],
+            "stats:anomaly:type:*": [
+                f"stats:anomaly:type:{current_hour}",
+            ],
         }.get(pattern, [])
-        mock_client.get.return_value = "42"
+        mock_client.get.side_effect = lambda key: "42" if key.endswith(current_hour) else "10"
         mock_client.zrange.return_value = [("A1", 5.0)]
         mock_client.pfcount.return_value = 10
         mock_get_client.return_value = mock_client
 
         result = get_realtime_stats(hours=24)
 
+        assert "events_by_source" in result
+        assert "anomaly_types" in result
+        assert "unique_atms" in result
+        # Only current_hour events should be included (old_hour filtered out)
+        assert result["events_by_source"] == {"ATM_APP": 42}
+        assert result["anomaly_types"] == {"A1": 5}
+
+    @patch("backend.src.analytics.analytics_router.get_redis_client")
+    def test_realtime_stats_all_time_uses_db(self, mock_get_client):
+        """Test that hours=0 skips Redis and uses DB fallback."""
+        from backend.src.analytics.analytics_router import get_realtime_stats
+        from backend.src.database.connection import get_conn, release_conn
+
+        # Redis client should not be called for hours=0
+        mock_get_client.return_value = MagicMock()
+
+        result = get_realtime_stats(hours=0)
+
+        # Should have the structure even if DB is empty
         assert "events_by_source" in result
         assert "anomaly_types" in result
         assert "unique_atms" in result
