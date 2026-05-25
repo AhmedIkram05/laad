@@ -7,7 +7,7 @@ Steps:
     4. Select top-K features from XGBoost feature importance for Isolation Forest
     5. Grid-search IF hyperparameters on held-out validation split
     6. Train Isolation Forest on normal windows only (selected features)
-    7. Calibrate UNKNOWN anomaly threshold via Youden's J statistic
+    7. Calibrate UNKNOWN anomaly threshold via F1 score maximization
     8. Log parameters, metrics, and model artifacts to MLflow
     9. Save models to ml/artifacts/
 
@@ -91,6 +91,9 @@ def _grid_search_if(
     if len(y_val) == 0:
         log.warning("No validation data for grid search — using default params")
         return {}
+    if len(np.unique(y_val)) < 2:
+        log.warning("Only one class in validation data (need both normal + anomaly) — using default params")
+        return {}
 
     best_params: dict = {}
     best_auc = -1.0
@@ -170,10 +173,12 @@ def train() -> None:
 
     ARTIFACT_DIR.mkdir(exist_ok=True)
 
-    try:
-        git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
-    except Exception:
-        git_sha = "unknown"
+    git_sha = os.getenv("GIT_COMMIT_SHA", "").strip()[:8]
+    if not git_sha:
+        try:
+            git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
+        except Exception:
+            git_sha = "unknown"
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
@@ -188,6 +193,7 @@ def train() -> None:
             "n_features":        FEATURE_COUNT,
             "use_offline_data":  USE_OFFLINE_DATA,
             "if_feature_selection_k": IF_FEATURE_SELECTION_K,
+            "random_state": 42,
         })
 
         if USE_OFFLINE_DATA:
@@ -387,7 +393,7 @@ def train() -> None:
         iso_forest = IsolationForest(**final_params)
         iso_forest.fit(X_normal_scaled_if)
 
-        # Evaluate IF anomaly detection precision on all windows
+        # Evaluate IF anomaly detection accuracy on all windows
         X_all_scaled = scaler.transform(X_all)
         X_all_scaled_if = X_all_scaled[:, if_feature_indices]
         if_scores = iso_forest.predict(X_all_scaled_if)
@@ -398,7 +404,7 @@ def train() -> None:
         mlflow.log_metric("if_anomaly_precision", if_precision)
         print(f"Isolation Forest anomaly detection precision: {if_precision:.3f}")
 
-        # Calibrate UNKNOWN anomaly threshold via Youden's J
+        # Calibrate UNKNOWN anomaly threshold via F1 score maximization
         all_if_density_scores = iso_forest.score_samples(X_all_scaled_if)
         y_anomaly_binary = (~normal_mask).astype(int)
         unknown_threshold = _calibrate_unknown_threshold(all_if_density_scores, y_anomaly_binary)
@@ -412,8 +418,8 @@ def train() -> None:
         # to avoid UNIQUE constraint conflicts (MLflow v3.1.1 re-logs
         # existing run metrics internally).
         # ─────────────────────────────────────────────────────────────────────
-        xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier", registered_model_name=XGB_MODEL_NAME)
-        if_uri  = mlflow.sklearn.log_model(iso_forest, "isolation_forest", registered_model_name=IF_MODEL_NAME)
+        xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier")
+        if_uri  = mlflow.sklearn.log_model(iso_forest, "isolation_forest")
 
         # ─────────────────────────────────────────────────────────────────────
         # Log remaining metrics and save artifacts

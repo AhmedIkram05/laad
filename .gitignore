@@ -37,3 +37,4 @@ backend/src/anomaly_detection/ml/artifacts/
 # Offline training dataset (generated artifact)
 data/
 skills-lock.json
+frontend/coverage

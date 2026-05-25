@@ -1,18 +1,21 @@
-.PHONY: help all rebuild rebuild-backend clean logs train pytest redis
+.PHONY: help all rebuild rebuild-backend rebuild-frontend clean logs train test test-backend test-frontend
 
 help:
 	@echo "LAAD Makefile — Essential commands"
 	@echo ""
-	@echo "  make all          		Start all services (postgres, kafka, chromadb, redis, backend, generator, kafka-consumer, mlflow)"
+	@echo "  make all          		Start all services (postgres, kafka, chromadb, redis, ollama, backend, generator, kafka-consumer, mlflow, frontend)"
 	@echo "  make rebuild      		Full rebuild: remove ALL containers/volumes/images, then start fresh"
 	@echo "  make rebuild-backend  	Rebuild backend image only, keep other services running"
-	@echo "  make clean       		Stop all containers and remove volumes"
+	@echo "  make rebuild-frontend 	Rebuild frontend image only, keep other services running"
+	@echo "  make clean       		Stop all containers and remove ALL volumes"
 	@echo "  make logs         		Follow all service logs"
 	@echo "  make train        		Generate training data + retrain ML models (XGBoost & IF)"
-	@echo "  make pytest       		Run all tests in Docker (postgres_test + pytest containers)"
-	@echo "  make redis        		Start Redis service (for RAG caching)"
+	@echo "  make test         		Run ALL tests (backend + frontend) in Docker"
+	@echo "  make test-backend 		Run backend tests only"
+	@echo "  make test-frontend 		Run frontend tests only"
 	@echo ""
 	@echo "Services:"
+	@echo "  Frontend UI:       		http://localhost:5173"
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:            		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
@@ -20,63 +23,73 @@ help:
 	@echo "  PostgreSQL:     		http://localhost:5434"
 	@echo "  Test DB:         		http://localhost:5433"
 	@echo "  MLflow UI:       		 http://localhost:5001"
+	@echo ""
 
 # ── Start All ────────────────────────────────────────────────────────────────
 
-all: ml-up redis
-	docker compose up -d --build postgres kafka kafka-init chromadb backend generator kafka-consumer
+all:
+	docker compose --profile ml up -d
+	docker compose up -d --build postgres kafka kafka-init chromadb redis ollama ollama-init backend generator kafka-consumer frontend
 	@echo ""
 	@echo "✓ All services started!"
+	@echo "  Frontend UI:       		http://localhost:5173"
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:            		http://localhost:9092"
 	@echo "  ChromaDB:         		http://localhost:8001"
+	@echo "  Ollama:           		http://localhost:11435"
 	@echo "  Redis:           		http://localhost:6379"
 	@echo "  PostgreSQL:     		http://localhost:5434"
 	@echo "  Test DB:         		http://localhost:5433"
-	@echo "  MLflow UI:       		 http://localhost:5001"
+	@echo "  MLflow UI:        		http://localhost:5001"
 	@echo ""
 
 # ── Full Rebuild ────────────────────────────────────────────────────────────
 
 rebuild:
 	@echo "==> Stopping all containers and removing all volumes/images..."
-	-docker compose --profile ml down 2>/dev/null; true
-	-docker compose --profile test down -v 2>/dev/null; true
-	-docker compose down 2>/dev/null; true
-	-docker compose down --remove-orphans 2>/dev/null; true
-	@echo "==> Removing LAAD volumes (preserving mlflow_artifacts)..."
-	-docker volume rm laad_postgres_data laad_postgres_test_data laad_kafka_data laad_chroma_data laad_redis_data 2>/dev/null; true
-	@echo "==> Removing orphaned containers..."
-	-docker compose down --remove-orphans 2>/dev/null; true
-	@echo "==> Starting fresh (mlflow starts with --profile ml)..."
-	docker compose up -d --build postgres kafka kafka-init chromadb redis backend generator kafka-consumer
+	-docker compose --profile ml down -v --remove-orphans 2>/dev/null; true
+	-docker compose --profile test down -v --remove-orphans 2>/dev/null; true
+	-docker compose down -v --remove-orphans 2>/dev/null; true
+	@echo "==> Removing all LAAD volumes..."
+	-docker volume rm laad_postgres_data laad_postgres_test_data laad_kafka_data laad_chroma_data laad_ollama_data laad_redis_data laad_mlflow_artifacts 2>/dev/null; true
+	@echo "==> Starting fresh..."
+	docker compose up -d --build postgres kafka kafka-init chromadb redis ollama ollama-init backend generator kafka-consumer frontend
 	docker compose --profile ml up -d
 	@echo ""
 	@echo "✓ Rebuild complete!"
+	@echo "  Frontend UI:       	http://localhost:5173"
 	@echo "  Backend API:     		http://localhost:8000"
 	@echo "  Kafka:           		http://localhost:9092"
-	@echo "  ChromaDB:         		http://localhost:8001"
+	@echo "  ChromaDB:        		http://localhost:8001"
+	@echo "  Ollama:          		http://localhost:11435"
 	@echo "  Redis:           		http://localhost:6379"
 	@echo "  PostgreSQL:     		http://localhost:5434"
 	@echo "  Test DB:         		http://localhost:5433"
-	@echo "  MLflow UI:       		 http://localhost:5001"
+	@echo "  MLflow UI:       		http://localhost:5001"
 
 # ── Backend-only Rebuild ───────────────────────────────────────────────────
 
 rebuild-backend:
-	docker compose build backend generator kafka-consumer
+	docker compose build backend
 	docker compose up -d --no-deps backend generator kafka-consumer
-	@echo "✓ Backend and related images rebuilt and containers restarted"
+	@echo "✓ Backend image rebuilt and containers restarted (backend, generator, kafka-consumer all share ./backend/Dockerfile)"
 
-# ── Stop All ─────────────────────────────────────────────────────────────
+# ── Frontend-only Rebuild ──────────────────────────────────────────────────
+
+rebuild-frontend:
+	docker compose build frontend
+	docker compose up -d --no-deps frontend
+	@echo "✓ Frontend image rebuilt and container restarted"
+
+# ── Delete All ─────────────────────────────────────────────────────────────
 
 clean:
-	@echo "==> Stopping all services and removing volumes..."
-	-docker compose --profile ml down -v 2>/dev/null; true
-	-docker compose --profile test down -v 2>/dev/null; true
-	-docker compose down -v 2>/dev/null; true
-	-docker compose down --remove-orphans 2>/dev/null; true
-	@echo "✓ All services stopped and volumes removed"
+	@echo "==> Stopping all services and removing ALL volumes..."
+	-docker compose --profile ml down -v --remove-orphans 2>/dev/null; true
+	-docker compose --profile test down -v --remove-orphans 2>/dev/null; true
+	-docker compose down -v --remove-orphans 2>/dev/null; true
+	-docker volume rm laad_mlflow_artifacts 2>/dev/null; true
+	@echo "✓ All services stopped and all volumes removed"
 
 # ── Follow Logs ─────────────────────────────────────────────────────────────
 
@@ -96,29 +109,25 @@ train:
 
 # ── Run Tests ──────────────────────────────────────────────────────────────
 
-pytest:
+test: test-backend test-frontend
+
+test-backend:
 	@echo "==> Stopping any leftover test containers..."
 	-docker compose stop postgres_test pytest 2>/dev/null; true
 	-docker compose rm -f postgres_test pytest 2>/dev/null; true
-	@echo "==> Starting test environment and running tests..."
+	@echo "==> Starting backend test environment..."
 	docker compose --profile test up -d postgres_test
 	@echo "==> Waiting for test DB to be ready..."
 	@sleep 5
-	docker compose run --rm --no-deps pytest
-	@echo "==> Stopping test environment..."
+	docker compose run --rm --build pytest
+	@echo "==> Stopping backend test environment..."
 	-docker compose stop postgres_test pytest 2>/dev/null; true
 	-docker compose rm -f postgres_test pytest 2>/dev/null; true
 	@echo ""
-	@echo "✓ Tests complete!"
+	@echo "✓ Backend tests complete!"
 
-# ── MLflow profile shortcut ─────────────────────────────────────────────────
-
-ml-up:
-	@docker compose --profile ml up -d
-	@echo "✓ MLflow started on http://localhost:5001"
-
-# ── Redis Service ───────────────────────────────────────────────────────────
-
-redis:
-	docker compose up -d redis
-	@echo "✓ Redis started on http://localhost:6379"
+test-frontend:
+	@echo "==> Running frontend tests..."
+	docker compose run --rm frontend-test
+	@echo ""
+	@echo "✓ Frontend tests complete!"

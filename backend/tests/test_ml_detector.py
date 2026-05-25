@@ -9,7 +9,6 @@ import pytest
 
 from backend.src.anomaly_detection.ml.ml_detector import (
     MLAnomalyDetector, ARTIFACT_DIR, WINDOW_SECONDS, CONFIDENCE_THRESHOLD,
-    SIGNAL_CORRELATOR_ENABLED,
     TITLE_MAP, SOURCES_MAP, RECOMMENDED_ACTIONS_MAP,
 )
 from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
@@ -171,7 +170,7 @@ class TestDetectAndSave:
         call_kwargs = mock_save.call_args.kwargs
         assert call_kwargs["anomaly_type"] == "A1"
         assert call_kwargs["atm_id"] == "ATM-GB-0003"
-        assert call_kwargs["source"] == "SIGNAL_CORRELATOR"
+        assert call_kwargs["source"] == "HEURISTIC"
         assert call_kwargs["sources_involved"] == ["ATM_APP", "KAFKA", "TERMINAL_HANDLER"]
         assert "recommended_action" in call_kwargs
 
@@ -210,7 +209,7 @@ class TestDetectAndSave:
         assert result == 1
         call_kwargs = mock_save.call_args.kwargs
         assert call_kwargs["anomaly_type"] == "A7"
-        assert call_kwargs["source"] == "CLASSIFIER"
+        assert call_kwargs["source"] == "ML_ENSEMBLE"
         assert call_kwargs["confidence"] == 0.8
 
     def test_ml_skips_when_confidence_below_threshold(self):
@@ -278,6 +277,7 @@ class TestDetectAndSave:
     def test_ml_detects_unknown_when_iso_score_extreme(self):
         detector = MLAnomalyDetector()
         detector._loaded = True
+        detector._warmup_cycles = 21
 
         fake_features = np.zeros(FEATURE_COUNT, dtype=np.float32)
 
@@ -312,7 +312,7 @@ class TestDetectAndSave:
         assert result == 1
         call_kwargs = mock_save.call_args.kwargs
         assert call_kwargs["anomaly_type"] == "UNKNOWN"
-        assert call_kwargs["source"] == "CLASSIFIER"
+        assert call_kwargs["source"] == "ML_ENSEMBLE"
 
     def test_ml_skips_unknown_when_iso_score_mild(self):
         detector = MLAnomalyDetector()
@@ -438,8 +438,8 @@ class TestConstants:
     def test_confidence_threshold_is_070(self):
         assert CONFIDENCE_THRESHOLD == 0.70
 
-    def test_window_seconds_is_60(self):
-        assert WINDOW_SECONDS == 60
+    def test_window_seconds_is_600(self):
+        assert WINDOW_SECONDS == 600
 
     def test_artifact_dir_points_to_backend_ml(self):
         assert "backend" in str(ARTIFACT_DIR) and "ml" in str(ARTIFACT_DIR)
@@ -459,8 +459,7 @@ class TestConstants:
             assert atype in RECOMMENDED_ACTIONS_MAP
             assert len(RECOMMENDED_ACTIONS_MAP[atype]) > 10
 
-    def test_signal_correlator_enabled_by_default(self):
-        assert SIGNAL_CORRELATOR_ENABLED is True
+
 
 
 class TestAttribution:

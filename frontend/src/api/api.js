@@ -32,7 +32,7 @@ const request = async (endpoint, options = {}) => {
 // is_active: 1 = active only, 0 = resolved only, undefined/null = all
 // hours: time range filter (default 24 hours)
 // sort_by: 'score' (default, criticality), 'detected_at' (most recent), 'severity'
-// detection_source: 'CLASSIFIER', 'ZSCORE', 'SIGNAL_CORRELATOR'
+// detection_source: 'ML_ENSEMBLE', 'ZSCORE', 'HEURISTIC'
 // atm_id: filter by specific ATM ID
 // anomaly_type: filter by anomaly type (A1-A7, UNKNOWN)
 // severity: filter by severity (CRITICAL, HIGH, MAJOR, LOW)

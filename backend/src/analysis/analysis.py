@@ -519,13 +519,13 @@ def build_detailed_table(anomalies):
 
             #explanation.json so i can quickly scan keys i need:
             #'{"pod": "terminal-handler-pod-0", "points": [300000114.0, 299999099.0, 300000870.0, 299999128.0, 1040000000.0], "rel_increase": 2.4666749982422456, "frac_increase": 0.55}'
-            # Classifier format: '{"confidence": 0.99, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.706}'
+            # ML_ENSEMBLE format: '{"confidence": 0.99, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.706}'
 
             # checklist
             mem_start, mem_end, gc_start, gc_end, high_cpu, oom_seen = (0, 0, 0, 0, False, False)
             source = exp.get("source", "UNKNOWN")
 
-            if source == "CLASSIFIER":
+            if source in ("ML_ENSEMBLE", "CLASSIFIER"):
                 if_score = exp.get("if_score", 0)
                 confidence = exp.get("confidence", 0)
                 explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
@@ -570,13 +570,13 @@ def build_detailed_table(anomalies):
             
             #explanation.json so i can quickly scan keys i need:
             #'{"gcp_restarts": [{"ts": "2026-03-29T09:32:00+00:00", "count": 1.0} {"ts": "2026-03-29T09:34:00+00:00", "count": 2.0}], "total_startups": 3, "total_fatals": 3}'
-            # Classifier format: '{"confidence": 0.82, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.71}'
+            # ML_ENSEMBLE format: '{"confidence": 0.82, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.71}'
 
             # checklist
             max_restart, fatal_count, startup_count = (0, 0, 0)
             source = exp.get("source", "UNKNOWN")
 
-            if source == "CLASSIFIER":
+            if source in ("ML_ENSEMBLE", "CLASSIFIER"):
                 if_score = exp.get("if_score", 0)
                 confidence = exp.get("confidence", 0)
                 explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
@@ -619,13 +619,13 @@ def build_detailed_table(anomalies):
 
             #explanation.json so i can quickly scan keys i need:
             #'{"spikes": [{"ts": "2026-03-29T09:30:00+00:00", "rt": 3200.0, "sr": 72.0, "fc": 8.0}, {"ts": "2026-03-29T09:31:00+00:00", "rt": 30000.0, "sr": 50.0, "fc": 14.0}], "timeouts": [{"ts": "2026-03-29T09:30:00+00:00", "txn": "txn-d95dbe59-dfe"}, {"ts": "2026-03-29T09:31:00+00:00", "txn": "txn-d95dbe59-dfe"}]}', 
-            # Classifier format: '{"confidence": 0.95, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.755}'
+            # ML_ENSEMBLE format: '{"confidence": 0.95, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.755}'
 
             # checklist
             max_rt5, min_success, max_failures, timeout_seen = (0, None, 0, False)
             source = exp.get("source", "UNKNOWN")
 
-            if source == "CLASSIFIER":
+            if source in ("ML_ENSEMBLE", "CLASSIFIER"):
                 if_score = exp.get("if_score", 0)
                 confidence = exp.get("confidence", 0)
                 explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
@@ -682,13 +682,13 @@ def build_detailed_table(anomalies):
 
             #explanation.json so i can quickly scan keys i need:
             #'{"memory_samples": [10.06, 24.63, 19.09, 10.13, 35.13], "timeout": {"ts": "2026-03-29T09:45:00+00:00", "error_detail": "ThreadAbortException: memory pressure", "error_code": "ERR-MEM"}}'
-            # Classifier format: '{"confidence": 0.96, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.688}'
+            # ML_ENSEMBLE format: '{"confidence": 0.96, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.688}'
 
             # checklist
             mem_start, mem_max, cpu_max, net_error_max, timeout_seen = (0, 0, 0, 0, False)
             source = exp.get("source", "UNKNOWN")
 
-            if source == "CLASSIFIER":
+            if source in ("ML_ENSEMBLE", "CLASSIFIER"):
                 if_score = exp.get("if_score", 0)
                 confidence = exp.get("confidence", 0)
                 explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)
@@ -736,13 +736,13 @@ def build_detailed_table(anomalies):
             
             #explanation.json so i can quickly scan keys i need:
             #'{"prom_err_id": 2, "kafka_err_id": 1, "prom_ts": "2026-03-29T15:18:57.814751+00:00", "kafka_ts": "2026-03-29T15:18:57.667783+00:00"}'
-            # Classifier format: '{"confidence": 0.73, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.699}'
+            # ML_ENSEMBLE format: '{"confidence": 0.73, "source": "CLASSIFIER", "window_seconds": 7200, "if_score": -0.699}'
             
             # checklist
             missing_field_count, malformed_metric, ooo  = (0, False, False)
             source = exp.get("source", "UNKNOWN")
 
-            if source == "CLASSIFIER":
+            if source in ("ML_ENSEMBLE", "CLASSIFIER"):
                 if_score = exp.get("if_score", 0)
                 confidence = exp.get("confidence", 0)
                 explanation, operation_impact, recommendation = _build_classifier_description(A_code, atm_id, confidence, if_score)

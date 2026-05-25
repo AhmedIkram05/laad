@@ -83,8 +83,43 @@ services:
     volumes:
       - redis_data:/data
 
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    restart: "no"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Ollama server..."
+        until ollama list >/dev/null 2>&1; do sleep 2; done
+        echo "Pulling nomic-embed-text model..."
+        ollama pull nomic-embed-text
+        echo "Model pulled successfully"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   kafka-consumer:
-    build: .
+    build: ./backend
     command: python -m backend.kafka.consumer
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
@@ -93,7 +128,7 @@ services:
       - ANOMALY_TRIGGER_INTERVAL_S=30
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
       - CHROMA_WINDOW_SIZE=10
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -101,6 +136,10 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-atm_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - GIT_COMMIT_SHA=${GIT_COMMIT_SHA:-}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-300}
     depends_on:
       kafka:
         condition: service_healthy
@@ -108,12 +147,16 @@ services:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     volumes:
       - ./backend:/app/backend
 
   backend:
-    build: .
+    build: ./backend
     ports:
       - "8000:8000"
     environment:
@@ -124,10 +167,9 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-change-in-production}
       - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - GIT_COMMIT_SHA=${GIT_COMMIT_SHA:-}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:31b-cloud}
@@ -149,6 +191,9 @@ services:
       - TEST_POSTGRES_DB=atm_platform_test
       - TEST_POSTGRES_USER=atm_user
       - TEST_POSTGRES_PASSWORD=${TEST_POSTGRES_PASSWORD:-your_password_here}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,12 +205,11 @@ services:
       start_period: 20s
     restart: unless-stopped
     volumes:
-      - ./backend/src:/app/backend/src
-      - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
+      - ./backend:/app/backend
       - ./data:/app/data
 
   generator:
-    build: .
+    build: ./backend
     command: python -m backend.generator.continuous_generator
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
@@ -186,22 +230,39 @@ services:
       kafka-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v3.1.1
+    build: ./mlflow
     profiles:
       - ml
     ports:
       - "5001:5000"
     command: >
       mlflow server
-      --backend-store-uri sqlite:////mlflow/artifacts/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --backend-store-uri ${MLFLOW_BACKEND_STORE_URI:-sqlite:////mlflow/artifacts/mlflow.db}
+      --default-artifact-root ${MLFLOW_S3_ARTIFACT_ROOT:-/mlflow/artifacts}
       --serve-artifacts
       --host 0.0.0.0
       --port 5000
+      --gunicorn-opts "--timeout 120 --workers 2"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - MLFLOW_S3_UPLOAD_EXTRA_ARGS={"ServerSideEncryption":"AES256"}
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   postgres_test:
@@ -219,14 +280,16 @@ services:
       - ./backend/src/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
   pytest:
-    build: .
+    build: ./backend
     profiles:
       - test
     command: >
       sh -c "sleep 3 &&
       python -c 'from backend.src.database.init_db import init_db; init_db(force=True)' &&
       python -m pytest backend/tests/ -v
-      --tb=short"
+      --tb=short
+      --cov=backend/src --cov=backend/generator --cov=backend/kafka
+      --cov-report=term --cov-report=term-missing"
     environment:
       - POSTGRES_HOST=postgres_test
       - POSTGRES_PORT=5432
@@ -239,12 +302,24 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_CACHE_TTL=300
+      - TEST_DATA_DIR=backend/custom_synthetic_data_sources
     depends_on:
-      - postgres_test
+      postgres_test:
+        condition: service_started
     volumes:
       - ./backend:/app/backend
       - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
       - ./backend/custom_synthetic_data_sources:/app/backend/custom_synthetic_data_sources
+
+  frontend-test:
+    image: node:22-alpine
+    profiles:
+      - test
+    working_dir: /frontend
+    command: >
+      sh -c "cp -r /src/. /frontend/ && npm ci && npx vitest run --coverage"
+    volumes:
+      - ./frontend:/src
 
 volumes:
   postgres_data:
@@ -253,3 +328,4 @@ volumes:
   kafka_data:
   chroma_data:
   redis_data:
+  ollama_data:

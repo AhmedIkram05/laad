@@ -5,22 +5,21 @@ Queries recent time windows from PostgreSQL, extracts features, and
 produces anomaly records for insertion into the anomalies table.
 
 Detection layers (in priority order):
-  1. CLASSIFIER: XGBoost + Isolation Forest ensemble (primary). Only active
+  1. ML_ENSEMBLE: XGBoost + Isolation Forest ensemble (primary). Only active
      when model artifacts exist. Detects known A1–A7 patterns and UNKNOWN
      anomalies via Isolation Forest anomaly score threshold. This is the
      PRIMARY detector — runs first and catches most anomalies.
   2. ZSCORE: Rolling Z-score statistical deviation. Detects novel patterns
      by flagging when current window deviates >3σ from the rolling median.
-     INDEPENDENT layer — runs even when CLASSIFIER models fail to load.
-  3. SIGNAL_CORRELATOR: Multi-source signal correlation via detect_anomalies_from_window().
+     INDEPENDENT layer — runs even when ML_ENSEMBLE models fail to load.
+  3. HEURISTIC: Multi-source signal correlation via detect_anomalies_from_window().
      Final fallback layer — deterministic detection of A1–A7 patterns.
      Always runs as safety net.
 
-CLASSIFIER requires loaded models. ZSCORE and SIGNAL_CORRELATOR always run.
+ML_ENSEMBLE requires loaded models. ZSCORE and HEURISTIC always run.
 All inference cycles are logged to MLflow for observability.
 
 Configuration (env vars):
-    ML_SIGNAL_CORRELATOR_ENABLED   : Enable signal correlator detection (default: true)
     MLFLOW_TRACKING_URI      : MLflow server URI (default: http://mlflow:5000)
 
 Usage:
@@ -48,10 +47,10 @@ from backend.src.analytics.analytics_router import increment_anomaly_counter
 log = logging.getLogger(__name__)
 
 ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS            = int(os.getenv("ML_WINDOW_SECONDS", "60"))
+WINDOW_SECONDS            = int(os.getenv("ML_WINDOW_SECONDS", "600"))
 CONFIDENCE_THRESHOLD      = 0.70
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.75"))
-SIGNAL_CORRELATOR_ENABLED = os.getenv("ML_SIGNAL_CORRELATOR_ENABLED", "true").lower() in ("true", "1", "yes")
+WARMUP_SKIP_CYCLES        = int(os.getenv("ML_WARMUP_CYCLES", "20"))
 MLFLOW_TRACKING_URI       = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 MLFLOW_EXPERIMENT         = "atm-anomaly-detection"
 ZSCORE_WINDOW_SIZE        = 20
@@ -200,12 +199,16 @@ class MLAnomalyDetector:
         self._loaded  = self._load_models()
         self._mlflow_available = False
         self._baseline = RollingBaseline()
+        self._last_saved_anomalies: list[dict] = []
+        self._warmup_cycles = 0
 
         import subprocess
-        try:
-            git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
-        except Exception:
-            git_sha = "unknown"
+        git_sha = os.getenv("GIT_COMMIT_SHA", "").strip()[:8]
+        if not git_sha:
+            try:
+                git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
+            except Exception:
+                git_sha = "unknown"
 
         try:
             mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
@@ -214,13 +217,12 @@ class MLAnomalyDetector:
             mlflow.set_tag("git_sha", git_sha)
             self._mlflow_available = True
             log.info(
-                "MLAnomalyDetector initialized: signal_correlator=%s, "
-                "models_loaded=%s, git_sha=%s, mlflow_uri=%s",
-                SIGNAL_CORRELATOR_ENABLED, self._loaded, git_sha, MLFLOW_TRACKING_URI
+                "MLAnomalyDetector initialized: models_loaded=%s, git_sha=%s, mlflow_uri=%s",
+                self._loaded, git_sha, MLFLOW_TRACKING_URI
             )
         except Exception as e:
             log.warning(
-                "MLflow unavailable (signal_correlator will still run): %s. "
+                "MLflow unavailable (detection layers will still run): %s. "
                 "MLflow URI=%s",
                 e, MLFLOW_TRACKING_URI
             )
@@ -375,7 +377,7 @@ class MLAnomalyDetector:
             anomaly_type: A1–A7
             atm_id: ATM identifier (may be None for pod-level/service-level anomalies)
             confidence: Detection confidence score (0.0–1.0)
-            source: Detection source — HEURISTIC | RULES | ML
+            source: Detection source — ML_ENSEMBLE | ZSCORE | HEURISTIC
             explanation: Additional context dict stored as JSONB
             sources_involved: List of source names contributing to detection
             recommended_action: Human-readable remediation steps
@@ -421,6 +423,21 @@ class MLAnomalyDetector:
             "Saved anomaly %s (atm=%s, confidence=%.2f, source=%s)",
             anomaly_type, atm_id, confidence, source
         )
+
+        self._last_saved_anomalies.append({
+            "anomaly_type": anomaly_type,
+            "atm_id": atm_id,
+            "model_confidence_score": confidence,
+            "severity": severity,
+            "title": title,
+            "explanation": json.loads(exp_json) if isinstance(exp_json, str) else exp_json,
+            "recommended_action": action,
+            "sources_involved": sources,
+            "correlation_id": correlation_id,
+            "source": source,
+            "detected_at": datetime.now(timezone.utc).isoformat(),
+        })
+
         hour_bucket = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
         increment_anomaly_counter(anomaly_type, hour_bucket)
 
@@ -451,26 +468,32 @@ class MLAnomalyDetector:
         """Run full detection cycle across all layers.
 
         Detection order (priority):
-          1. CLASSIFIER: XGBoost + Isolation Forest — primary detector, only if models loaded
+          1. ML_ENSEMBLE: XGBoost + Isolation Forest — primary detector, only if models loaded
              - Runs per-ATM/pod so it can detect multiple anomalies in one cycle
              - Detects: A1–7 (trained) + UNKNOWN (via IF anomaly score threshold)
           2. ZSCORE: Rolling Z-score — always runs (independent of models)
              - Detects: UNKNOWN via >3σ deviation from rolling median
-          3. SIGNAL_CORRELATOR: Multi-signal correlation (A1–A7) — final fallback, always runs
+          3. HEURISTIC: Multi-signal correlation (A1–A7) — final fallback, always runs
              - Detects: A1–7 via deterministic signal patterns
 
         Returns:
             Total number of anomalies saved this cycle.
         """
+        self._last_saved_anomalies = []
+        self._warmup_cycles += 1
         rows, window_start, window_end = self._query_window()
         if len(rows) < 5:
             log.debug("Not enough data in window (%d rows) — skipping.", len(rows))
             return 0
 
+        in_warmup = self._warmup_cycles <= WARMUP_SKIP_CYCLES
+        if in_warmup:
+            log.info("Warmup cycle %d/%d — skipping UNKNOWN savings (typed anomalies still active).",
+                     self._warmup_cycles, WARMUP_SKIP_CYCLES)
+
         saved = 0
         heur_anomalies: list = []
-        # Track (anomaly_type, atm_id) pairs the classifier already detected this cycle
-        classifier_detections: set[tuple[str, str | None]] = set()
+        ml_ensemble_detections: set[tuple[str, str | None]] = set()
 
         def _run_ml_logging():
             """Internal: log to MLflow if available. Raises on failure."""
@@ -478,7 +501,6 @@ class MLAnomalyDetector:
                 return
             mlflow.log_metric("rows_processed", len(rows))
             mlflow.log_param("window_seconds", WINDOW_SECONDS)
-            mlflow.log_param("signal_correlator_enabled", SIGNAL_CORRELATOR_ENABLED)
             mlflow.log_param("models_loaded", self._loaded)
 
         # Group rows by atm_id for per-ATM classification and ZSCORE attribution
@@ -492,12 +514,13 @@ class MLAnomalyDetector:
         self._baseline.update(global_features.flatten())
 
         # Most frequent ATM for ZSCORE UNKNOWN attribution
-        atm_ids_with_data = [k for k in atm_groups if k is not None]
-        most_frequent_atm = max(set(atm_ids_with_data), key=lambda k: len(atm_groups[k])) if atm_ids_with_data else None
+        # NOTE: Z-score is a global detector — it can't identify the culprit entity.
+        # Using the most frequent ATM is misleading, so we attribute to None.
+        # The ML ensemble (per-entity) is responsible for correct attribution.
 
         # ─────────────────────────────────────────────────────────────────────────
-        # Layer 1: CLASSIFIER DETECTION (Primary — XGBoost + IF ensemble)
-        # Groups rows by atm_id/pod and runs the classifier on each group so
+        # Layer 1: ML_ENSEMBLE DETECTION (Primary — XGBoost + IF ensemble)
+        # Groups rows by atm_id/pod and runs the ML ensemble on each group so
         # it can detect multiple anomalies in a single cycle.
         # ─────────────────────────────────────────────────────────────────────────
         if self._loaded:
@@ -536,21 +559,21 @@ class MLAnomalyDetector:
                             anomaly_type=label,
                             atm_id=entity_id,
                             confidence=confidence,
-                            source="CLASSIFIER",
+                            source="ML_ENSEMBLE",
                             explanation={"if_score": if_score},
                         )
                         saved += 1
-                        classifier_detections.add((label, entity_id))
-                        log.info("Classifier detected: %s (atm=%s, conf=%.2f)", label, entity_id, confidence)
+                        ml_ensemble_detections.add((label, entity_id))
+                        log.info("ML Ensemble detected: %s (atm=%s, conf=%.2f)", label, entity_id, confidence)
 
-                elif label == "NORMAL" and if_score <= self._if_unknown_threshold:
+                elif not in_warmup and label == "NORMAL" and if_score <= self._if_unknown_threshold:
                     unknown_confidence = min(abs(if_score) / abs(self._if_unknown_threshold), 1.0) if self._if_unknown_threshold != 0 else 0.5
                     if not self._is_active("UNKNOWN", entity_id):
                         self._save_anomaly(
                             anomaly_type="UNKNOWN",
                             atm_id=entity_id,
                             confidence=round(unknown_confidence, 3),
-                            source="CLASSIFIER",
+                            source="ML_ENSEMBLE",
                             explanation={
                                 "if_score": if_score,
                                 "xgb_predicted": "NORMAL",
@@ -558,8 +581,8 @@ class MLAnomalyDetector:
                             },
                         )
                         saved += 1
-                        classifier_detections.add(("UNKNOWN", entity_id))
-                        log.warning("Classifier detected: UNKNOWN (atm=%s, if_score=%.3f)", entity_id, if_score)
+                        ml_ensemble_detections.add(("UNKNOWN", entity_id))
+                        log.warning("ML Ensemble detected: UNKNOWN (atm=%s, if_score=%.3f)", entity_id, if_score)
 
             log.info("ML: %d entity groups classified, %d anomalies saved", len(atm_groups), saved)
 
@@ -571,9 +594,9 @@ class MLAnomalyDetector:
             z_scores = self._baseline.compute_z_scores(global_features.flatten())
             max_z = float(np.max(np.abs(z_scores)))
             n_deviating = int(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD))
-            if max_z > ZSCORE_THRESHOLD:
+            if not in_warmup and max_z > ZSCORE_THRESHOLD:
                 base_confidence = min(max_z / 5.0, 1.0)
-                attributed_atm = max(set(atm_groups.keys() - {None}), key=lambda k: len(atm_groups[k])) if len(atm_groups) > 1 else None
+                attributed_atm = None  # Z-score is global — can't identify the culprit entity
                 if not self._is_active("UNKNOWN", attributed_atm):
                     self._save_anomaly(
                         anomaly_type="UNKNOWN",
@@ -594,34 +617,32 @@ class MLAnomalyDetector:
                     )
 
         # ─────────────────────────────────────────────────────────────────────────
-        # Layer 3: SIGNAL_CORRELATOR DETECTION (Final fallback — deterministic)
+        # Layer 3: HEURISTIC DETECTION (Final fallback — deterministic)
         # Detects: A1–7 via multi-signal correlation patterns
-        # Skips any (type, atm_id) the classifier already caught this cycle.
+        # Skips any (type, atm_id) the ML ensemble already caught this cycle.
         # ─────────────────────────────────────────────────────────────────────────
-        if SIGNAL_CORRELATOR_ENABLED:
-            heur_anomalies = self._detect_heuristic(rows, window_start, window_end)
-            for a in heur_anomalies:
-                atype = a.get("anomaly_type")
-                a_atm = a.get("atm_id")
-                if not atype:
-                    continue
-                # Skip if classifier already detected this (type, atm_id) this cycle
-                if (atype, a_atm) in classifier_detections:
-                    continue
-                if self._is_active(atype, a_atm):
-                    continue
-                self._save_anomaly(
-                    anomaly_type=atype,
-                    atm_id=a_atm,
-                    confidence=0.95 if atype in {"A1","A2"} else 0.85,
-                    source="SIGNAL_CORRELATOR",
-                    explanation=json.loads(a.get("explanation", "{}")) if isinstance(a.get("explanation"), str) else (a.get("explanation") or {}),
-                    sources_involved=a.get("sources_involved"),
-                    recommended_action=a.get("recommended_action"),
-                    correlation_id=a.get("correlation_id"),
-                )
-                saved += 1
-                log.info("Signal correlator detected: %s (atm=%s)", atype, a_atm)
+        heur_anomalies = self._detect_heuristic(rows, window_start, window_end)
+        for a in heur_anomalies:
+            atype = a.get("anomaly_type")
+            a_atm = a.get("atm_id")
+            if not atype:
+                continue
+            if (atype, a_atm) in ml_ensemble_detections:
+                continue
+            if self._is_active(atype, a_atm):
+                continue
+            self._save_anomaly(
+                anomaly_type=atype,
+                atm_id=a_atm,
+                confidence=0.95 if atype in {"A1","A2"} else 0.85,
+                source="HEURISTIC",
+                explanation=json.loads(a.get("explanation", "{}")) if isinstance(a.get("explanation"), str) else (a.get("explanation") or {}),
+                sources_involved=a.get("sources_involved"),
+                recommended_action=a.get("recommended_action"),
+                correlation_id=a.get("correlation_id"),
+            )
+            saved += 1
+            log.info("Heuristic detected: %s (atm=%s)", atype, a_atm)
 
         # Log to MLflow only if available — does NOT block detection
         try:
@@ -631,14 +652,30 @@ class MLAnomalyDetector:
                     run_name=f"inference_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
                     nested=True,
                 ):
-                    mlflow.log_metric("classifier_anomalies", len(classifier_detections))
-                    mlflow.log_metric("signal_correlator_anomalies", len(heur_anomalies) if SIGNAL_CORRELATOR_ENABLED else 0)
+                    mlflow.log_metric("ml_ensemble_anomalies", len(ml_ensemble_detections))
+                    mlflow.log_metric("heuristic_anomalies", len(heur_anomalies))
                     mlflow.log_metric("anomalies_saved", saved)
         except Exception as e:
             log.debug("MLflow logging skipped (not critical): %s", e)
 
         log.info("Inference cycle complete: %d rows, %d anomalies saved", len(rows), saved)
         return saved
+
+    def _get_recent_anomalies(self, n: int) -> list[dict]:
+        """Return the last N anomalies saved during the most recent detection cycle.
+
+        Used by kafka-consumer to publish newly detected anomalies to Redis Pub/Sub
+        for real-time dashboard streaming. The list is cleared at the start of each
+        detect_and_save() cycle.
+
+        Args:
+            n: Maximum number of anomalies to return.
+
+        Returns:
+            List of anomaly dicts containing: anomaly_type, atm_id, severity, title,
+            confidence, source, explanation, recommended_action, sources_involved.
+        """
+        return self._last_saved_anomalies[-n:] if n > 0 else []
 
 
 if __name__ == "__main__":

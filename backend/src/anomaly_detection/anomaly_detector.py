@@ -136,7 +136,7 @@ def a1_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         if src == "KAFKA":
             atm_status = r.get("atm_status") or _payload_get(r, "atm_status")
-            if atm_status and ("offline" in atm_status.lower() or atm_status.lower() == "offlineservice"):
+            if atm_status and "offline" in atm_status.lower():
                 state["kafka_offline"] = True
 
         if src == "TERMINAL_HANDLER":
@@ -200,7 +200,7 @@ def a2_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         if (r.get("source") or "").upper() == "KAFKA":
             atm_status = (_payload_get(r, "atm_status") or r.get("atm_status") or "").lower()
-            if "out" in atm_status and "service" in atm_status or atm_status == "outofservice":
+            if "out of service" in atm_status or "outofservice" == atm_status:
                 st["kafka_oos"] = True
             if _payload_get(r, "transaction_failure_reason") == "CASH_DISPENSE_ERROR":
                 st["kafka_dispense_error"] = True

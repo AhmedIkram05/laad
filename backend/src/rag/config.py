@@ -13,8 +13,6 @@ class RAGConfig:
     """Configuration for RAG diagnostic assistant."""
 
     def __init__(self):
-        self.gemini_api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
-        self.groq_api_key: Optional[str] = os.getenv("GROQ_API_KEY")
         self.openrouter_api_key: Optional[str] = os.getenv("OPENROUTER_API_KEY")
 
         self.ollama_api_key: Optional[str] = os.getenv("OLLAMA_API_KEY")
@@ -36,7 +34,7 @@ class RAGConfig:
 
         try:
             self.retrieval_top_k: int = int(os.getenv("RAG_TOP_K", "10"))
-            self.self_consistency_samples: int = int(os.getenv("RAG_SAMPLES", "1"))
+            self.self_consistency_samples: int = int(os.getenv("RAG_SAMPLES", "3"))
             self.temperature: float = float(os.getenv("RAG_TEMPERATURE", "0.6"))
             self.confidence_high_threshold: float = float(os.getenv("CONF_HIGH", "0.8"))
             self.confidence_medium_threshold: float = float(os.getenv("CONF_MEDIUM", "0.5"))
@@ -79,13 +77,13 @@ class RAGConfig:
 
     def _check_configured(self) -> None:
         """Log warning if RAG is not fully configured."""
-        if not (self.ollama_api_key or self.openrouter_api_key or self.gemini_api_key or self.groq_api_key):
+        if not (self.ollama_api_key or self.openrouter_api_key):
             logger.warning("No LLM API keys set - RAG diagnostic assistant will not be available")
 
     @property
     def is_configured(self) -> bool:
         """Check if RAG is configured with at least one API key."""
-        return bool(self.ollama_api_key or self.gemini_api_key or self.groq_api_key or self.openrouter_api_key)
+        return bool(self.ollama_api_key or self.openrouter_api_key)
 
     @property
     def is_production(self) -> bool:
