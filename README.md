@@ -3,23 +3,47 @@
 Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnostics platform. Ingests synthetic logs from 7 sources via Apache Kafka, detects 7 anomaly types across 3 detection layers (ML + statistical + heuristic), ranks by weighted criticality, and serves a React dashboard with root cause analysis, operational impact, and recommended remediation. Extended with an Agentic RAG diagnostic assistant featuring cross-encoder reranking, self-consistency scoring, reflexion (self-critique), citation grounding, and multi-signal confidence fusion. MLOps via MLflow (RDS PostgreSQL + S3 on AWS).
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
-  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&labelColor=000000&logo=fastapi">
-  <img src="https://img.shields.io/badge/PostgreSQL-003B57?style=for-the-badge&labelColor=000000&logo=postgresql">
-  <img src="https://img.shields.io/badge/Kafka-231F20?style=for-the-badge&labelColor=000000&logo=apachekafka">
-  <img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&labelColor=000000&logo=react">
-  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&labelColor=000000&logo=vite">
-  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&labelColor=000000&logo=tailwindcss">
-  <img src="https://img.shields.io/badge/ChromaDB-000000?style=for-the-badge&labelColor=5F3DC8">
-  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&labelColor=000000&logo=redis">
-  <img src="https://img.shields.io/badge/Nginx-009639?style=for-the-badge&labelColor=000000&logo=nginx">
-  <img src="https://img.shields.io/badge/XGBoost-0052CC?style=for-the-badge&labelColor=000000">
-  <img src="https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&labelColor=000000&logo=scikitlearn">
-  <img src="https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&labelColor=000000&logo=mlflow">
-  <img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&labelColor=FF6B35">
-  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&labelColor=000000&logo=docker">
-  <img src="https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&labelColor=000000&logo=amazonwebservices">
+<img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python">
+<img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&labelColor=000000&logo=fastapi">
+<img src="https://img.shields.io/badge/PostgreSQL-003B57?style=for-the-badge&labelColor=000000&logo=postgresql">
+<img src="https://img.shields.io/badge/Kafka-231F20?style=for-the-badge&labelColor=000000&logo=apachekafka">
+<img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&labelColor=000000&logo=react">
+<img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&labelColor=000000&logo=vite">
+<img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&labelColor=000000&logo=tailwindcss">
+<img src="https://img.shields.io/badge/ChromaDB-000000?style=for-the-badge&labelColor=5F3DC8">
+<img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&labelColor=000000&logo=redis">
+<img src="https://img.shields.io/badge/Nginx-009639?style=for-the-badge&labelColor=000000&logo=nginx">
+<img src="https://img.shields.io/badge/XGBoost-0052CC?style=for-the-badge&labelColor=000000">
+<img src="https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&labelColor=000000&logo=scikitlearn">
+<img src="https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&labelColor=000000&logo=mlflow">
+<img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&labelColor=FF6B35">
+<img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&labelColor=000000&logo=docker">
+<img src="https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&labelColor=000000&logo=amazonwebservices">
 </p>
+
+---
+
+## Table of Contents
+
+- [Architecture Overview](#system-architecture)
+- [Engineering Highlights](#engineering-highlights)
+- [Key Metrics at a Glance](#key-metrics-at-a-glance)
+- [Demos](#demos)
+- [Component Deep Dives](#component-deep-dives)
+  - [Kafka Message Bus](#kafka-message-bus)
+  - [Database Design](#database-design)
+  - [3-Layer Anomaly Detection Engine](#3-layer-anomaly-detection-engine)
+  - [ML Training & MLOps](#ml-training--mlops)
+  - [Agentic RAG Diagnostic Assistant](#agentic-rag-diagnostic-assistant)
+  - [Redis Infrastructure](#redis-infrastructure-8-patterns)
+  - [Frontend Architecture](#frontend-architecture)
+- [Infrastructure & AWS](#infrastructure--aws)
+- [Testing](#testing)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Quick Start](#quick-start)
+- [Team](#team)
+- [Related Projects](#related)
 
 ---
 
@@ -145,143 +169,93 @@ flowchart TD
   class MLF,AWS,ARC mlops;
 ```
 
-**Pipeline flow:** 7 log sources generate data via continuous Kafka producer (gzip, acks=all) into 2 topics (3 partitions each). Consumer deduplicates (Redis SET + 10K LRU), parses via 7 source-specific parsers, dual-writes to PostgreSQL + ChromaDB, and routes failures to a Redis Stream dead-letter queue with exponential backoff. A 3-layer detection engine (ML ENSEMBLE + ZSCORE + HEURISTIC) runs every 30s against time-windowed data. FastAPI serves 30 endpoints consumed by the React dashboard and Agentic RAG assistant. MLflow on AWS (RDS + S3) tracks all training and inference cycles.
+**Pipeline flow:** 7 log sources → continuous Kafka producer (gzip, acks=all) → 2 topics (3 partitions each) → consumer deduplicates (Redis SET + 10K LRU), parses via 7 source-specific parsers, dual-writes to PostgreSQL + ChromaDB, routes failures to Redis Stream DLQ with exponential backoff. A 3-layer detection engine runs every 30s against time-windowed data. FastAPI serves 30 endpoints consumed by the React dashboard and Agentic RAG assistant.
+
+---
+
+## Engineering Highlights
+
+| Area | Decision | Why |
+|---|---|---|
+| **Anomaly Detection** | 3-layer ensemble: XGBoost + Isolation Forest + Z-Score + Heuristic | Defense in depth - ML catches 8-class patterns at 99.8%, Z-Score detects drift without models, Heuristic is the always-on safety net |
+| **Messaging** | Apache Kafka (KRaft) with gzip, acks=all, 7-day retention | Decouples ingestion from processing - zero data loss on restart, offset replay for backfill |
+| **RAG Pipeline** | LangChain + ChromaDB + cross-encoder reranking + 4-signal confidence fusion | Self-hosted vector store keeps data private; 4-signal fusion prevents hallucinated responses |
+| **MLOps** | MLflow v3 on AWS (RDS + S3) with champion aliases | Full experiment lineage, auto-retrain on corruption, 7 artifacts tracked per MLflow 3.x API |
+| **Data Storage** | PostgreSQL 16 with JSONB + unified events/metrics tables | Adding a log source = new parser - no schema changes, no detector modifications |
+| **Distributed Coordination** | 8 Redis patterns from a single connection pool | Rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics - all gracefully degrade |
+| **Container Strategy** | Multi-stage Docker + health check cascading | 10 services, 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
+| **Testing** | pytest with 10 test tiers + isolated test DB | 670 tests (521 backend + 149 frontend) across all layers |
 
 ---
 
 ## Key Metrics at a Glance
 
-| Metric | Value |
-|---|---|
-| Log Sources | 7 simultaneous (ATM_APP, HARDWARE, TERMINAL_HANDLER, KAFKA, PROMETHEUS, OS, CLOUD) |
-| ATMs Monitored | 10 ATMs + 3 Servers |
-| Anomaly Types | 7 known (A1-A7) + UNKNOWN (novel pattern detection) |
-| Detection Layers | 3 (ML_ENSEMBLE, ZSCORE, HEURISTIC) |
-| ML Features | 49 engineered features across 6 groups (46 selected for IF) |
-| XGBoost CV Accuracy | 99.8% +/- 0.1% (StratifiedKFold, 8 classes) |
-| Isolation Forest Precision | 97.3% (grid search + feature selection + threshold calibration) |
-| IF UNKNOWN Threshold | -0.5199 (Youden's J calibration, F1=0.7008) |
-| Messages Processed | 930,000+ events, 100+ messages/sec live |
-| Database Tables | 10 tables + 3 views + 14 indexes |
-| API Endpoints | 30 across 6 routers |
-| Tests | 670 (521 backend + 149 frontend), 96 test files |
-| Docker Services | 10 production (frontend + 9 backend) + 3 test |
-| Redis Patterns | 8 distinct (sorted sets, sets, Pub/Sub, streams, HyperLogLog, distributed locks, caching, blacklists) |
-| RAG Confidence | Multi-signal fusion: retrieval (30%) + self-consistency (25%) + verbalized (25%) + grounding (20%) |
-| RAG Response Time | 11-23s (uncached), <100ms (cached) |
-| MLflow | RDS PostgreSQL backend + S3 artifact store, 2 registered models with "champion" alias |
-| Frontend Pages | 9 pages (React 19 + Vite 8 + Tailwind v4 + Chart.js) |
-| LLM Providers | 3 (Ollama Cloud primary, Ollama fallback, OpenRouter emergency) |
-| Kafka Topics | 2 (atm-events, atm-metrics), 3 partitions each, gzip, 7-day retention |
+| Category | Metric | Value |
+|---|---|---|
+| **Scale** | Log sources | 7 simultaneous |
+| | ATMs monitored | 10 ATMs + 3 Servers |
+| | Messages processed | 930K+ events, 100+ msgs/sec live |
+| | Tables / Views / Indexes | 10 + 3 + 14 |
+| | Docker services | 10 production + 3 test |
+| **ML & Detection** | Anomaly types | 7 known (A1-A7) + UNKNOWN |
+| | Detection layers | 3 (ML_ENSEMBLE + ZSCORE + HEURISTIC) |
+| | ML features | 49 engineered (46 for IF) |
+| | XGBoost CV accuracy | 99.8% +/- 0.1% |
+| | Isolation Forest precision | 97.3% (F1=0.7008 at -0.5199) |
+| | RAG confidence fusion | 4 signals with Platt calibration |
+| **Infrastructure** | API endpoints | 30 across 6 routers |
+| | Frontend pages | 9 (React 19 + Vite 8 + Tailwind v4) |
+| | Redis patterns | 8 distinct |
+| | LLM providers | 3 (Ollama Cloud → Fallback → OpenRouter) |
+| | Tests | 670 (521 backend + 149 frontend) |
 
 ---
 
-## Demonstration
+## Demos
 
-<p align="center">
-  <b>Architecture Overview</b> — end-to-end pipeline: log generation, Kafka ingestion, 3-layer detection, dashboard rendering
-  <br><br>
-  <img src="docs/demos/architecture-overview.gif" width="700">
-</p>
+## Architecture Overview - log generation, Kafka ingestion, 3-layer detection, dashboard rendering
 
-<p align="center">
-  <b>AWS MLflow</b> — browsing RDS-tracked experiments, S3 artifact store, champion model aliases
-  <br><br>
-  <img src="docs/demos/aws-mlflow.gif" width="700">
-</p>
+> Shows the LAAD system end-to-end: 8 log emitters (ATM events, hardware sensors, GCP Cloud Metrics, etc.) emitting into Kafka (KRaft) topics, the kafka-consumer service ingesting into PostgreSQL and ChromaDB, the detection engine scoring anomalies and publishing to Redis Pub/Sub, and the React dashboard displaying real-time analytics with auto-refresh.
 
-<p align="center">
-  <b>3-Layer Detection</b> — real-time anomaly appearance, filtering by detection source, criticality ranking
-  <br><br>
-  <img src="docs/demos/detection-engine.gif" width="700">
-</p>
+![Architecture overview animation showing end-to-end system flow from 7 log sources through Kafka to the React dashboard](docs/demos/architecture-overview.gif)
 
-<p align="center">
-  <b>Agentic RAG</b> — diagnostic queries, 4-signal confidence breakdown, reflexion critique, citation grounding
-  <br><br>
-  <img src="docs/demos/rag-assistant.gif" width="700">
-</p>
+## AWS MLflow - RDS-tracked experiments, S3 artifact store, champion model aliases
 
-<p align="center">
-  <b>Real-Time Analytics</b> — Chart.js dashboard, 5s polling, time-range selector, metric source toggles
-  <br><br>
-  <img src="docs/demos/analytics.gif" width="700">
-</p>
+> Demonstrates the MLflow integration on AWS infrastructure: experiments are tracked against a dedicated RDS PostgreSQL 18.4 instance with model artifacts (pickled XGBoost/Isolation Forest, feature importance plots, classification reports) stored in S3. The demo cycles through experiment runs, showing logged metrics (CV accuracy, IF precision) and the model registry with `champion` alias promotion.
 
-<p align="center">
-  <b>Kafka Pipeline</b> — deduplication, DLQ retry with exponential backoff, distributed lock acquisition
-  <br><br>
-  <img src="docs/demos/kafka-pipeline.gif" width="700">
-</p>
+![AWS MLflow integration animation demonstrating experiment tracking on RDS and model registry with champion aliases](docs/demos/aws-mlflow.gif)
+
+## 3-Layer Detection - real-time anomaly filtering by source, criticality ranking
+
+> Walks through the 3-layer detection pipeline (ML_ENSEMBLE -> ZSCORE -> HEURISTIC): the demo highlights how each scored anomaly appears in the UI with its type label (A1-A7 or UNKNOWN), assigned severity (CRITICAL/HIGH/MAJOR), detector origin, model confidence score, and structured explanation. Shows filtering by anomaly type and severity across the paginated list view.
+
+![3-layer anomaly detection engine animation showing ML ensemble, z-score, and heuristic filtering in the anomaly list](docs/demos/detection-engine.gif)
+
+## Agentic RAG - confidence breakdown, reflexion critique, citation grounding
+
+> Covers an end-to-end diagnostic conversation with the AI assistant: the user asks about a specific anomaly, the RAG pipeline retrieves relevant ChromaDB chunks, generates a response with verbalized confidence (HIGH/MEDIUM/LOW), applies reflexion (self-critique of the draft answer), and renders the final markdown answer with source citations. The chat history persists across sessions via PostgreSQL.
+
+![Agentic RAG diagnostic assistant animation showing a conversation with confidence breakdown and citation grounding](docs/demos/rag-assistant.gif)
+
+## Real-Time Analytics - Chart.js dashboard, 5s polling, metric source toggles
+
+> Showcases the real-time analytics dashboard: 4 KPI cards (Total Events, Total Anomalies, ATMs & Servers, Metric Types) polling every 5 seconds, the Bar chart for event volume by source with clickable source badges to filter, the Doughnut chart for anomaly type distribution, and the Line chart for metric timelines with a metric selector. 5 time range options (1h/6h/24h/7d/All Time) adapt bucket resolution automatically.
+
+![Real-time analytics dashboard animation showing Chart.js visualizations with KPI cards and metric filters](docs/demos/analytics.gif)
+
+## Kafka Pipeline - deduplication, DLQ retry, distributed lock acquisition
+
+> Demonstrates the resilient Kafka ingestion pipeline: messages arrive on `atm-events` and `atm-metrics` topics (gzip-compressed, acks=all), go through a hybrid deduplicator (Redis SET + in-memory 10K LRU) that rejects duplicates within a 1-hour TTL window, then the kafka-consumer processes batches with manual offset commits and `max.poll.records=500`. Failed messages retry up to 3 times before landing on a Redis-backed DLQ for manual replay.
+
+![Kafka pipeline animation showing message flow through deduplication, processing, and dead letter queue](docs/demos/kafka-pipeline.gif)
+
+---
 
 ## Component Deep Dives
 
-### Log Generation Pipeline
-
-```mermaid
-flowchart LR
-  subgraph Generator ["continuous_generator.py"]
-    LIVE["Live Loop<br/>1s tick, 2% anomaly prob"]
-    BF["Backfill Loop<br/>60 min historical, 1% prob"]
-    SIG["SIGTERM / SIGINT handler"]
-  end
-
-  subgraph Emitters ["8 Baseline Emitters"]
-    E1["atm_app_emitter"]
-    E2["hardware_emitter"]
-    E3["terminal_handler_emitter"]
-    E4["kafka_events_emitter"]
-    E5["kafka_metrics_emitter"]
-    E6["prometheus_emitter"]
-    E7["os_metrics_emitter"]
-    E8["gcp_metrics_emitter"]
-  end
-
-  subgraph Injectors ["7 Anomaly Injectors"]
-    I1["A1: Network Timeout (cooldown 300s)"]
-    I2["A2: Cassette Empty (cooldown 600s)"]
-    I3["A3: JVM Memory Leak (batch 90 ticks)"]
-    I4["A4: Restart Loop (cooldown 300s)"]
-    I5["A5: RT Spike (cooldown 300s)"]
-    I6["A6: OS Memory (batch 120 ticks)"]
-    I7["A7: Out-of-Order (cooldown 300s)"]
-  end
-
-  subgraph Producer ["Kafka Producer"]
-    P["ATMProducer (singleton)<br/>gzip, acks=all, retries=5<br/>message_id: UUID4"]
-  end
-
-  BF --> LIVE --> Emitters
-  LIVE --> Injectors
-  Emitters --> P
-  Injectors --> P
-  SIG -.->|"flush()"| P
-```
-
-**Key implementation details:**
-
-- **Pure Kafka producer** — no direct database writes. The generator only produces to Kafka topics. If the consumer falls behind, data is safely buffered in Kafka (7-day retention). This replaced the original single-script direct-DB writer architecture entirely.
-- **Batch anomaly emission** — A3 (JVM Memory Leak) and A6 (OS Memory Pressure) emit all 90/120 historical ticks in a single call with timestamps spread over the past 90/120 minutes. This ensures the full progressive degradation pattern (300MB to 1040MB JVM heap) is immediately available for detection rather than requiring multiple 1s generator cycles to accumulate.
-- **Probabilistic server targeting** — A3, A4, and A6 target server entities (`ATM-SERVER-001` to `ATM-SERVER-003`) with 40% probability. Anomaly injectors select entity type then specific ID, enabling server-side anomaly detection alongside ATM monitoring.
-- **Anomaly cooldown system** — each injector enforces a cooldown period (300s for A1/A4/A5/A7, 600s for A2) using `time.monotonic()` tracking to prevent overlapping injections that would corrupt detection signals.
-
-Anomaly injector mechanisms and exact signals:
-
-| Injector | Mechanism | Duration | Exact Signals |
-|---|---|---|---|
-| A1 | `NETWORK_DISCONNECT` + Kafka `Offline` + `NETWORK_TIMEOUT` across 3+ sources | 300s cooldown | error_code=ERR-0040, response_time_ms=30000 |
-| A2 | `CASSETTE_LOW`x2 + `CASSETTE_EMPTY`x2 + Kafka `Out of Service` | 600s cooldown | atm_status="Out of Service", transaction_rate_tps=0.0 |
-| A3 | Batch `jvm_memory_used_bytes` 300MB to 1040MB + GC 0.45s to 24.7s | 90 ticks (batch) | OutOfMemoryError FATAL, 40% server prob |
-| A4 | GCP `restart_count` 1 to 2 + >=3 STARTUP events + 2x FATAL | 300s cooldown | container_id changes each STARTUP, 40% server prob |
-| A5 | Kafka `response_time_ms` 3200 to 30000ms + success_rate 100% to 50% | 300s cooldown | failure_count 8 then 14, ERR-0012 |
-| A6 | Batch `memory_usage_percent` 46% to 98.75% + network_errors 0 to 22 | 120 ticks (batch) | ThreadAbortException, 40% server prob |
-| A7 | Kafka offset 4050 out-of-order + offset 4051 null fields + Prometheus malformed | 300s cooldown | metric_value="890iembre" (non-numeric) |
-
----
-
 ### Kafka Message Bus
 
-Apache Kafka (KRaft mode, no ZooKeeper) serves as the central message bus, decoupling log generation from ingestion. This was a major architectural extension replacing direct DB writes with an event-driven pipeline.
+Apache Kafka (KRaft mode, no ZooKeeper) serves as the central message bus, decoupling log generation from ingestion.
 
 ```mermaid
 flowchart TD
@@ -324,88 +298,15 @@ flowchart TD
   COMMIT --> DET
 ```
 
-**Hybrid deduplication** (`backend/kafka/deduplicator.py:1-86`):
+**Why Kafka over Redis PubSub?** Kafka persists to disk with configurable retention (7 days) and offset replay for backfill. Redis PubSub loses messages with no active subscriber. 3 partitions/topic enable parallel consumption with ordering. At-least-once delivery via manual offset commits + hybrid dedup = zero data loss on restart.
 
-- Primary: Redis Set with `SADD`/`SISMEMBER` + 1-hour TTL — persists across consumer restarts, eliminating duplicate inserts after restart
-- Fallback: in-memory LRU `OrderedDict` (max 10,000 entries) — auto-evicts oldest when full
-- Lazy Redis availability check: if Redis fails mid-operation, permanently switches to in-memory to avoid repeated `try/except` overhead
-
-**Distributed detection lock** (`backend/kafka/consumer.py:92-128`):
-
-- Redis `SET NX EX` key `lock:anomaly_detection` with 25s timeout (5s buffer before 30s trigger interval)
-- Prevents concurrent detection cycles in multi-consumer deployments
-- Falls back to `True` (proceed without lock) when Redis is unavailable
-
-**Dead letter queue** (`backend/kafka/dlq.py:1-134`):
-
-- Redis Stream `ingestion:dlq` with `retry_count`, `created_at`, `status` metadata
-- Exponential backoff: `BASE_BACKOFF * (2^retry_count)` = 5s to 10s to 20s
-- Max 3 retries, then marked as `exhausted`
-- Batch processing of 10 messages per cycle
-
-**Consumer configuration:**
-
-- Manual offset commit after batch processing (at-least-once delivery)
-- `auto_offset_reset=latest` — skip historical messages on restarts to prevent data flood
-- `max_poll_records=500` — balances throughput vs memory per cycle
-- Rate-limited anomaly detection trigger every 30s with Redis distributed lock
-
----
-
-### Ingestion & Parser Architecture
-
-```mermaid
-flowchart TD
-  subgraph Base ["Parser Framework"]
-    BP["BaseParser<br/>parse(raw_message) -> dict"]
-    EDP["EventDataParser<br/>> events schema"]
-    MDP["MetricDataParser<br/>> metrics schema"]
-  end
-
-  subgraph Parsers ["7 Specialized Parsers"]
-    AAP["AtmAppParser"]
-    HSP["HardwareSensorParser"]
-    THP["TerminalHandlerParser"]
-    PP["PrometheusParser"]
-    WOP["WindowsOSParser"]
-    GP["GcpCloudMetricsParser"]
-    KP["KafkaMetricsParser"]
-  end
-
-  subgraph Pipeline ["Processing Pipeline"]
-    REQ["Required field validation (.get() safe defaults)"]
-    TS["Timestamp validation + UTC conversion"]
-    OK["Valid >> PostgreSQL + ChromaDB"]
-    ERR["Invalid >> ingestion_errors table"]
-  end
-
-  BP --> EDP --> AAP & HSP & THP
-  BP --> MDP --> PP & WOP & GP & KP
-  AAP & HSP & THP & PP & WOP & GP & KP --> REQ --> TS
-  TS -->|valid| OK
-  TS -->|invalid| ERR
-```
-
-**Implementation highlights:**
-
-- **Safe defaults everywhere** — every parser uses `.get()` on raw message dicts. A missing field in a Kafka stream never halts ingestion for that source. Previously used strict dict access (`message["field"]`) which crashed on schema drift.
-- **`_datetime_safe_json_dumps()`** (`backend/src/anomaly_detection/anomaly_detector.py:23-25`) — custom JSON serializer used across 9 anomaly detection paths to prevent `"Object of type datetime is not JSON serializable"` crashes when writing to PostgreSQL JSONB columns.
-- **Dead-letter routing** — malformed records route to `ingestion_errors` table rather than raising exceptions. The consumer also routes undeserializable bytes via `_route_to_ingestion_errors()`.
-
-**ChromaDB buffer** (`backend/kafka/chroma_buffer.py:1-181`):
-
-- Per-ATM event buffer with window size 10 events
-- LangChain `SemanticChunker` with `nomic-embed-text` on local Ollama container for 384-dim embeddings, falling back to word-based chunking at 500-char max
-- Severity dominance logic with priority: `FATAL=5 > CRITICAL=4 > ERROR=3 > WARNING=2 > INFO=1`
-- Anomaly tag via majority vote across buffered events
-- IDs formatted as `{atm_id}_{uuid4()}` for upsert idempotency
-- Graceful degradation: silently skips if ChromaDB is unavailable
+**Key implementation details:** Redis Set + 1h TTL for cross-restart dedup (LRU OrderedDict failover). Redis SET NX EX 25s lock prevents concurrent detection. Redis Stream DLQ with exponential backoff (5s→10s→20s, max 3 retries). 7 specialized parsers all use `.get()` safe defaults - no crash on schema drift. ChromaDB buffer: per-ATM window=10, LangChain SemanticChunker + Ollama `nomic-embed-text` (768-dim).
 
 ---
 
 ### Database Design
 
-PostgreSQL 16 (Alpine) with a lean data lake design — unified `events` and `metrics` tables with JSONB payloads, plus dedicated tables for anomalies, RAG data, and calibration.
+PostgreSQL 16 (Alpine) with a lean data lake design - unified `events` and `metrics` tables with JSONB payloads, plus dedicated tables for anomalies, RAG data, and calibration.
 
 ```mermaid
 erDiagram
@@ -455,23 +356,13 @@ erDiagram
     ATMS ||--o{ ANOMALIES : ""
 ```
 
-**Schema highlights:**
-
-| Feature | Implementation | Purpose |
-|---|---|---|
-| **Unified events + metrics** | 2 tables with JSONB payload. Adding a new source = new parser, no schema changes | NFR7 extensibility |
-| **v_unified_analysis view** | `UNION ALL` of `v_events_flat` and `v_metrics_flat` with `COALESCE` for cross-source field normalization | Single query for ML feature engineering |
-| **14 B-tree indexes** | Composite indexes on `(timestamp, entity, type)` for events, metrics, anomalies | Query performance under 930K+ rows |
-| **JSONB payloads** | Source-specific fields stored as JSONB, flattened via views | Schema flexibility without migration overhead |
-| **Connection pool** | `ThreadedConnectionPool` (min=5, max=50) with 3-retry exponential backoff | Handles concurrent API + ML detector + generator + cleanup |
-| **Batched retention cleanup** | 5,000 rows/batch DELETE, filters on `is_active = 0` | Preserves unresolved anomalies regardless of age |
-| **Thread-safe cursor** | `RealDictCursor` returns rows as dicts | Easy field access across FastAPI and Kafka consumer threads |
+**Schema highlights:** New source = new parser only - no schema changes, no detector modifications. `v_unified_analysis` view merges both tables via `COALESCE` field normalization as a single ML query target. 14 B-tree indexes (6 composite) on `(timestamp, entity)` and `(type, timestamp)` patterns. `ThreadedConnectionPool` (min=5, max=50) with 3-retry backoff. Batched retention cleanup (5K rows/batch) preserves unresolved anomalies.
 
 ---
 
 ### 3-Layer Anomaly Detection Engine
 
-The core detection system combines machine learning, statistical analysis, and deterministic rule-based correlation to identify all 7 known anomaly types (A1-A7) plus novel patterns (UNKNOWN). Runs every 30 seconds against configurable time-windowed data (default 600s) from the kafka-consumer service.
+The core detection system combines ML, statistical analysis, and deterministic rules to identify all 7 known anomaly types (A1-A7) plus novel UNKNOWN patterns. Runs every 30 seconds against configurable time-windowed data (default 600s).
 
 ```mermaid
 flowchart TD
@@ -522,55 +413,17 @@ flowchart TD
   DEDUP -->|"active"| END["Cycle complete"]
 ```
 
-#### Layer 1: ML_ENSEMBLE (Primary)
+**Why 3 layers?** Defense in depth - each layer has independent failure modes. ML_ENSEMBLE catches known/novel patterns when models are loaded (99.8% CV accuracy). ZSCORE detects statistical distribution shifts without any model dependency. HEURISTIC is the always-active safety net using deterministic multi-source correlation. No single point of failure: if ML models are corrupted, ZSCORE + HEURISTIC still catch anomalies.
 
-Active only when ML models are loaded from `ml/artifacts/`. The most technically intricate layer:
+**Layer 1 - ML_ENSEMBLE (Primary):** Two independent feature paths (XGBoost: 49-dim, IF: 46-dim). Decision: IF anomaly → XGBoost predict_proba → known if `class != NORMAL` and `confidence >= 0.70`; UNKNOWN if `class == NORMAL` but `IF score <= -0.5199`. First 20 cycles suppress UNKNOWN to avoid cold-start flood.
 
-- **Two independent feature paths** (`backend/src/anomaly_detection/ml/ml_detector.py:508-527`): XGBoost receives the full 49-dim feature vector (matching its training), while Isolation Forest receives a 46-dim subset after feature selection. This avoids `ValueError: Feature shape mismatch` that occurred when a shared feature path was used for both models.
-- **Scaler fitted on 49 features**: `StandardScaler` transforms all 49 features before the feature selection subset is applied. Previously the scaler was fitted on 46 features, causing inference-time shape mismatches.
-- **Decision logic**: IF anomaly flag -> XGBoost `predict_proba` with class probability distribution. Known anomalies saved when `class != NORMAL` and `confidence >= 0.70`. Unknown anomalies saved when `class == NORMAL` but `IF score <= threshold` (Youden's J calibrated threshold, saved in artifact `if_unknown_threshold.json`, overridable via `ML_UNKNOWN_THRESHOLD` env var).
-- **Warmup suppression**: First `ML_WARMUP_CYCLES` (default 20) detection cycles suppress UNKNOWN savings to prevent cold-start flood when too little data exists. Typed A1-A7 anomalies still save normally during warmup.
+**Layer 2 - ZSCORE (Proactive):** Rolling 20-vector per-feature median/std baseline, independent of ML models. `z_i = (x_i - median_i) / std_i` - features >3 sigma flagged, confidence = `min(|z|/5.0, 1.0)`. Min 5 vectors required.
 
-#### Layer 2: ZSCORE (Proactive)
+**Layer 3 - HEURISTIC (Fallback):** 7 deterministic detectors, always active. Cross-layer dedup via `(anomaly_type, atm_id)` pairs. 10-min dedup window prevents repeated saves across 30s cycles.
 
-Always active, independent of ML models:
+## 7 anomaly types
 
-- Rolling 20-vector history maintains per-feature median and std
-- `z_i = (x_i - median_i) / std_i` — features deviating >3 sigma from rolling median are flagged
-- Confidence scaled: `min(max|z| / 5.0, 1.0)`
-- Requires minimum 5 vectors before computing baseline
-- Detects distribution shift and data drift even when ML classifiers are not loaded
-
-#### Layer 3: HEURISTIC (Fallback)
-
-Always active safety net (`backend/src/anomaly_detection/anomaly_detector.py:100-753`):
-
-- 7 deterministic detectors cross-reference signals across all data sources
-- A1: Requires >=3 of 4 signals (network_disconnect, timeout, kafka_offline, terminal_network_error) for same ATM
-- A2: Hardware `CASSETTE_EMPTY` + Kafka `OutOfService` + dispense errors with 0 TPS
-- A3: 90-minute lookback window, >=20% relative increase in JVM memory AND OOM event
-- A4: >=1 restart + >=2 STARTUP or >=2 FATAL events, regex-extracts ATM IDs from pod names
-- A5: >=2 Kafka response_time_ms >=3000 + ATM_APP TIMEOUT with ERR-0012
-- A6: OS memory >=90% OR >30% increase over 3+ samples + ThreadAbortException
-- A7: Out-of-order offsets (60s threshold), null fields, Prometheus malformed values, paired ingestion errors within 5-min window
-
-#### Deduplication and Attribution
-
-- **Cross-layer dedup**: `set[tuple[str, str | None]]` tracks `(anomaly_type, atm_id)` pairs from ML_ENSEMBLE, so HEURISTIC skips duplicates
-- **10-min dedup window**: `_is_active()` checks `SELECT 1 FROM anomalies WHERE ... detected_at >= now() - 10min` to prevent repeated saves across consecutive 30-second cycles
-- **Warmup periods**: First 20 detection cycles skip UNKNOWN savings (configurable via `ML_WARMUP_CYCLES`) to avoid cold-start flood from insufficient data. Typed A1-A7 always save immediately.
-- **Entity attribution**: `_attribution_for()` assigns entity per anomaly type — A3/A4 parse from `pod_name` via regex; ML_ENSEMBLE per-entity detection attributes to the correct entity; ZSCORE uses `None` (global detector can't identify culprit)
-
-#### 49 ML Features
-
-| Group | Count | Features |
-|---|---|---|
-| Metric statistics | 16 | JVM memory mean/max/rate, GC pause mean/max/slope, CPU usage mean/max, OS memory mean/max/rate, network errors max, Kafka RT mean/max, success rate min, container restarts max |
-| Percentiles | 9 | JVM p75/p95, OS memory p75/p95, Kafka RT p75/p90/p99, CPU p90/p99 |
-| Temporal slopes | 5 | Linear regression slopes for JVM memory, OS memory, Kafka RT, success rate, CPU usage |
-| Event counts | 10 | ERROR, FATAL, STARTUP, OOM, cassette empty/low, Kafka offline/null, timeouts, disconnects |
-| Severity-weighted | 2 | FATAL-weighted sum (FATAL*3 + ERROR*2), total error count |
-| Cross-source flags | 7 | Unique sources with errors, boolean flags for OOM/NETWORK_DISCONNECT/TIMEOUT, Kafka out-of-order count, anomaly tag count, unique ATMs in window |
+A1 (CRITICAL) - Network Timeout Cascade: >=3 of NETWORK_DISCONNECT + Kafka Offline + TIMEOUT. A2 (CRITICAL) - Cash Cassette Empty: CASSETTE_EMPTY + Kafka OutOfService + 0 TPS. A3 (MAJOR) - JVM Memory Leak: rising heap >=50% + OOM, 40% server. A4 (MAJOR) - Container Restart Loop: restart>0 + >=2 STARTUP/FATAL, 40% server. A5 (MAJOR) - Response Time Spike: >=2 Kafka RT>3000ms + success<90%. A6 (MAJOR) - OS Memory Pressure: memory>=90% OR >30% increase + ThreadAbortException, 40% server. A7 (HIGH) - Out-of-Order Kafka: offset gaps + null fields + malformed values. UNKNOWN (HIGH): IF score <= -0.5199 OR Z>3 sigma.
 
 ---
 
@@ -606,48 +459,19 @@ flowchart TD
   TC & CV --> SAVE --> REG --> ALIAS --> AWS
 ```
 
-**Training results:**
+**Training results:** 99.8% +/- 0.1% CV accuracy (StratifiedKFold, 7,190 windows, 49 features). Per-class precision/recall of 1.0 across all 8 classes (A1-A7 + NORMAL). Isolation Forest 97.3%, AUC-ROC 0.9502. Threshold calibration: Youden's J sweep of 200 thresholds, optimal F1=0.7008 at -0.5199.
 
-| Metric | Value |
-|---|---|
-| Cross-validation accuracy | 99.8% +/- 0.1% (StratifiedKFold, 7,190 windows, 49 features) |
-| Per-class precision/recall | 1.0 across all 8 classes (A1-A7 + NORMAL) |
-| Isolation Forest anomaly detection accuracy | 97.3% (up from 79.2% baseline) |
-| IF AUC-ROC | 0.9502 |
-| Grid search | Sequential 1D sweep: 14 total fits (not 200), evaluating contamination, max_features, max_samples |
-| Feature selection | 46 of 49 features retained (XGBoost importance > 0 filter) |
-| UNKNOWN threshold | -0.5199 (Youden's J over 200 candidate thresholds, optimal F1=0.7008) |
+**7 MLflow artifacts:** `xgb_classifier.joblib`, `isolation_forest.joblib`, `label_encoder.joblib`, `scaler.joblib`, `feature_names.json`, `if_feature_indices.json`, `if_unknown_threshold.json`.
 
-**Threshold calibration** (`train.py:135-164`):
-- Sweeps 200 candidate IF score thresholds across the available score range
-- Maximizes F1 score (`2 * precision * recall / (precision + recall)`)
-- Optimal F1=0.7008 at threshold -0.5199, replacing the previous manual default of -0.75
-- Calibrated threshold saved as `if_unknown_threshold.json`, loaded by detector on startup with fallback to -0.75
+**MLflow MLOps:** Champion alias on both models via MLflow 3.x API. RDS PostgreSQL 18.4 + S3 artifact bucket. Custom Docker image (psycopg2-binary + boto3). Auto-retrain on artifact corruption. Git SHA tagging.
 
-**MLflow MLOps** (`train.py:444-467`):
-- Registered model aliases via `set_registered_model_alias("champion")` for both `atm-xgb-classifier` and `atm-isolation-forest`
-- RDS PostgreSQL 18.4 backend store + S3 artifact bucket (`s3://laad-mlflow-artifacts`)
-- Custom MLflow Docker image (`mlflow/Dockerfile`) adds `psycopg2-binary` (RDS driver) and `boto3` (S3 SDK) — not included in the official MLflow image
-- Auto-retrain on startup if model artifacts are missing, corrupted, or scikit-learn version-skewed
-- Git SHA tagging: checks `GIT_COMMIT_SHA` env var first, falls back to `git rev-parse HEAD`
 
-**7 ML artifacts:**
-
-| Artifact | Description |
-|---|---|
-| `xgb_classifier.joblib` | XGBoost multi-class (49 features, 8 classes) |
-| `isolation_forest.joblib` | Isolation Forest (46 features) |
-| `label_encoder.joblib` | Class index to label mapping |
-| `scaler.joblib` | StandardScaler (49 features, transforms before subset) |
-| `feature_names.json` | All 49 feature names |
-| `if_feature_indices.json` | 46 selected feature indices for IF |
-| `if_unknown_threshold.json` | Calibrated UNKNOWN threshold (-0.5199) |
 
 ---
 
 ### Agentic RAG Diagnostic Assistant
 
-An agentic RAG system with 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) and multi-signal confidence fusion. Uses Ollama Cloud as primary LLM provider with OpenRouter as emergency fallback. Features intelligent query classification that routes stats queries directly to the database.
+An agentic RAG system with 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) and multi-signal confidence fusion. Uses Ollama Cloud as primary LLM provider with OpenRouter emergency fallback.
 
 ```mermaid
 flowchart TD
@@ -696,85 +520,46 @@ flowchart TD
   CG --> RETR & CONS & VERB & GRND --> FUSE --> LEVEL
 ```
 
-**4 agentic features:**
+**Why ChromaDB over Pinecone?** Self-hosted in Docker - no per-vector API costs, 50K+ docs fit in RAM, log data never leaves the network. Local Ollama embedding (`nomic-embed-text`, 768-dim) eliminates network round-trip.
 
-| Feature | Method | Impact | Literature |
-|---|---|---|---|
-| Cross-Encoder Reranking | `cross-encoder/ms-marco-MiniLM-L-2-v2` scores (query, chunk) pairs jointly | +5-15% retrieval relevance over bi-encoder cosine | Nogueira & Cho 2019 |
-| Self-Consistency | 3 parallel samples at temp=0.7 via `ThreadPoolExecutor`, character 3-gram Jaccard pairwise similarity | Detects ambiguous queries (high variance = low confidence) | Wang et al. 2022 (ICLR) |
-| Reflexion | Two-pass: generate -> critique (temp=0.2) -> regenerate (temp=0.3) if unsupported claims found. `NO_ISSUES_FOUND` guard skips regeneration | Catches hallucinated claims before delivery | Shinn et al. 2023 |
-| Citation Grounding | Regex extraction of ATM IDs, error codes (ERR-XXXX), anomaly types (A1-A7), correlation IDs -> string matching against source chunks | Ensures every cited entity exists in retrieved sources | Grounded RAG patterns |
+**4 agentic features:** Cross-Encoder Reranking (`ms-marco-MiniLM-L-2-v2`, +5-15% relevance), Self-Consistency (3 parallel samples @ temp=0.7, 3-gram Jaccard), Reflexion (generate → critique @ temp=0.2 → regenerate if unsupported), Citation Grounding (regex entity extraction → source chunk verification).
 
-**Multi-signal confidence fusion** (`backend/src/rag/uncertainty.py:85-137`):
+**Multi-signal fusion:** Retrieval (30%) + self-consistency (25%) + verbalized (25%) + grounding (20%). Missing signals renormalized. Final: HIGH ≥0.8 / MEDIUM ≥0.5 / LOW <0.5. Platt scaling auto-recalibrates every 20 feedback samples (ECE <0.10).
 
-| Signal | Weight | Method |
-|---|---|---|
-| Retrieval distance | 30% | `1.0 - min(avg_distance, 1.0)` + count bonus + diversity bonus |
-| Self-consistency | 25% | 3-sample pairwise 3-gram Jaccard similarity |
-| Verbalized confidence | 25% | LLM self-rating on 0-1 scale prompted: "is your answer supported by context?" |
-| Citation grounding | 20% | Fraction of extracted entities verified in source chunks |
+**Latency:** 11-23s uncached (ThreadPoolExecutor parallelized self-consistency, first sample reused as primary response), <100ms cached.
 
-Missing signals are skipped and remaining weights renormalized. Final confidence assigned as HIGH (>=0.8), MEDIUM (>=0.5), or LOW (<0.5).
-
-**Latency optimization** (sequential 26-53s -> parallel 11-23s):
-
-| Optimization | Before | After | Speedup |
-|---|---|---|---|
-| Self-consistency | 3 sequential LLM calls (15-30s) | 3 concurrent calls via ThreadPoolExecutor (5-10s) | 2-3x |
-| First sample reuse | 3 samples + 4th separate generation | First sample doubles as primary response | 5-10s saved |
-
-**Query classification** (`backend/src/rag/utils.py:29-62`):
-- Stats queries ("how many anomalies") -> direct PostgreSQL COUNT/GROUP BY, bypasses LLM entirely
-- Diagnostic queries ("what's causing...") -> full RAG pipeline with structured Analysis + Root Cause + Actions
-- Troubleshooting queries ("how to fix...") -> numbered steps with expected outcomes
-- Intent detection: error_only, comprehensive ("all issues" overrides error_only), most_recent_first
-
-**Prompt injection protection** (`backend/src/rag/utils.py:111-125`):
-Filters 5 dangerous patterns: `ignore previous instructions`, `system:`, `<system>`, `you are now`, `forget everything`
-
-**Calibration** (Platt scaling):
-- `calibrated_conf = sigmoid(scale * raw_conf + bias)` via `scipy.optimize.minimize` (Nelder-Mead)
-- Auto-recalibrates every 20 feedback samples
-- ECE target < 0.10 using 5 bins
-
-**LLM provider chain:**
-1. Ollama Cloud (`gemma4:31b-cloud`) -- primary
-2. Ollama Fallback (`nemotron-3-supercloud`)
-3. OpenRouter chain: DeepSeek V3 -> Llama 4 Maverick -> Qwen 3 -> DeepSeek R1
-4. Context-aware graceful degradation (structured log extraction without LLM)
+**Query routing:** Stats queries → direct PostgreSQL (bypasses LLM). Diagnostic → full RAG with Analysis + Root Cause + Actions. 5-pattern prompt injection filter. **LLM chain:** Ollama Cloud → Ollama Fallback → OpenRouter (3 models) → local degradation.
 
 ---
 
 ### Redis Infrastructure (8 Patterns)
 
-All modules use a shared Redis client singleton (`backend/src/cache/redis_client.py`) with connection pooling (max 20 connections, 2s timeouts). Every pattern has a graceful degradation path when Redis is unavailable.
+Shared Redis client singleton with connection pooling (max 20, 2s timeout). Every operation has a graceful degradation fallback.
 
-| Pattern | Data Structure | Location | Use Case | Degradation |
-|---|---|---|---|---|
-| Rate Limiting | Sorted Set (ZADD + ZREMRANGEBYSCORE + ZCARD) | `rag/router.py:46-66` | 10 requests/min per user sliding window | Falls back to in-memory counters |
-| Message Dedup | Set + 1h TTL (SADD + SISMEMBER) | `kafka/deduplicator.py:56-86` | Cross-restart Kafka dedup | Falls back to LRU OrderedDict |
-| JWT Blacklist | String + TTL (SETEX) | `auth/auth_router.py` | Secure logout, compromised token invalidation | Falls back to in-memory set |
-| Distributed Lock | SET NX EX 25s | `kafka/consumer.py:92-128` | Prevent concurrent anomaly detection | Proceeds without lock (returns True) |
-| Real-Time Streaming | Pub/Sub + Sorted Set (PUBLISH + ZINCRBY) | `alerts/pubsub.py:31-55` | Anomaly alerts to dashboard | Silently skips |
-| Response Caching | String + TTL (GET + SETEX) | `rag/cache.py:21-47`, `anomalies_router.py:41-67` | RAG (300s) + anomaly list (15s) caching | Returns None, caller proceeds with fresh query |
-| Dead Letter Queue | Stream (XADD + XREAD + XDEL) | `kafka/dlq.py:33-134` | Failed message retry with exponential backoff | Skips DLQ processing |
-| Analytics Counters | INCR + HyperLogLog + ZINCRBY | `analytics_analytics_router.py:265-309` | Real-time event counts, unique ATMs, anomaly type frequency | Returns zeros |
+| Pattern | Data Structure | Use Case | Degradation |
+|---|---|---|---|
+| Rate Limiting | Sorted Set (ZADD + ZREMRANGEBYSCORE + ZCARD) | 10 req/min per user sliding window | In-memory counters |
+| Message Dedup | Set + 1h TTL (SADD + SISMEMBER) | Cross-restart Kafka dedup | LRU OrderedDict (10K) |
+| JWT Blacklist | String + TTL (SETEX) | Secure logout, token invalidation | In-memory set |
+| Distributed Lock | SET NX EX 25s | Prevent concurrent anomaly detection | Proceed without lock |
+| Real-Time Streaming | Pub/Sub + Sorted Set | Anomaly alerts to dashboard | Silently skip |
+| Response Caching | String + TTL (GET + SETEX) | RAG (300s) + anomaly list (15s) | Return None, fresh query |
+| Dead Letter Queue | Stream (XADD/XREAD/XDEL) | Failed message retry + backoff | Skip DLQ processing |
+| Analytics Counters | INCR + HyperLogLog + ZINCRBY | Real-time event counts, unique ATMs | Return zeros |
 
 ---
 
 ### Frontend Architecture
 
-- **React 19 + Vite 8 + Tailwind CSS v4 + Chart.js + shadcn/ui-style components** -- 9 pages, all with skeleton loading states and auto-refresh (analytics: 5s data polling, anomaly list: 30s timestamp refresh)
-- **RAGProvider 3-layer persistence** (`frontend/src/providers/RAGProvider.jsx`): React context (survives route changes) + localStorage (survives full page reloads, max 50 messages) + PostgreSQL (permanent query history via `/api/rag/history`)
-- **Smart proxy rewriting** (`frontend/vite.config.js`): `/api/insights/*` rewritten to `/api/analytics/*` for backward compatibility, `/api/*` strips prefix and forwards to backend
-- **6-filter anomaly list**: sort (criticality/recent/severity), entity type (ATM/server), anomaly type, severity, detection source, text search -- 20 items/page
-- **Analytics dashboard**: 3 Chart.js visualizations (stacked bar, line with fill, doughnut) + KPI stat cards, 5 time ranges with adaptive bucket sizes (5min to 1440min), metric selector, source toggle badges, 5s polling
-- **Entity-aware badges**: purple `Server` badge with server icon vs blue `ATM` badge, entity type filter in sidebar, dynamic entity list from `/api/analytics/entities`
-- **Auth**: JWT-based with bcrypt password hashing, `require_admin` guard, Redis token blacklist for secure logout
+- **React 19 + Vite 8 + Tailwind CSS v4** - 9 pages with skeleton loading, auto-refresh (5s analytics, 30s anomalies)
+- **6-filter anomaly list**: sort by criticality/recent/severity, filter by entity/type/severity/source/text - 20/page
+- **Analytics dashboard**: 3 Chart.js visualizations + KPI cards, 5 time ranges, adaptive buckets
+- **3-layer persistence**: React context + localStorage (max 50) + PostgreSQL (`/api/rag/history`)
+- **Auth**: JWT + bcrypt, `require_admin` guard, Redis token blacklist for secure logout
 
 ---
 
-### Infrastructure & AWS
+## Infrastructure & AWS
 
 | Service | Technology | Purpose |
 |---|---|---|
@@ -782,110 +567,45 @@ All modules use a shared Redis client singleton (`backend/src/cache/redis_client
 | Apache Kafka | confluentinc/cp-kafka:7.5.0 | KRaft mode (no ZooKeeper), 7-day retention |
 | Kafka Consumer | Python + kafka-python | Dedup + parse + dual-write + 30s detection trigger |
 | ChromaDB | chromadb/chroma | Vector database for RAG retrieval |
-| Ollama | ollama/ollama | Local `nomic-embed-text` for semantic chunking (274MB model) |
+| Ollama | ollama/ollama | Local `nomic-embed-text` for semantic chunking |
 | Backend API | FastAPI + Uvicorn (4 workers) | 30 endpoints, 6 routers, APScheduler cleanup |
 | Log Generator | Python + kafka-python | Pure Kafka producer (no direct DB writes) |
-| MLflow | custom Dockerfile | Experiment tracking + model registry, psycopg2+boto3 for AWS |
+| MLflow | custom Dockerfile | Experiment tracking + model registry (psycopg2+boto3 for AWS) |
 | Redis | 7 Alpine | 8 distributed patterns, shared connection pool |
-| Frontend | nginx alpine | Multi-stage build: Node.js builder → nginx, proxy rewrites /api/* |
-| AWS RDS | PostgreSQL 18.4 | MLflow tracking backend (`laad-mlflow-postgres`) |
-| AWS S3 | Standard bucket | MLflow artifact store (`s3://laad-mlflow-artifacts`) |
+| Frontend | nginx alpine | Multi-stage build: Node.js → nginx, ~25MB final image |
+| AWS RDS | PostgreSQL 18.4 | MLflow tracking backend |
+| AWS S3 | Standard bucket | MLflow artifact store |
 
-**Key infrastructure decisions:**
-
-- **10 Docker services + 3 test services** with health check cascading (postgres -> kafka -> backend/consumer/generator -> frontend)
-- **7 named volumes** for data persistence across restarts
-- **Profile-based Docker Compose**: `ml` and `test` profiles keep optional services separate
-- **Auto-retrain on startup**: FastAPI lifespan event checks `xgb_classifier.joblib` existence and loadability; triggers retrain if missing, corrupted, or scikit-learn version-skewed
-- **Hourly retention cleanup** via APScheduler with batched DELETE (5,000 rows/batch) + VACUUM
-- **Production-like frontend**: Multi-stage Docker build (node builder → nginx alpine, ~25MB final image) with no Node.js runtime, all assets minified
+**Key decisions:** 10 production services + 3 test services with health check cascading, 7 named volumes, profile-based Compose for `ml`/`test`, auto-retrain on startup, hourly batched retention cleanup (5K rows/batch); VACUUM left to DBA.
 
 ---
 
 ## Testing
 
-All tests run in Docker with isolated test infrastructure (separate PostgreSQL instance on port 5433).
+All tests run in Docker with isolated PostgreSQL on port 5433.
 
 ```bash
-make test              # Full test suite (backend + frontend)
-make test-backend      #   Backend only (523 tests)
-make test-frontend     #   Frontend only (149 tests)
+make test              #   Full test suite (670 tests)
+make test-backend      #   Backend: 521 (pytest + pytest-cov)
+make test-frontend     #   Frontend: 149 (vitest 4 + @testing-library/react 16)
 ```
-
-### Backend
-
-- **Framework:** pytest (>=7) + pytest-cov (>=5)
-- **Coverage:** runs with `--cov=backend/src --cov=backend/generator --cov=backend/kafka`
-- **Test DB:** isolated `atm_platform_test` on port 5433, auto-initialized via `init_db(force=True)`
-- **Coverage config:** `.coveragerc` at project root
-
-### Frontend
-
-- **Framework:** vitest 4 + @testing-library/react 16
-- **Coverage:** runs with `--coverage` via `@vitest/coverage-v8`
-- **DOM:** jsdom 29 with localStorage polyfill + `scrollIntoView` stub
-- **Config:** `frontend/vitest.config.js`, glob patterns `src/test/**/*.test.{js,jsx}`
 
 | Metric | Value |
 |---|---|
-| Backend tests | 521 passing (60 test files) |
-| Frontend tests | 149 passing (36 test files) |
-| Test database | Isolated (`atm_platform_test`, port 5433) |
+| Test DB | Isolated (`atm_platform_test`, port 5433) |
 | Test tiers | 10 (unit, integration, stress, security, ML, RAG, Redis, Kafka, generators, parsers) |
 
-**Critical defects caught by the test suite:**
+## Backend Test Suite - 521 passing pytest tests across 10 tiers
 
-| Defect | Resolution |
-|---|---|
-| Silent data loss under 50 concurrent writes | Exponential backoff added to `write_helper.py` |
-| JWT privilege escalation (admin endpoint accessible by standard users) | `require_admin` dependency guard added |
-| Parser crashes on schema drift (strict dict access) | All parsers migrated to `.get()` with safe defaults |
-| Unresolved anomalies deleted by retention cleanup | Cleanup filtered to `is_active = 1` only |
-| Integration test always passed (no real assertions) | Changed to `count_after > count_before` pattern |
-| Generator wrote directly to DB (violated Kafka-only architecture) | Emitters refactored to use Kafka producer exclusively |
-| Duplicate anomaly writes from concurrent detection cycles | Removed APScheduler; only Kafka consumer triggers detection; 10-min dedup window |
+> Shows the complete backend test run: 521 pytest tests passing across 60 test files organized into 10 tiers (unit, integration, stress, security, ML, RAG, Redis, Kafka, generators, parsers). Tests run inside Docker with an isolated PostgreSQL 16 test database on port 5433 (`atm_platform_test`). The output displays the pytest progress bar, per-file results with durations, and coverage summary across `backend/src`, `backend/generator`, and `backend/kafka` modules.
 
----
+![Backend test suite output showing 521 passing pytest tests with coverage summary](docs/demos/pytest-output.png)
 
-## Design Decisions
+## Frontend Test Suite - 149 passing vitest tests (36 suites)
 
-**Lean data lake schema.** Rather than source-specific tables, all records land in two unified tables (`events` + `metrics`) with JSONB payloads. Adding a new log source requires only a new parser -- no schema changes or detector modifications. The `v_unified_analysis` view provides a single query target for the ML pipeline by merging both tables with COALESCE-based field normalization.
+> Shows the full frontend test suite run with vitest v4 and @testing-library/react v16: 149 tests across 36 suite files covering all 9 pages, auth flows, API client, RAG chat, theme switching, admin settings, and 10 shadcn/ui components (Button, Card, Input, Label, Badge, Skeleton, Switch, Select, Pagination, Toast). Tests use jsdom environment with mocked localStorage and scrollIntoView for consistent CI runs.
 
-**At-least-once Kafka delivery with Redis-backed deduplication.** Kafka provides at-least-once delivery by default. The hybrid deduplicator (Redis SET + 10K LRU) eliminates duplicate inserts after consumer restarts, which the previous in-memory-only approach could not prevent. Manual offset commits ensure the consume-dedup-write-commit cycle is transactional.
-
-**3-layer defense in depth.** ML_ENSEMBLE catches known patterns and calibrated novel anomalies when ML models are loaded. ZSCORE operates independently of models to detect statistical distribution shifts. HEURISTIC is the always-active safety net using deterministic multi-source correlation. Each layer has a different failure mode, so no single point of failure exists. All layers are permanently enabled (no user-configurable toggles).
-
-**Distributed coordination via Redis.** Rather than a separate coordination service, 8 Redis patterns provide rate limiting, dedup, locking, streaming, caching, analytics, and dead-letter queuing through a single shared client with connection pooling. Every operation has a graceful degradation fallback -- the system never hard-depends on Redis availability.
-
-**Data privacy in RAG.** Log data in ChromaDB never leaves the network. Only retrieved snippets and user queries are sent to the LLM API. When all providers are unavailable, the system falls back to local structured log extraction with no external calls.
-
-**JWT + Redis blacklist for auth.** Stateless JWTs are augmented with a Redis-backed blacklist for secure logout. Token hashes stored with TTL = remaining token expiry. Previously impossible with pure stateless JWTs alone.
-
----
-
-## Reference
-
-### Anomaly Types (A1-A7)
-
-| ID | Type | Severity | Detection Logic |
-|---|---|---|---|
-| A1 | Network Timeout Cascade | CRITICAL | >=3 of NETWORK_DISCONNECT + Kafka Offline + TIMEOUT + NETWORK_ERROR |
-| A2 | Cash Cassette Empty | CRITICAL | CASSETTE_EMPTY >=1 + Kafka OutOfService + dispense error + 0 TPS |
-| A3 | JVM Memory Leak | MAJOR | Monotonically rising JVM heap >=50% + OOM event, 90-min lookback |
-| A4 | Container Restart Loop | MAJOR | restart_count > 0 + >=2 STARTUP or >=2 FATAL events |
-| A5 | Response Time Spike | MAJOR | >=2 Kafka response_time_ms > 3000 + success_rate < 90% |
-| A6 | OS Memory Pressure | MAJOR | OS memory >= 90% OR >30% increase + ThreadAbortException |
-| A7 | Out-of-Order Kafka | HIGH | Out-of-order offsets + null fields + malformed Prometheus values |
-| UNKNOWN | Novel Pattern | HIGH | IF score <= -0.5199 OR Z-score > 3 sigma |
-
-### Server Entity Support
-
-| Entity Type | IDs | Count |
-|---|---|---|
-| ATMs | `ATM-GB-0001` to `ATM-GB-0010` | 10 |
-| Servers | `ATM-SERVER-001` to `ATM-SERVER-003` | 3 |
-
-A3 (JVM Memory Leak), A4 (Container Restart Loop), and A6 (OS Memory Pressure) can target server entities with 40% probability. A1, A2, A5, A7 are ATM-only.
+![Frontend test suite output showing 149 passing vitest tests across 36 suite files](docs/demos/vitest-output.png)
 
 ---
 
@@ -908,12 +628,7 @@ make all                           # Start ALL services (frontend + backend)
 
 Default credentials: username=`admin`, password=`admin`
 
-**Production-like frontend deployment:**
-
-- Multi-stage Docker build: Node.js builder → nginx alpine (no Node.js at runtime)
-- All assets minified + hashed filenames
-- nginx reverse proxy replicates Vite's `/api/*` rewrite logic
-- Same origin for frontend and API calls
+**Production-like frontend deployment:** Multi-stage Docker build (Node.js builder → nginx alpine, no Node.js at runtime), all assets minified + hashed filenames, nginx reverse proxy replicates Vite's `/api/*` rewrite logic.
 
 Services run on:
 
@@ -922,51 +637,28 @@ Services run on:
 - MLflow UI: `http://localhost:5001`
 - PostgreSQL: `localhost:5434`
 
-### Makefile Commands
-
-| Command | Description |
-|---|---|
-| `make all` | Start ALL services (frontend + backend) |
-| `make rebuild` | Clean rebuild: stop, remove volumes, rebuild, start |
-| `make rebuild-frontend` | Rebuild only the frontend service |
-| `make rebuild-backend` | Rebuild only the backend service |
-| `make train` | Full training pipeline (synthetic dataset build + model training) |
-| `make test` | Run full test suite (backend + frontend) |
-| `make test-backend` | Run backend tests with coverage |
-| `make test-frontend` | Run frontend tests with coverage |
-| `make clean` | Stop all containers and remove volumes |
-| `make logs` | Follow logs from all services |
-
 ---
 
 ## Team
 
 | Role | Member |
 |---|---|
-| Backend & Data Engineering Lead, DB, Ingestion Pipeline, Auth, API, Testing, Continuous Generator, ML Detector, Kafka Integration, MLOps, RAG Diagnostic Assistant | **Ahmed Ikram** |
-| Anomaly Detection Logic | Martin Kelly |
+| Backend & Data Engineering Lead - DB, Ingestion Pipeline, Auth, API, Testing, Continuous Log Generator eventually extending with ML Detector, Kafka Integration, MLOps, RAG Diagnostic Assistant | **Ahmed Ikram** |
+| Heuristic Anomaly Detection Logic | Martin Kelly |
 | Ranking Algorithm & Analysis Router | Emmanuel Dairo, Addie Tweed |
 | Frontend UI | Sarah Kelly (lead), Sam Watts, Ahmed Ikram |
 | Scrum Master | Sam Watts |
 
 Built for **NCR Atleos** as part of CS32002 Industrial Team Project, University of Dundee.
 
-> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion and calibration, the comprehensive test suite (406 tests), and the full API surface were designed, implemented, and tested by **Ahmed Ikram** as an independent post-submission extension.
+> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion and calibration, the comprehensive test suite (670 tests), and the full API surface were designed, implemented, and tested by **Ahmed Ikram** as an independent post-submission extension.
 
 ---
 
 ## Related
 
-- [DevSync -- Project Tracker with GitHub Integration](https://github.com/AhmedIkram05/DevSync) -- full-stack cloud app with 541 automated tests
-- [W3C Web Logs ETL Pipeline](https://github.com/AhmedIkram05/W3C-ETL-Pipeline) -- parallel Airflow ETL with Power BI analytics
-- [StockLens FinTech App](https://github.com/AhmedIkram05/StockLens) -- full-stack mobile app with OCR pipeline and ML forecasting
+- [DevSync - Project Tracker with GitHub Integration](https://github.com/AhmedIkram05/DevSync) - full-stack cloud app with 541 automated tests
+- [W3C Web Logs ETL Pipeline](https://github.com/AhmedIkram05/W3C-ETL-Pipeline) - parallel Airflow ETL with Power BI analytics
+- [StockLens FinTech App](https://github.com/AhmedIkram05/StockLens) - full-stack mobile app with OCR pipeline and ML forecasting
 
----
 
-## Further Documentation
-
-- [Project Report](docs/Project-Report.pdf)
-- [API Reference](docs/api-reference.md) -- all 30 endpoints with parameters
-- [AWS Setup](docs/aws-setup.md) -- production MLflow with RDS + S3
-- [Configuration Reference](docs/configuration.md) -- all environment variables and parameters
-- [Architecture Fixes](docs/architecture-fixes.md) -- resolved architectural issues
