@@ -289,7 +289,8 @@ services:
       python -m pytest backend/tests/ -v
       --tb=short
       --cov=backend/src --cov=backend/generator --cov=backend/kafka
-      --cov-report=term --cov-report=term-missing"
+      --cov-report=term --cov-report=term-missing
+      --cov-report=xml:/app/backend/coverage.xml"
     environment:
       - POSTGRES_HOST=postgres_test
       - POSTGRES_PORT=5432
@@ -317,7 +318,7 @@ services:
       - test
     working_dir: /frontend
     command: >
-      sh -c "cp -r /src/. /frontend/ && npm ci && npx vitest run --coverage"
+      sh -c "cp -r /src/. /frontend/ && cd /frontend && npm ci && npx vitest run --coverage && cp -r coverage /src/coverage"
     volumes:
       - ./frontend:/src
 

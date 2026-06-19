@@ -19,6 +19,7 @@ Production-grade ATM log aggregation, anomaly detection, and AI-assisted diagnos
 <img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&labelColor=FF6B35">
 <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&labelColor=000000&logo=docker">
 <img src="https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&labelColor=000000&logo=amazonwebservices">
+<img src="https://img.shields.io/codecov/c/github/AhmedIkram05/laad?style=for-the-badge&labelColor=000000&logo=codecov">
 </p>
 
 ---
