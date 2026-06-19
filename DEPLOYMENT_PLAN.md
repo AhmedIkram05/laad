@@ -8,6 +8,8 @@ Deploy the LAAD platform to AWS with Terraform-managed infrastructure and GitHub
 2. **SageMaker real-time endpoint** — XGBoost champion model from MLflow registry
 3. **Infrastructure-as-Code** — Terraform with S3 + DynamoDB state backend
 
+> **Budget note:** The AWS account has ~$48 in free credits. SageMaker (~$84/mo) is the dominant cost when running. Credits cover ~2.5 weeks of full-stack runtime. After credits exhaust, the ~$96/mo baseline (RDS + NAT + ALB + EC2 + Fargate) or ~$180/mo with SageMaker runs on card billing. Plan trades are cost-aware but not cost-constrained — credits are a fixed resource to manage, not a hard wall.
+
 ## Prerequisites (Manual)
 
 Before starting implementation, ensure these manual steps are completed:
@@ -52,7 +54,7 @@ All resources deploy to **eu-west-2** to match the existing MLflow RDS + S3 buck
 
 Internet ──> ALB (HTTPS, ACM self-signed) ──> ECS Fargate (FastAPI)
                                                   |
-                     [Local Docker Kafka <──> Local Consumer] (dev only, not deployed)
+                      [EC2 t4g.nano Kafka <──> ECS Fargate Consumer]
                                                   |
                      [ECS Fargate API] ──> [SageMaker endpoint (XGBoost)]
                                                   |
@@ -117,6 +119,11 @@ terraform/
 │   │   ├── variables.tf
 │   │   └── outputs.tf         # cloudfront_domain, s3_bucket_name
 │   │
+│   ├── ec2/
+│   │   ├── main.tf            # t4g.nano for Kafka, SG, EBS volume, key pair
+│   │   ├── variables.tf
+│   │   └── outputs.tf         # kafka_broker_ip, kafka_security_group_id
+│   │
 │   └── security/
 │       ├── main.tf            # Security groups for ALB, ECS tasks, RDS, SageMaker VPC config
 │       ├── variables.tf
@@ -138,8 +145,7 @@ terraform/
 # terraform/bootstrap/main.tf
 # Run once: terraform apply -auto-approve
 resource "aws_s3_bucket" "tf_state" {
-  bucket = "laad-terraform-state-<unique-suffix>"
-  # e.g. "laad-terraform-state-abc123"
+  bucket = "laad-terraform-state-ahmedikram"
 }
 
 resource "aws_s3_bucket_versioning" "tf_state" {
@@ -169,7 +175,7 @@ resource "aws_dynamodb_table" "tf_lock" {
 }
 ```
 
-**Manual step:** Choose a unique suffix (e.g. your initials + random word). Run from `terraform/bootstrap/`. After creation, the S3 bucket name and DynamoDB table name are used in `backend.tf`.
+**Run from `terraform/bootstrap/`:** After creation, the S3 bucket name and DynamoDB table name are used in `backend.tf`.
 
 ### VPC Module
 
@@ -283,7 +289,7 @@ Creates the following Secrets Manager entries. Deploy scripts read these at ECS 
 
 Creates two ECR repositories:
 - `laad-backend` — For the FastAPI Docker image
-- `laad-consumer` — For the Kafka consumer Docker image (same base image, different CMD; could share a single repo with separate tags)
+- `laad-consumer` — For the Kafka consumer Docker image
 
 Both repositories have `image_scanning_configuration = { scan_on_push = true }` and `lifecycle_policy` to keep only the last 10 images.
 
@@ -318,7 +324,7 @@ Both repositories have `image_scanning_configuration = { scan_on_push = true }` 
 
 **Consumer Task Definition** (`laad-consumer`):
 - **CPU/Memory**: 512 CPU / 1024 MB (lightweight)
-- **Container image**: `laad-consumer:latest` (or `laad-backend:latest` with different CMD)
+- **Container image**: `laad-consumer:latest`
 - **Command**: `python -m backend.kafka.consumer`
 - **Secrets**: Same DB creds as API, MLflow config
 - **Environment**: Same as docker-compose kafka-consumer section
@@ -337,7 +343,7 @@ Both repositories have `image_scanning_configuration = { scan_on_push = true }` 
 - 1 desired task (scale down when not in use)
 - FARGATE_SPOT capacity provider (50-90% savings)
 - Attached to ALB target group
-- Service discovery: optional
+- Service discovery: not enabled (unnecessary complexity for 2-service architecture)
 - Deployment: rolling update (minimum 0 healthy tasks during deploy — portfolio project, no need for zero-downtime)
 
 **Consumer Service** (`laad-consumer-service`):
@@ -359,13 +365,13 @@ Creates the infrastructure for serving the React frontend. The frontend is a sta
 Resources:
 
 1. **`aws_s3_bucket`** (`laad-frontend`):
-   - `bucket = "laad-frontend-<unique-suffix>"` (S3 bucket names must be globally unique)
+   - `bucket = "laad-frontend-ahmedikram"`
    - `acl = "private"` (CloudFront is the only access point)
    - `website = null` (no direct S3 website hosting — enforced through CloudFront OAC)
    - Block all public access (default)
 
 2. **`aws_s3_bucket_public_access_block`** — Blocks all public access
-3. **`aws_s3_bucket_versioning`** — Optional (for CI/CD rollback. Can skip to save costs.)
+3. **`aws_s3_bucket_versioning`** — Enabled (instant rollback on bad frontend deploy; cost is ~$0.10/mo)
 
 4. **`aws_cloudfront_distribution`**:
    - `origin` — S3 bucket via Origin Access Control (OAC)
@@ -386,6 +392,24 @@ Resources:
 6. **`aws_s3_bucket_policy`** — Grants read access only to CloudFront (via OAC)
 
 Cost: CloudFront at PriceClass_100 is ~$0.085/GB for data transfer + $0.01/10K requests. For a portfolio project, this is under $1/mo.
+
+### EC2 Module
+
+Creates a t4g.nano instance for running Kafka in KRaft mode:
+
+- **`aws_instance`** (`laad-kafka-broker`):
+  - AMI: Amazon Linux 2023 (ARM), latest AL2023
+  - `instance_type = "t4g.nano"` (~$5-7/mo, 2 vCPUs burstable, 0.5 GB RAM — sufficient for single-broker Kafka)
+  - Subnet: Public subnet (private subnet would need NAT for Kafka client connections from ECS consumer)
+  - `associate_public_ip_address = false` — uses private IP for VPC-internal traffic
+  - `key_name` — SSH key for initial Kafka setup
+  - `root_block_device` — 20 GB gp3
+  - `user_data` — Installs Java 11; actual Kafka download/start is manual
+  - Security group: allows port 9092 from ECS Consumer SG
+
+- **`aws_eip`** — Elastic IP for stable addressing across restarts
+
+**Cost**: ~$7/mo. Adds the full "event-driven architecture on AWS" CV line.
 
 ### SageMaker Module
 
@@ -412,11 +436,7 @@ Resources:
    - `endpoint_config_name` — ref to above
    - `name = "laad-xgb-champion"`
 
-**Cost**: ml.m5.large at 730 hours/mo = ~$84/mo. For a portfolio project, you should:
-- Stop the endpoint when not in use: `aws sagemaker delete-endpoint --endpoint-name laad-xgb-champion`
-- Start when needed: `aws sagemaker create-endpoint ...`
-- Or: Set up a CloudWatch Events rule to stop at 8pm, start at 8am weekdays
-- The Terraform should include an `aws_sagemaker_endpoint` resource that can be `terraform destroy`'d when not needed
+**Cost**: ~$84/mo at 730 hours. The endpoint stays deployed and running continuously — no destroy/recreate management needed. The account has ~$48 in free AWS credits, which covers the endpoint's runtime cost for about 2.5 weeks. After credits are exhausted, the ~$84/mo ongoing cost applies if left running.
 
 **Important — model data URL manual step**: You must download the champion XGBoost model from MLflow and upload it to the S3 bucket `laad-mlflow-artifacts`. See "Manual Steps" section.
 
@@ -439,17 +459,24 @@ push to main
         ├── Build & push API Docker image
         │   └── backend/Dockerfile → ECR (laad-backend:latest)
         │
+        ├── Build & push Consumer Docker image
+        │   └── backend/Dockerfile → ECR (laad-consumer:latest)
+        │
         ├── Build frontend static assets
         │   ├── npm run build (frontend/)
-        │   └── Sync dist/ → S3 (laad-frontend-*)
+        │   └── Sync dist/ → S3 (laad-frontend-ahmedikram)
         │
         ├── Deploy API to ECS
         │   └── Force new deployment of laad-api-service
         │
+        ├── Deploy Consumer to ECS
+        │   └── Force new deployment of laad-consumer-service
+        │
         ├── Invalidate CloudFront cache
         │   └── CreateCloudFrontInvalidation for /* (on S3 bucket)
         │
-        └── Notify (Slack or email via SNS)
+        └── SNS notification
+            └── Publish deployment status to email subscribers
 ```
 
 ### terraform.yml — Separate Workflow
@@ -473,16 +500,13 @@ This keeps the system resilient during development (local Docker) while enabling
 
 ### Kafka Consumer on ECS
 
-The consumer needs to reach a Kafka broker. In production, Kafka remains local (Docker), so:
-- **ECS consumer cannot reach localhost Kafka.**
-- Two options:
-  A. **Run Kafka locally, expose via ngrok/tailscale** — not production-grade but works for demo
-  B. **Run Kafka on an EC2 instance in the VPC** — adds ~$8/mo for t4g.nano
-  C. **Keep consumer running locally on your machine** — simplest, just run `docker compose up kafka-consumer`
+The consumer needs to reach a Kafka broker. Since Kafka is not a managed service, we run it on a t4g.nano EC2 instance in the same VPC:
 
-**Recommendation: Option C.** Keep the consumer local. Deploy only the API to ECS. The CV story is still strong: "Containerised FastAPI backend deployed to ECS Fargate behind ALB with CI/CD." The consumer being local is an implementation detail. You can still demonstrate the Kafka consumer code in interviews.
+- **EC2 t4g.nano** (~$7/mo) — Amazon Linux 2023, single-broker KRaft mode (same as current docker-compose)
+- **ECS consumer task** — the consumer runs as a Fargate task that connects to the EC2 Kafka broker via VPC private IP
+- **Security group** — Kafka SG allows port 9092 from ECS Consumer SG only
 
-If you want a fully cloud-native story, Option B (EC2 t4g.nano for Kafka, Consumer as separate ECS task) adds ~$10/mo to the bill.
+This architecture tells a strong CV story: "Event-driven microservice architecture with Apache Kafka on EC2, consumed by a separate ECS Fargate service for async anomaly detection processing."
 
 ## Manual Steps (Required After Terraform Deploy)
 
@@ -560,22 +584,36 @@ echo $GITHUB_ROLE_ARN
 # Add: AWS_REGION = eu-west-2
 ```
 
-### Step 5: (Optional) Kafka Consumer on EC2
+### Step 5: Set Up Kafka on EC2
 
-If you choose Option B (Kafka on EC2 for cloud-native consumer):
-1. The Terraform plan can include an `aws_instance` module (t4g.nano, Amazon Linux 2023)
-2. After deploy, SSH in and install Kafka:
+The Terraform plan includes an `aws_instance` module (t4g.nano, Amazon Linux 2023) that auto-creates the Kafka EC2 instance. After Terraform deploy, SSH in and start Kafka:
+
 ```bash
-ssh -i <key> ec2-user@<instance-ip>
+ssh -i kafka-key.pem ec2-user@<kafka-instance-ip>
 sudo yum install -y java-11-amazon-corretto-headless
 wget https://downloads.apache.org/kafka/3.6.0/kafka_2.13-3.6.0.tgz
 tar -xzf kafka_2.13-3.6.0.tgz
-# Start KRaft mode (single broker, same as current docker-compose)
 cd kafka_2.13-3.6.0
 KAFKA_CLUSTER_ID=$(bin/kafka-storage.sh random-uuid)
 bin/kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c config/kraft/server.properties
-bin/kafka-server-start.sh config/kraft/server.properties &
+sudo mkdir -p /var/lib/kafka/data
+nohup bin/kafka-server-start.sh config/kraft/server.properties > ~/kafka.log 2>&1 &
 ```
+
+Then verify the ECS consumer can reach it (check CloudWatch logs for `laad-consumer` log group).
+
+### Step 6: Set Up SNS Notification (Optional)
+
+The CD pipeline publishes deployment status to an SNS topic. After Terraform creates the topic, subscribe your email:
+
+```bash
+aws sns subscribe \
+  --topic-arn $(terraform output -raw sns_topic_arn) \
+  --protocol email \
+  --notification-endpoint your@email.com
+```
+
+Check your inbox and confirm the subscription. Deployment notifications will now arrive via email.
 
 ## Implementation Order (for the Implementation Agent)
 
@@ -619,7 +657,7 @@ The implementation agent should execute in this exact order. Each step depends o
    - RDS SG (new): 5432 from ECS API + Consumer SGs
    - **Note**: Existing MLflow RDS SG is NOT modified
 
-### Phase 4: ECR & Secrets (Agent)
+### Phase 4: ECR & Secrets & Notifications (Agent)
 
 1. Create ECR module with 2 repos (image scan on push, lifecycle policy)
 2. Create Secrets module with 6 secrets (added `laad/db/master` for the new RDS):
@@ -630,31 +668,46 @@ The implementation agent should execute in this exact order. Each step depends o
    - `laad/mlflow` — MLflow tracking URI + S3 artifact root
    - `laad/app/backend` — All remaining env vars
 3. Upload initial placeholder values
+4. Create SNS topic for deployment notifications:
+   - `aws_sns_topic` named `laad-deploy-notifications`
+   - Output: `sns_topic_arn` (used by cd.yml for publish, and manual step for email subscription)
 
-### Phase 5: ECS (Agent)
+### Phase 5: EC2 — Kafka Broker (Agent)
+
+1. Create EC2 module with:
+   - `aws_instance` — t4g.nano, Amazon Linux 2023, 20GB gp3 EBS
+   - `aws_security_group` — allow port 9092 from ECS Consumer SG (placeholder; ECS SG created in next phase)
+   - `aws_key_pair` — for SSH access to install/start Kafka
+   - User data script placeholder (automated Kafka install — see manual steps for actual startup)
+   - `aws_eip` — Elastic IP so the broker address is stable across restarts
+   - Output: `kafka_broker_private_ip`, `kafka_security_group_id`
+
+### Phase 6: ECS (Agent)
 
 1. Create ECS module with:
    - Cluster (Fargate only)
-   - Task definitions (API + Consumer)
+   - Task definitions (API + Consumer — consumer uses `KAFKA_BOOTSTRAP_SERVERS` from EC2 module output)
    - Services (API + Consumer)
    - ALB + listener + target group
    - CloudWatch log groups
+   - Note: RDS schema is NOT applied by Terraform — handled via ECS run-task in CD pipeline
 
-### Phase 6: Frontend (Agent)
+### Phase 7: Frontend (Agent)
 
 1. Create Frontend module with:
-   - S3 bucket (private, name: `laad-frontend-<unique-suffix>`)
+   - S3 bucket (private, name: `laad-frontend-ahmedikram`)
+   - S3 bucket versioning enabled
    - CloudFront distribution with OAC (Origin Access Control)
    - S3 bucket policy granting read to CloudFront only
    - 404 → index.html error response (SPA routing)
    - Output: CloudFront domain name, S3 bucket name
 
-### Phase 7: SageMaker (Agent)
+### Phase 8: SageMaker (Agent)
 
 1. Output the S3 URI where the model needs to be uploaded
 2. Create SageMaker model, endpoint config, endpoint (conditionally — depends on manual Step 1)
 
-### Phase 8: CI/CD Pipelines (Agent)
+### Phase 9: CI/CD Pipelines (Agent)
 
 Create `.github/workflows/` with:
 
@@ -662,32 +715,42 @@ Create `.github/workflows/` with:
 - Checkout code
 - Set up Python 3.10
 - Install backend dependencies
-- Run: `python -m pytest backend/tests/ -v --tb=short --cov=backend/src --cov=backend/generator --cov=backend/kafka --cov-report=term-missing` (Note: Tests may require a running PostgreSQL test instance in CI — the agent should handle this with `services.postgres` in the workflow)
+- Run: `python -m pytest backend/tests/ -v --tb=short --cov=backend/src --cov=backend/generator --cov=backend/kafka --cov-report=term-missing -m "not integration and not rag"` — uses `services.postgres` in the workflow for DB-dependent tests
 - Set up Node.js 22
 - Install frontend dependencies
 - Run: `npx vitest run --coverage` (from frontend/)
-- **Manual step**: Tests that require Kafka, Redis, ChromaDB, or Ollama will be skipped/noisily fail in CI. The agent should document which tests need mocking and which should be skipped in CI.
+- **CI test tiers**: Tests are marked with pytest markers — `unit` (fast, no externals), `integration` (needs Kafka/Redis/Chroma), `rag` (needs API keys). `ci.yml` runs unit + ML tests only. Integration/RAG tests are skipped via `-m "not integration and not rag"`.
 
 **`cd.yml`** — On push to `main` (after CI):
 - Configure AWS credentials via OIDC
 - Login to ECR
 - Build & push `backend/` → `laad-backend:latest` (ECR)
+- Build & push `backend/` → `laad-consumer:latest` (ECR) with `--build-arg CMD="python -m backend.kafka.consumer"`
 - Force new ECS deployment for `laad-api-service`
+- Force new ECS deployment for `laad-consumer-service`
 
 **Frontend deploy step** (within cd.yml):
 - Build frontend: `npm run build` in `frontend/`
-- Sync to S3: `aws s3 sync frontend/dist s3://laad-frontend-<suffix> --delete`
+- Sync to S3: `aws s3 sync frontend/dist s3://laad-frontend-ahmedikram --delete`
 - Invalidate CloudFront: `aws cloudfront create-invalidation --distribution-id <id> --paths "/*"`
 
-**One-time RDS schema init** (within cd.yml):
-- On first deploy, or when `terraform output -raw rds_endpoint` changes:
-  ```bash
-  python -c "from backend.src.database.init_db import init_db; init_db(force=True)"
-  ```
-  This requires a runner (GitHub Actions runner) with network access to the RDS. Since the RDS is in private subnets, this step runs **from the ECS task itself** via an AWS CLI command:
-  ```bash
-  aws ecs run-task --cluster laad-cluster --task-definition laad-api --overrides '{"command": ["python", "-c", "from backend.src.database.init_db import init_db; init_db(force=True)"]}' --launch-type FARGATE --network-configuration ...
-  ```
+**One-time RDS schema init** (via ECS run-task):
+Since the RDS is in private subnets, schema initialization must run from inside the VPC:
+```bash
+aws ecs run-task --cluster laad-cluster \
+  --task-definition laad-api \
+  --overrides '{"containerOverrides": [{"name": "api", "command": ["python", "-c", "from backend.src.database.init_db import init_db; init_db(force=True)"]}]}' \
+  --launch-type FARGATE \
+  --network-configuration '{"awsvpcConfiguration": {"subnets": ["<private-subnet-id>"], "securityGroups": ["<ecs-api-sg-id>"]}}'
+```
+
+**SNS notification** (within cd.yml, last step):
+```bash
+aws sns publish \
+  --topic-arn $(terraform output -raw sns_topic_arn) \
+  --subject "LAAD Deploy: ${{ github.sha }}" \
+  --message "Deployment completed successfully.\\nCommit: ${{ github.sha }}\\nBranch: ${{ github.ref_name }}"
+```
 
 **`terraform.yml`** — On PR or push to main modifying `terraform/*`:
 - Configure AWS credentials via OIDC
@@ -695,7 +758,7 @@ Create `.github/workflows/` with:
 - `terraform plan` (on PR — comment the plan on the PR)
 - `terraform apply` (on push to main — auto-approve)
 
-### Phase 9: Backend Code Changes (Agent)
+### Phase 10: Backend Code Changes (Agent)
 
 1. **SageMaker inference client**: Add to `ml_detector.py`:
    - New method `_predict_via_sagemaker(features)` using `boto3`
@@ -707,14 +770,13 @@ Create `.github/workflows/` with:
 2. **Graceful degradation for local services**: The following services are NOT deployed to ECS and should degrade gracefully:
    - **ChromaDB**: RAG vector store. If `CHROMA_HOST` is unreachable, the RAG endpoint returns a 503 with message "Vector store unavailable". No crash.
    - **Redis**: Cache. If `REDIS_HOST` is unreachable, the cache module falls back to no-op (no caching). The `redis_client.py` already handles this via `connect_ex` with fallback.
-   - **Kafka**: Consumer stays local (your machine). The API doesn't directly depend on Kafka.
-   - **Local Docker services (Postgres, Kafka, Redis, Chroma, Ollama)**: The ECS API only needs PostgreSQL + SageMaker + MLflow. All other connections are to cloud APIs (OpenRouter for LLM) or gracefully degrade when local services are unavailable.
+   - **Local Docker services (Redis, Chroma, Ollama)**: The ECS API only needs PostgreSQL + SageMaker + MLflow. All other connections are to cloud APIs (OpenRouter for LLM) or gracefully degrade when local services are unavailable.
 
    The env var injection from Secrets Manager (`laad/app/backend`) should set these to reasonable defaults that don't reference localhost.
 
 3. **No other backend code changes needed** — env vars already read from `os.environ` via `config.py` modules.
 
-### Phase 10: Verification & Manual Steps (You)
+### Phase 11: Verification & Manual Steps (You)
 
 1. Run manual Step 1 (download model from MLflow, upload to S3)
 2. Run `terraform apply` to create SageMaker endpoint (now that model data exists)
@@ -725,8 +787,10 @@ Create `.github/workflows/` with:
 7. Verify ALB DNS + `/docs` — FastAPI Swagger loads and APIs respond
 8. Verify frontend — open CloudFront URL in browser, React app loads
 9. Verify RDS connectivity — trigger an API call that hits the database (e.g., login or list anomalies). Check CloudWatch Logs for `laad-api` log group.
-10. Verify SageMaker — call the anomaly detection endpoint. If SageMaker is stopped, verify the fallback to local joblib model.
-11. (Optional) Manual Step 5 if doing Kafka on EC2
+10. Verify SageMaker — call the anomaly detection endpoint. If SageMaker is destroyed, verify the fallback to local joblib model.
+11. Run manual Step 5 (set up Kafka on EC2) — verify consumer processes messages by checking CloudWatch logs for `laad-consumer`
+12. Run manual Step 6 (subscribe to SNS) — verify you receive deployment notification emails
+13. Push a trivial change to main — verify full CI → CD pipeline including consumer deploy + SNS notification
 
 **Rollback plan**: If anything fails during Phase 10:
 - Terraform state persists all resources. Fix the issue and re-run `terraform apply`.
@@ -745,6 +809,8 @@ Create `.github/workflows/` with:
 | Single task per service | Cheaper | Portfolio demo load is near-zero. |
 | 2 AZs | HA story | Shows understanding of multi-AZ without over-engineering. |
 | Separate ECR repos per service | Cleaner | Each service gets its own image, can tag independently. |
+| Kafka on EC2 t4g.nano | Full cloud-native | $7/mo for a complete event-driven architecture story. Consumer runs as a separate ECS task. |
+| SNS email notifications | Simple | Free tier, no Slack dependency, shows awareness of notification patterns. |
 | CloudWatch Logs 14-day retention | Cost-saving | AWS charges ~$0.03/GB/month for logs. 14 days is sufficient for debugging. |
 | Separate RDS for app/MLflow | Isolation | MLflow metadata stays isolated. Each can be destroyed/recreated independently. |
 | S3 + CloudFront for frontend | Best practice | Global CDN, S3 is $0 for storage at this scale, CloudFront ~$1/mo at PriceClass_100. |
@@ -757,33 +823,36 @@ Create `.github/workflows/` with:
 | NAT Gateway | ~$35 | Single-AZ. Largest cost item. |
 | ALB | ~$22 | Per-hour charge + LCU costs (near-zero for demo) |
 | Fargate API (Spot 1 task) | ~$8 | 1024 CPU / 3072 MB, 730 hrs, Spot savings ~70% |
-| Fargate Consumer (Spot 0 tasks) | $0 | If consumer kept local |
+| Fargate Consumer (Spot 1 task) | ~$4 | 512 CPU / 1024 MB, 730 hrs, Spot savings ~70% |
+| EC2 t4g.nano (Kafka) | ~$7 | Amazon Linux 2023, 20GB gp3 EBS, single-broker KRaft |
 | RDS db.t4g.micro (20GB gp3) | ~$15 | PostgreSQL 16, 7-day backup, storage encrypted |
-| SageMaker ml.m5.large (auto-stop) | ~$20 | If running ~6 hrs/day, else ~$84 if 24/7 |
+| SageMaker ml.m5.large (on-demand) | ~$84 | Deployed continuously. ~$48 in free AWS credits cover ~2.5 weeks; ~$84/mo on card after. |
 | CloudFront (PriceClass_100) | ~$1 | ~0.5 GB/mo data transfer + request charges |
-| S3 frontend bucket | ~$0.10 | Minimal storage. CloudFront only origin |
+| S3 frontend bucket + versioning | ~$0.20 | Minimal storage. Versioning adds ~$0.10. |
 | ECR storage | ~$0.10 | Per GB/month, negligible |
 | CloudWatch Logs | ~$3 | 2 log groups, 14-day retention, minimal data |
 | ACM certs | $0 | Free |
 | Secrets Manager | ~$0.80 | 6 secrets ($0.40/secret), ~$0.05 per 10K API calls |
 | S3 Terraform state | ~$0.10 | 1 bucket, versioning, minimal storage |
 | DynamoDB (PAY_PER_REQUEST) | ~$0.10 | Lock table, near-zero usage |
+| SNS topic + email | ~$0 | Free tier covers notifications |
 | VPC (IP addresses) | $0 | No charge for VPC/subnets |
-| **Total (with SageMaker auto-stop)** | **~$105/mo** | NAT Gateway + ALB + RDS are unavoidable |
-| **Optimised (stop SageMaker + stop RDS when idle)** | **~$65-80/mo** | Stop non-essential services via cron |
+| **Total (with SageMaker)** | **~$180/mo** | SageMaker is the dominant cost. ~$48 in credits cover ~2.5 weeks. |
+| **Total (without SageMaker)** | **~$96/mo** | NAT Gateway + ALB + RDS + EC2 are the fixed costs. Predictable baseline. |
 
 ## Risks & Mitigations
 
 | Risk | Mitigation |
 |---|---|---|
-| Tests require Kafka/Redis/Ollama in CI | Skip integration tests in CI; run unit tests only. Document which tests require local services. |
+| Tests require Kafka/Redis/Ollama in CI | Unit + ML tests run in CI (no external deps). Integration/RAG tests marked with `@pytest.mark.integration` / `@pytest.mark.rag` and skipped in CI via `-m "not integration and not rag"`. |
 | SageMaker endpoint fails after MLflow model upgrade | Pin model version in Terraform. Manual update required after retraining. |
 | ALB DNS changes if stack recreated | Use Terraform to avoid deletion. Output ALB DNS once. |
 | MLflow RDS publicly accessible (current) | Do NOT change this — MLflow local Docker container needs it. The new LAAD RDS is in private subnets. |
 | NAT Gateway is single point of failure | Acceptable for portfolio. Document as known limitation. |
 | Fargate Spot can be interrupted | Use on-demand if interruption causes issues. For portfolio, Spot is fine. |
 | RDS schema init from CI/CD cannot reach private RDS | Run schema init as a one-shot ECS task inside the VPC using `aws ecs run-task`. |
-| LAAD app cannot connect to local services (Kafka, Redis, Chroma) from ECS | These stay local. Fargate API only needs PostgreSQL + SageMaker + MLflow (existing RDS). Frontend runs in browser. |
+| LAAD app (API) cannot connect to local services (Redis, Chroma) from ECS | These stay local. The API degrades gracefully — Redis falls back to no-op cache, Chroma returns 503. Frontend runs in browser. Consumer connects to EC2 Kafka inside the VPC. |
+| Kafka EC2 single point of failure | Acceptable for portfolio. Single broker, no replication. Has the same failure profile as the current local Docker setup. |
 | `db.t4g.micro` may burst CPU credits | For portfolio load, CPU credits will never drain. Monitor `CPUCreditBalance` in CloudWatch. |
 
 
