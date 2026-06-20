@@ -137,7 +137,7 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 - [ ] All backend code changes committed (S3 model loading, JWT guard, RAG graceful degradation, consumer health check + Kafka retry, configurable CORS, init_db production guard, SageMaker inference client)
 - [ ] All frontend code changes committed (`VITE_API_URL` env var, no hardcoded localhost references)
-- [ ] Dockerfile updated (USER appuser, curl installed, dead build-arg removed)
+- [ ] Dockerfile updated (multi-stage build with builder + runtime stages, USER appuser, curl installed, dead build-arg removed)
 - [ ] `pytest backend/tests/ --ignore=backend/tests/stress --ignore=backend/tests/integration -k "not chroma and not rag and not kafka"` passes
 - [ ] `npx vitest run` from `frontend/` passes
 - [ ] `docker build -t laad-app:test backend/` succeeds without errors
