@@ -86,21 +86,21 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 ---
 
-### Batch 0 — Bootstrap (🔲 Pending)
+### Batch 0 — Bootstrap (✅ Complete)
 
-**Status:** 🔲 Pending &nbsp;|&nbsp; **Date:** — &nbsp;|&nbsp; **Commander gate:** G0a → G0b
+**Status:** ✅ Complete &nbsp;|&nbsp; **Date:** 2026-06-20 &nbsp;|&nbsp; **Commander gate:** G0b ✅
 
-**Modules:** Bootstrap Terraform (build agent), backend.tf/providers.tf (build agent)
+**Modules:** Bootstrap Terraform (build), backend.tf/providers.tf (build)
 
-- [ ] `terraform apply` from `terraform/bootstrap/` completes with no errors
-- [ ] S3 bucket `laad-terraform-state-ahmedikram` exists with versioning enabled
-- [ ] DynamoDB table `laad-terraform-lock` exists with PAY_PER_REQUEST billing
-- [ ] `terraform init` from root `terraform/` loads remote state from S3
+- [x] `terraform apply` from `terraform/bootstrap/` completes with no errors
+- [x] S3 bucket `laad-terraform-state-ahmedikram` exists with versioning enabled
+- [x] DynamoDB table `laad-terraform-lock` exists with PAY_PER_REQUEST billing
+- [x] `terraform init` from root `terraform/` loads remote state from S3
 
 | Module | Agent ID | Files Created | Re-rolls | Verified |
 |--------|----------|---------------|----------|----------|
-| Bootstrap S3 + DynamoDB | — | — | — | — |
-| backend.tf / providers.tf | — | — | — | — |
+| Bootstrap S3 + DynamoDB | orchestrator | `terraform/bootstrap/main.tf` | 0 | Verified via `aws s3api` and `aws dynamodb` CLI |
+| backend.tf / providers.tf | orchestrator | `terraform/backend.tf`, `terraform/providers.tf`, `terraform/variables.tf`, `terraform/main.tf` | 0 | `terraform plan` shows "No changes" |
 
 ---
 
@@ -244,7 +244,8 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 | # | Date | Decision | Rationale | Author |
 |---|------|----------|-----------|--------|
-| | | | | |
+| D01 | 2026-06-20 | MLflow VPC CIDR is `172.31.0.0/16` (default VPC) — no overlap with LAAD `10.0.0.0/16` | Prerequisite verification confirmed no CIDR conflict | orchestrator |
+| D02 | 2026-06-20 | `dynamodb_table` deprecation warning in `backend.tf` — kept as-is | Plan explicitly requires DynamoDB-based state locking. Warning is cosmetic; functionality unchanged in Terraform 1.15. Not addressed until plan directs otherwise. | orchestrator |
 
 ---
 
