@@ -129,25 +129,33 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 ---
 
-### Batch 1b — Code Changes (🔲 Pending)
+### Batch 1b — Code Changes (✅ Complete)
 
-**Status:** 🔲 Pending &nbsp;|&nbsp; **Date:** — &nbsp;|&nbsp; **Commander gate:** (code review, no terraform)
+**Status:** ✅ Complete &nbsp;|&nbsp; **Date:** 2026-06-20 &nbsp;|&nbsp; **Commander gate:** (code review, no terraform)
 
 **Modules:** Backend (architect), Frontend (build), Dockerfile (build)
 
-- [ ] All backend code changes committed (S3 model loading, JWT guard, RAG graceful degradation, consumer health check + Kafka retry, configurable CORS, init_db production guard, SageMaker inference client)
-- [ ] All frontend code changes committed (`VITE_API_URL` env var, no hardcoded localhost references)
-- [ ] Dockerfile updated (multi-stage build with builder + runtime stages, USER appuser, curl installed, dead build-arg removed)
-- [ ] `pytest backend/tests/ --ignore=backend/tests/stress --ignore=backend/tests/integration -k "not chroma and not rag and not kafka"` passes
-- [ ] `npx vitest run` from `frontend/` passes
-- [ ] `docker build -t laad-app:test backend/` succeeds without errors
-- [ ] `docker run laad-app:test python -c "from backend.src.api.server import app"` succeeds (imports resolve, no startup crash from missing env vars)
+**Prerequisite:** MLflow RDS `laad-mlflow-postgres` password rotated (→ `GU1tA6axYwk8dD42JKUzrA9k`), secret `laad/db/mlflow` updated with `mlflow_admin` user.
+
+- [x] All backend code changes committed — 8 changes across 6 files
+  - `ml_detector.py`: S3 model download, SageMaker inference client, production mode guard
+  - `auth_router.py`: Removed `DEFAULT_SECRET_KEY`, raises `RuntimeError` if `JWT_SECRET_KEY` not set
+  - `retriever.py`: try/except in `__init__`, all methods guard against `collection is None`
+  - `consumer.py`: Health server (port 8081 via daemon thread) + Kafka retry (5 attempts)
+  - `init_db.py`: `LAAD_ENV=production` guard for `force=True`
+  - `server.py`: Configurable CORS via `CORS_ORIGINS` env var, skip startup retrain in production
+- [x] All frontend code changes committed — `AuthProvider.jsx` uses `VITE_API_URL` env var, no other hardcoded localhost references found
+- [x] Dockerfile updated — multi-stage build (builder + runtime), `USER appuser:appgroup`, `curl` installed, no dead build-args
+- [x] `pytest backend/tests/ ...` — **344 passed** (0 failures)
+- [x] `npx vitest run` — **149 passed** (0 failures)
+- [x] `docker build -t laad-app:test backend/` — **succeeded** (multi-stage, no errors)
+- [x] `docker run laad-app:test python -c "from backend.src.api.server import app"` — **OK** (with JWT_SECRET_KEY)
 
 | Module | Agent ID | Files Created | Re-rolls | Verified |
 |--------|----------|---------------|----------|----------|
-| Backend (8 changes) | — | — | — | — |
-| Frontend (VITE_API_URL) | — | — | — | — |
-| Dockerfile | — | — | — | — |
+| Backend (8 changes) | `ses_11a934aa1ffeLX9Bd6837TD61a` | 6 files modified | 0 | 344 pytest tests pass |
+| Frontend (VITE_API_URL) | `ses_11a90b968fferrYJgpf8Dgpz4B` | 1 file modified | 0 | 149 vitest tests pass |
+| Dockerfile | `ses_11a902cd6ffeK9NtI05oJRrJkZ` | 1 file modified | 0 | `docker build` + `docker run` succeed |
 
 ---
 
