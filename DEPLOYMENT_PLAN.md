@@ -741,6 +741,18 @@ jobs:
         run: |
           aws ecs update-service --cluster laad-cluster --service laad-generator-service \
             --force-new-deployment
+
+      - name: Smoke test — verify API health
+        run: |
+          # Wait for ECS services to finish rolling update
+          aws ecs wait services-stable --cluster laad-cluster \
+            --services laad-api-service laad-consumer-service laad-generator-service
+          # Health check against ALB
+          curl -f -s -o /dev/null -w "API health: %{http_code}\n" \
+            ${{ secrets.API_URL }}/health || {
+            echo "API health check failed — deployment may be unhealthy"
+            exit 1
+          }
 ```
 
 ### One-time RDS Schema Init (via ECS run-task)
@@ -947,21 +959,35 @@ def _predict_via_sagemaker(self, features: np.ndarray) -> np.ndarray:
 
 Fallback chain: SageMaker → S3 local model → heuristic-only.
 
-### 8. Dockerfile Hardening (H-17 fix)
+### 8. Dockerfile Hardening + Multi-Stage Build
 
 ```dockerfile
-FROM python:3.10-slim
+# Stage 1: Build dependencies (includes git for MLflow)
+FROM python:3.10-slim AS builder
 
-# Install system deps (curl for ECS health checks, git for MLflow)
-RUN apt-get update && apt-get install -y curl git --no-install-recommends \
+RUN apt-get update && apt-get install -y git --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# ... copy requirements, install deps ...
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Minimal runtime image
+FROM python:3.10-slim
+
+# Runtime system deps (curl for ECS health checks only — no git in final image)
+RUN apt-get update && apt-get install -y curl --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Create non-root user
 RUN addgroup --system appuser && adduser --system --ingroup appuser appuser
 
-# ... copy code ...
+# Copy application code
+COPY backend/ /app/
+WORKDIR /app
 
 USER appuser
 
@@ -970,7 +996,7 @@ EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "backend.src.api.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 ```
 
-**Note:** Single Dockerfile for all services. ECS task definition specifies the `command` override for consumer/generator roles. No `--build-arg CMD` needed — it's dead code and has been removed.
+**Multi-stage rationale:** Build deps (git, pip cache) are isolated in the builder stage and don't bloat the runtime image. The final image is smaller and has a smaller attack surface. Single Dockerfile for all services — ECS task definition specifies the `command` override for consumer/generator roles.
 
 ### 9. init_db Production Guard (P0-1 fix)
 
@@ -1320,6 +1346,68 @@ Minimal — most steps are automated by agents:
 | ECR lifecycle deletes rollback target | Low | 25-image retention + tagged images excluded from pruning. `:latest` tags always point to current deployment. |
 | JWT secret compromised | Low | `random_password` in Terraform (64 chars, no special). Secret can be rotated without downtime. |
 
+## Rollback Strategy
+
+Planned rollback procedures for each component — actionable steps, not theory.
+
+### ECS Services (API, Consumer, Generator)
+
+| Method | Command | Recovery Time |
+|--------|---------|---------------|
+| **Redeploy previous task def** | `aws ecs update-service --cluster laad-cluster --service laad-api-service --task-definition laad-api:<N-1> --force-new-deployment` | ~3 min |
+| **Revert ECR image** | Push previous image with `:api-latest` tag: `docker tag laad-app:$PREVIOUS_SHA $ECR_REGISTRY/laad-app:api-latest && docker push $ECR_REGISTRY/laad-app:api-latest`, then force deploy | ~5 min |
+| **Lifecycle protection** | ECR retains last 25 images. Tagged images (`api-latest`, `consumer-latest`, `generator-latest`) are excluded from lifecycle pruning. Previous task definition revisions persist indefinitely. | — |
+
+Deploy smoke test (CD pipeline) catches unhealthy deployments before they serve traffic. If the health check fails, the deploy job fails and the previous service revision remains active.
+
+### Frontend (S3 + CloudFront)
+
+| Method | Action | Recovery Time |
+|--------|--------|---------------|
+| **S3 versioning restore** | `aws s3api list-object-versions --bucket laad-frontend-ahmedikram --prefix index.html` → restore previous version ID | ~5 min |
+| **CloudFront invalidation** | `aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"` | ~2 min |
+| **Full revert** | `aws s3 sync s3://laad-frontend-ahmedikram s3://laad-frontend-ahmedikram --no-follow-symlinks` with previous version | ~10 min |
+
+S3 object versioning is enabled. CloudFront invalidation is manual (rarely needed for portfolio).
+
+### RDS Database
+
+| Method | Action | Recovery Time | Data Loss |
+|--------|--------|---------------|-----------|
+| **Point-in-time restore** | `aws rds restore-db-instance-to-point-in-time --source-db-instance-identifier laad-postgres --target-db-instance-identifier laad-postgres-restored --restore-time <timestamp>` | ~30 min | Up to 5 min (backup interval) |
+| **Latest restorable time** | `aws rds describe-db-instances --db-instance-identifier laad-postgres --query 'DBInstances[0].LatestRestorableTime'` | Instant check | — |
+
+Automated backups with 7-day retention. `deletion_protection = true` prevents accidental `terraform destroy`.
+
+### Terraform State
+
+| Scenario | Action | Notes |
+|----------|--------|-------|
+| **Bad apply** | `terraform state push <backup>` | State versioning in S3, DynamoDB lock prevents concurrent writes |
+| **State corruption** | Restore previous version from S3: `aws s3api list-object-versions --bucket laad-terraform-state-ahmedikram --key terraform/state/default.tfstate` → restore via `terraform state push` | S3 versioning enabled on state bucket |
+| **Full infrastructure teardown** | `terraform destroy` (after disabling `deletion_protection` on RDS) | Only if decommissioning. RDS deletion_protection requires manual disable first. |
+
+State bucket has MFA-delete protection and versioning. Never run `terraform destroy` without reviewing the plan first.
+
+### Kafka (EC2)
+
+No automated rollback. If Kafka data is corrupted:
+1. Terminate the EC2 instance via AWS console or CLI
+2. Terraform will recreate it with fresh `user_data` (on next apply)
+3. Consumer auto-reconnects and starts processing from latest offset
+4. Log generator repopulates data
+
+Acceptable for portfolio — data is synthetic and regenerable.
+
+### SageMaker Endpoint
+
+| Method | Action | Recovery Time |
+|--------|--------|---------------|
+| **Endpoint rollback** | Deploy previous model version: update `model_data_url` in Terraform to point at previous S3 path, `terraform apply` | ~10 min |
+| **Full stop** | `aws sagemaker delete-endpoint --endpoint-name laad-xgb-champion` | ~2 min |
+
+SageMaker is gated behind `sagemaker_enabled`. Disabling it and re-applying Terraform tears down the endpoint without affecting other infrastructure.
+
 ## Key Takeaways
 
 1. **~6-9 days wall-clock** (not 28-47 days) — agents parallelize batches. Human supervision is the bottleneck, not agent capacity. Multiple agents work simultaneously on independent modules.
@@ -1334,4 +1422,4 @@ Minimal — most steps are automated by agents:
 
 6. **Credential hygiene enforced**: No static AWS creds in Secrets Manager (ECS task role handles S3 access). `.env` removed from git. JWT generated by Terraform (no placeholder window).
 
-7. **Rollback strategy**: ECS task definition revision (25 images retained in ECR), S3 versioning for frontend, RDS backup restore (7-day retention).
+7. **Rollback strategy documented** — ECS (prior task def / ECR revert), frontend (S3 versioning + CloudFront invalidation), RDS (point-in-time restore, 7-day retention), Terraform (state versioning + MFA-delete), SageMaker (model rollback via Terraform). See full section above.
