@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -93,6 +94,10 @@ def init_db(schema_path: str = "schema.sql", db_path=None, force: bool = False) 
     """
     if db_path is not None:
         logger.info("init_db(db_path=...) is deprecated under PostgreSQL and is ignored")
+
+    if force and os.getenv("LAAD_ENV") == "production":
+        logger.error("init_db(force=True) is not allowed in production — refusing to drop tables")
+        return False
 
     schema_sql = _read_schema(schema_path)
 
