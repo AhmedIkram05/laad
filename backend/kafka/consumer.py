@@ -31,7 +31,10 @@ import json
 import logging
 import os
 import signal
+import sys
+import threading
 import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from kafka import KafkaConsumer
 from backend.kafka.chroma_buffer import ChromaBuffer
@@ -142,27 +145,72 @@ def _trigger_anomaly_sync() -> None:
         log.warning("Anomaly sync failed: %s", exc)
 
 
+def _start_health_server() -> None:
+    """Start a lightweight HTTP health server on port 8081 for ECS target group checks.
+
+    Serves {"status": "ok"} on GET /health. Runs as daemon thread.
+    """
+    class _HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path == "/health":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok"}')
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, fmt, *args) -> None:
+            log.debug("Health server: %s", fmt % args)
+
+    server = HTTPServer(("0.0.0.0", 8081), _HealthHandler)
+    log.info("Health server listening on 0.0.0.0:8081")
+    server.serve_forever()
+
+
 def run_consumer() -> None:
     signal.signal(signal.SIGTERM, _handle_sigterm)
     signal.signal(signal.SIGINT, _handle_sigterm)
 
+    # Start ECS health check server on a daemon thread
+    health_thread = threading.Thread(target=_start_health_server, daemon=True)
+    health_thread.start()
+    log.info("Health server thread started")
+
     dedup = Deduplicator(max_size=10_000)
     chroma = ChromaBuffer()
 
-    consumer = KafkaConsumer(
-        TOPIC_EVENTS,
-        TOPIC_METRICS,
-        bootstrap_servers=KAFKA_BOOTSTRAP,
-        group_id=CONSUMER_GROUP,
-        auto_offset_reset=AUTO_OFFSET_RESET,
-        enable_auto_commit=False,
-        value_deserializer=lambda raw: raw,
-        max_poll_records=500,
-        session_timeout_ms=30_000,
-        heartbeat_interval_ms=10_000,
-        fetch_min_bytes=1,
-        max_partition_fetch_bytes=10485760,
-    )
+    # Kafka connection with retry — up to 5 attempts, 10-second delay
+    consumer = None
+    for attempt in range(1, 6):
+        try:
+            consumer = KafkaConsumer(
+                TOPIC_EVENTS,
+                TOPIC_METRICS,
+                bootstrap_servers=KAFKA_BOOTSTRAP,
+                group_id=CONSUMER_GROUP,
+                auto_offset_reset=AUTO_OFFSET_RESET,
+                enable_auto_commit=False,
+                value_deserializer=lambda raw: raw,
+                max_poll_records=500,
+                session_timeout_ms=30_000,
+                heartbeat_interval_ms=10_000,
+                fetch_min_bytes=1,
+                max_partition_fetch_bytes=10485760,
+            )
+            log.info(
+                "Kafka consumer connected (attempt %d/5). Bootstrap: %s",
+                attempt, KAFKA_BOOTSTRAP,
+            )
+            break
+        except Exception as e:
+            log.error("Kafka connection failed (attempt %d/5): %s", attempt, e)
+            if attempt < 5:
+                time.sleep(10)
+            else:
+                log.critical("All 5 Kafka connection attempts failed — exiting")
+                sys.exit(1)
 
     log.info("Consumer started. Topics: %s, %s. Group: %s",
              TOPIC_EVENTS, TOPIC_METRICS, CONSUMER_GROUP)

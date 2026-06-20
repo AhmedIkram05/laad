@@ -6,6 +6,7 @@ Run with:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -58,7 +59,12 @@ async def lifespan(app: FastAPI):
     """Manages scheduler startup and shutdown."""
     logger.info("Starting up — initialising database")
     _ensure_db_initialized()
-    _check_and_retrain_on_startup()
+
+    laad_env = os.getenv("LAAD_ENV", "")
+    if laad_env == "production":
+        logger.info("LAAD_ENV=production — skipping startup model check and retrain")
+    else:
+        _check_and_retrain_on_startup()
 
     scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup", misfire_grace_time=60)
     scheduler.start()
@@ -107,7 +113,7 @@ app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

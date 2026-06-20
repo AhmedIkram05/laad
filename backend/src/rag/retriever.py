@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -38,8 +37,13 @@ class RAGRetriever:
     """Retrieves relevant ATM log chunks from ChromaDB with confidence scoring."""
 
     def __init__(self):
-        self.client = self._build_client()
-        self.collection = self._get_collection()
+        try:
+            self.client = self._build_client()
+            self.collection = self._get_collection()
+        except Exception as e:
+            logger.warning("ChromaDB unavailable: %s — RAG retrieval disabled", e)
+            self.client = None
+            self.collection = None
         self._cross_encoder = None
 
     def _load_cross_encoder(self) -> None:
@@ -125,6 +129,10 @@ class RAGRetriever:
             error_only: If True, filter for ERROR/FATAL severity or anomaly types
             most_recent_first: If True, sort by timestamp descending (for "most recent" queries)
         """
+        if self.collection is None:
+            logger.debug("ChromaDB unavailable — returning empty retrieval")
+            return []
+
         if top_k is None:
             top_k = config.retrieval_top_k
         if error_only is None:
@@ -271,6 +279,10 @@ class RAGRetriever:
 
     def retrieve_by_atm(self, atm_id: str, limit: int = 10) -> list[RetrievedChunk]:
         """Retrieve recent chunks for a specific ATM."""
+        if self.collection is None:
+            logger.debug("ChromaDB unavailable — returning empty ATM retrieval")
+            return []
+
         try:
             results = self.collection.get(
                 where={"atm_id": atm_id},
@@ -299,6 +311,10 @@ class RAGRetriever:
 
     def get_collection_stats(self) -> dict[str, Any]:
         """Get collection statistics."""
+        if self.collection is None:
+            logger.debug("ChromaDB unavailable — returning empty stats")
+            return {"error": "ChromaDB unavailable"}
+
         try:
             count = self.collection.count()
             return {
@@ -311,6 +327,10 @@ class RAGRetriever:
 
     def clear_collection(self) -> dict[str, Any]:
         """Clear all documents from the collection."""
+        if self.client is None or self.collection is None:
+            logger.debug("ChromaDB unavailable — cannot clear collection")
+            return {"error": "ChromaDB unavailable"}
+
         try:
             self.client.delete_collection(config.chroma_collection)
             self.collection = self.client.create_collection(
@@ -329,6 +349,10 @@ class RAGRetriever:
         Args:
             new_client: If True, creates a new client (useful when ChromaDB was restarted)
         """
+        if self.client is None:
+            logger.debug("ChromaDB unavailable — cannot rebuild collection")
+            return {"error": "ChromaDB unavailable"}
+
         global _retriever
         try:
             if new_client:

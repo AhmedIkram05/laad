@@ -30,12 +30,22 @@ logger = logging.getLogger(__name__)
 
 # Config
 MIN_SECRET_KEY_BYTES = 32
-DEFAULT_SECRET_KEY = "dev-secret-change-in-production!"
+
+# JWT_SECRET_KEY must be set in production via AWS Secrets Manager
 
 
 def _load_secret_key() -> str:
-    """Returns an HS256-compatible JWT secret key."""
-    secret_key = os.environ.get("JWT_SECRET_KEY") or DEFAULT_SECRET_KEY
+    """Returns an HS256-compatible JWT secret key.
+
+    JWT_SECRET_KEY must be set in production via AWS Secrets Manager.
+    Raises RuntimeError at module import time if not configured.
+    """
+    secret_key = os.environ.get("JWT_SECRET_KEY")
+    if secret_key is None:
+        raise RuntimeError(
+            "JWT_SECRET_KEY environment variable is required. "
+            "Set it in production via AWS Secrets Manager."
+        )
     secret_key_bytes = len(secret_key.encode("utf-8"))
     if secret_key_bytes >= MIN_SECRET_KEY_BYTES:
         return secret_key

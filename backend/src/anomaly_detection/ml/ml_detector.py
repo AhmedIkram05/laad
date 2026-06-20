@@ -40,7 +40,7 @@ import mlflow
 import numpy as np
 
 from backend.src.database.connection import get_cursor
-from backend.src.anomaly_detection.ml.feature_engineering import extract_features, FEATURE_NAMES, FEATURE_COUNT
+from backend.src.anomaly_detection.ml.feature_engineering import extract_features
 from backend.src.anomaly_detection.anomaly_detector import detect_anomalies_from_window
 from backend.src.analytics.analytics_router import increment_anomaly_counter
 
@@ -197,6 +197,17 @@ class MLAnomalyDetector:
         self._if_feature_indices:  list[int] | None = None
         self._if_unknown_threshold: float = UNKNOWN_ANOMALY_THRESHOLD
         self._loaded  = self._load_models()
+        if not self._loaded:
+            self._download_models_from_s3()
+            self._loaded = self._load_models()  # Retry after S3 download
+
+        # Production guard: skip local training fallback if models still absent
+        if not self._loaded and os.getenv("LAAD_ENV") == "production":
+            log.warning(
+                "LAAD_ENV=production: No model artifacts found locally or in S3. "
+                "ML_ENSEMBLE layer disabled. ZSCORE and HEURISTIC layers still operate."
+            )
+
         self._mlflow_available = False
         self._baseline = RollingBaseline()
         self._last_saved_anomalies: list[dict] = []
@@ -255,6 +266,83 @@ class MLAnomalyDetector:
         except FileNotFoundError:
             log.warning("Model artifacts not found at %s", ARTIFACT_DIR)
             return False
+
+    def _download_models_from_s3(self) -> None:
+        """Download model artifacts from S3 to local ARTIFACT_DIR.
+
+        Reads S3_MODEL_ARTIFACTS_PATH env var (format: s3://bucket/prefix/).
+        Falls back gracefully to local artifacts if env var not set or download fails.
+        Skips download if all required model files already exist locally.
+        """
+        s3_path = os.getenv("S3_MODEL_ARTIFACTS_PATH", "").strip()
+        if not s3_path:
+            log.info("S3_MODEL_ARTIFACTS_PATH not set — skipping S3 model download")
+            return
+
+        required_files = [
+            "xgb_classifier.joblib", "isolation_forest.joblib",
+            "label_encoder.joblib", "scaler.joblib",
+            "if_feature_indices.json", "if_unknown_threshold.json",
+        ]
+
+        # Avoid redundant downloads
+        if all((ARTIFACT_DIR / f).exists() for f in required_files):
+            log.info("Models already present locally at %s — skipping S3 download", ARTIFACT_DIR)
+            return
+
+        try:
+            import boto3
+            from urllib.parse import urlparse
+
+            parsed = urlparse(s3_path)
+            bucket = parsed.netloc
+            prefix = parsed.path.lstrip("/")
+            if prefix and not prefix.endswith("/"):
+                prefix += "/"
+
+            s3 = boto3.client("s3")
+            for filename in required_files:
+                key = f"{prefix}{filename}"
+                local_path = ARTIFACT_DIR / filename
+                s3.download_file(bucket, key, str(local_path))
+                log.info("Downloaded %s from s3://%s/%s", filename, bucket, key)
+
+            log.info("S3 model download complete — all %d files downloaded", len(required_files))
+        except Exception as e:
+            log.warning("Failed to download models from S3 (%s): %s — using local artifacts", s3_path, e)
+
+    def _sagemaker_predict(self, features: np.ndarray) -> dict | None:
+        """Invoke a SageMaker endpoint for inference.
+
+        Reads SAGEMAKER_ENDPOINT_NAME env var (optional).
+        Returns parsed response dict or None if endpoint not configured or call fails.
+        Features are sent as CSV via boto3 runtime.sagemaker client.
+        """
+        endpoint = os.getenv("SAGEMAKER_ENDPOINT_NAME", "").strip()
+        if not endpoint:
+            return None
+
+        log.info("SageMaker endpoint configured: %s", endpoint)
+        try:
+            import boto3
+
+            runtime = boto3.client("runtime.sagemaker")
+            if features.ndim == 1:
+                features = features.reshape(1, -1)
+
+            csv_payload = "\n".join([",".join(str(v) for v in row) for row in features])
+
+            response = runtime.invoke_endpoint(
+                EndpointName=endpoint,
+                ContentType="text/csv",
+                Body=csv_payload,
+            )
+            result = response["Body"].read().decode("utf-8")
+            log.info("SageMaker inference complete for endpoint %s", endpoint)
+            return {"raw_prediction": result}
+        except Exception as e:
+            log.warning("SageMaker inference failed for endpoint %s: %s", endpoint, e)
+            return None
 
     def _attribution_for(self, anomaly_type: str, rows: list[dict]) -> str | None:
         """Entity-aware ATM/service attribution per anomaly type.
