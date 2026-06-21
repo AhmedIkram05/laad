@@ -1,0 +1,107 @@
+name: LAAD CD
+
+on:
+  workflow_run:
+    workflows: ["LAAD CI"]
+    types: [completed]
+    branches: [main]
+
+env:
+  AWS_REGION: eu-west-2
+  ECR_REPO: ${{ secrets.ECR_REPOSITORY }}
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout the commit that triggered CI
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.event.workflow_run.head_sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build, tag, and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # Build once with cache, tag thrice
+          docker build \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+            -t laad-app:$IMAGE_TAG backend/
+
+          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:api-latest
+          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:consumer-latest
+          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:generator-latest
+          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+
+          docker push --all-tags $ECR_REGISTRY/$ECR_REPO
+
+          # Move cache so it doesn't grow indefinitely
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Build frontend
+        run: |
+          npm ci
+          VITE_API_URL=${{ secrets.API_URL }} npm run build
+        working-directory: frontend
+
+      - name: Sync frontend to S3
+        run: |
+          aws s3 sync frontend/dist s3://${{ secrets.S3_BUCKET }} --delete
+        working-directory: frontend
+
+      - name: Force ECS deploy — API
+        run: |
+          aws ecs update-service --cluster laad-cluster \
+            --service laad-api --force-new-deployment
+
+      - name: Force ECS deploy — Consumer
+        run: |
+          aws ecs update-service --cluster laad-cluster \
+            --service laad-consumer --force-new-deployment
+
+      - name: Force ECS deploy — Generator
+        run: |
+          aws ecs update-service --cluster laad-cluster \
+            --service laad-generator --force-new-deployment
+
+      - name: Smoke test — verify API health
+        run: |
+          # Wait for ECS services to finish rolling update
+          aws ecs wait services-stable --cluster laad-cluster \
+            --services laad-api laad-consumer laad-generator
+
+          # Health check against ALB
+          curl -f -s -o /dev/null -w "API health: %{http_code}\n" \
+            ${{ secrets.API_URL }}/health || {
+            echo "API health check failed — deployment may be unhealthy"
+            exit 1
+          }
