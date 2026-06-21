@@ -32,7 +32,7 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:ahmedikram/laad:ref:refs/heads/main"]
+      values   = ["repo:ahmedikram05/laad:ref:refs/heads/main"]
     }
   }
 }
@@ -116,8 +116,8 @@ data "aws_iam_policy_document" "github_actions_s3" {
       "s3:DeleteObject"
     ]
     resources = [
-      "arn:aws:s3:::${var.project_name}-frontend-ahmedikram",
-      "arn:aws:s3:::${var.project_name}-frontend-ahmedikram/*"
+      "arn:aws:s3:::${var.project_name}-frontend-${data.aws_caller_identity.current.account_id}",
+      "arn:aws:s3:::${var.project_name}-frontend-${data.aws_caller_identity.current.account_id}/*"
     ]
   }
 
@@ -127,7 +127,7 @@ data "aws_iam_policy_document" "github_actions_s3" {
       "s3:ListBucket"
     ]
     resources = [
-      "arn:aws:s3:::${var.project_name}-frontend-ahmedikram"
+      "arn:aws:s3:::${var.project_name}-frontend-${data.aws_caller_identity.current.account_id}"
     ]
   }
 }
