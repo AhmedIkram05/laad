@@ -1,6 +1,6 @@
 """Tests for backend.src.database.init_db."""
 from __future__ import annotations
-
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -112,8 +112,8 @@ class TestInitDb:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
-        # Override LAAD_ENV so the production guard doesn't block force=True
-        with patch("backend.src.database.init_db.os.getenv", return_value="test"):
+        # Override LAAD_ENV via environ so the production guard doesn't block force=True
+        with patch.dict(os.environ, {"LAAD_ENV": "test"}, clear=False):
             with patch("backend.src.database.init_db.get_conn", return_value=mock_conn), \
                  patch("backend.src.database.init_db.release_conn"):
                 with patch("backend.src.database.init_db.seed_atms"):
