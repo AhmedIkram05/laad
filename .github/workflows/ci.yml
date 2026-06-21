@@ -1,4 +1,4 @@
-name: LAAD CI
+name: CI
 
 on:
   push:
