@@ -95,7 +95,13 @@ data "aws_iam_policy_document" "github_actions_ecs" {
       "ecs:DescribeTasks",
       "ecs:ListTaskDefinitions"
     ]
-    resources = ["arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*:${var.project_name}-*"]
+    resources = [
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${var.project_name}-*",
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:cluster/${var.project_name}-*",
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task-definition/${var.project_name}-*",
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task-definition/${var.project_name}-*:*",
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task/*",
+    ]
   }
 }
 
