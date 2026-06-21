@@ -54,11 +54,11 @@ jobs:
 
       - name: Run backend tests
         env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_DB: atm_platform
-          POSTGRES_USER: atm_user
-          POSTGRES_PASSWORD: test_password
+          TEST_POSTGRES_HOST: localhost
+          TEST_POSTGRES_PORT: 5432
+          TEST_POSTGRES_DB: atm_platform
+          TEST_POSTGRES_USER: atm_user
+          TEST_POSTGRES_PASSWORD: test_password
           JWT_SECRET_KEY: ci-test-secret-key-for-laad-pipeline
         run: |
           python -m pytest backend/tests/ -v --tb=short \
