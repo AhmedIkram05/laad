@@ -6,13 +6,47 @@ on:
     types: [completed]
     branches: [main]
 
+concurrency:
+  group: cd-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
 env:
   AWS_REGION: eu-west-2
   ECR_REPO: ${{ secrets.ECR_REPOSITORY }}
 
 jobs:
-  deploy:
+  # ── Check if deployable code actually changed ─────────────────────
+  should-deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.check.outputs.deploy }}
+    steps:
+      - name: Checkout with depth 2 (to diff against parent)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+
+      - name: Detect deployable changes
+        id: check
+        run: |
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          echo "━━━ Files changed in this commit ━━━"
+          echo "$CHANGED_FILES"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          if echo "$CHANGED_FILES" | grep -q -E '^(backend/|frontend/|docker-compose.yml|Makefile)'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "→ Deployable changes detected."
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "→ Only docs/config/other changed — skipping deploy."
+          fi
+
+  # ── Deploy to AWS ECS ────────────────────────────────────────────
+  deploy:
+    needs: should-deploy
+    if: needs.should-deploy.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -75,7 +109,7 @@ jobs:
 
       - name: Sync frontend to S3
         run: |
-          aws s3 sync frontend/dist s3://${{ secrets.S3_BUCKET }} --delete
+          aws s3 sync ./dist s3://${{ secrets.S3_BUCKET }} --delete
         working-directory: frontend
 
       - name: Force ECS deploy — API

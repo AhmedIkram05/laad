@@ -6,24 +6,37 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: atm_platform
-          POSTGRES_USER: atm_user
-          POSTGRES_PASSWORD: test_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  # ── Detect changed paths ──────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'docker-compose.yml'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
+              - 'docker-compose.yml'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+
+  # ── Lint & Security (fast, always runs) ──────────────────────────
+  lint:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -52,6 +65,37 @@ jobs:
           exit-code: 1
           skip-dirs: node_modules,frontend/node_modules,.git
 
+  # ── Backend tests (only on backend changes) ──────────────────────
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: atm_platform
+          POSTGRES_USER: atm_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
       - name: Initialize database schema
         env:
           POSTGRES_HOST: localhost
@@ -78,10 +122,28 @@ jobs:
             -k "not chroma and not rag and not kafka" \
             --cov=backend/src --cov-report=term-missing --cov-report=xml:coverage-backend.xml
 
+      - name: Upload backend coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage-backend.xml
+          flags: backend
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  # ── Frontend tests (only on frontend changes) ────────────────────
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
       - name: Set up Node.js 22
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
         run: npm ci
@@ -91,10 +153,10 @@ jobs:
         run: npx vitest run --coverage
         working-directory: frontend
 
-      - name: Upload coverage to Codecov
+      - name: Upload frontend coverage
         uses: codecov/codecov-action@v5
         with:
-          files: coverage-backend.xml,frontend/coverage/lcov.info
-          flags: backend,frontend
+          files: frontend/coverage/lcov.info
+          flags: frontend
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
