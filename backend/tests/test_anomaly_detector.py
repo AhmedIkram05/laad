@@ -1,5 +1,4 @@
 """Tests for the standalone detection functions and AnomalyDetector class."""
-import pytest
 from datetime import datetime, timezone
 import json
 

@@ -1,7 +1,6 @@
 """Tests for RAG uncertainty estimation with multi-signal fusion."""
 
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 class TestRetrievalConfidence:

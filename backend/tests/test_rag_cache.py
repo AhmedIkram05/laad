@@ -1,6 +1,5 @@
 """Tests for RAG Redis caching module."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 import json
 

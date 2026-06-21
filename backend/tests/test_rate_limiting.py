@@ -1,7 +1,6 @@
 """Tests for distributed rate limiting with Redis sorted sets."""
 
 import pytest
-import time
 from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 

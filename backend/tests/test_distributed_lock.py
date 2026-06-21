@@ -1,6 +1,5 @@
 """Tests for distributed locking in Kafka consumer anomaly detection."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 

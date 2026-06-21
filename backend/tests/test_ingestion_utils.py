@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import patch
 
-import pytest
 
 from backend.src.ingestion.utils import parse_to_utc_iso
 
@@ -78,4 +76,3 @@ class TestParseToUtcIso:
         assert result is not None
 
 
-import sys

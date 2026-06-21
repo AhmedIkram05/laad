@@ -5,7 +5,7 @@ Tests mock the Kafka producer to verify correct topic routing and field structur
 """
 from __future__ import annotations
 import pytest
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 
 from backend.generator.emitters import (

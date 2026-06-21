@@ -1,9 +1,7 @@
 """Unit tests for feature engineering — pure functions, no DB needed."""
 from __future__ import annotations
 
-import json
 import numpy as np
-import pytest
 
 from backend.src.anomaly_detection.ml.feature_engineering import extract_features, extract_label, FEATURE_NAMES, FEATURE_COUNT
 

@@ -1,6 +1,5 @@
 """Tests for shared Redis client module."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 

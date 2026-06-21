@@ -1,7 +1,5 @@
 """Unit tests for Kafka consumer."""
 from __future__ import annotations
-import pytest
-import signal
 from unittest.mock import MagicMock, patch
 from itertools import cycle
 

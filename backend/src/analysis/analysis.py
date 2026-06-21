@@ -1,5 +1,4 @@
-from typing import List, Dict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import json
 from psycopg2.extras import RealDictCursor
 from backend.src.database.connection import get_conn, release_conn

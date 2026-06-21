@@ -25,8 +25,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
-from uuid import uuid4
 
 from backend.src.database.connection import get_cursor
 from backend.kafka.chroma_buffer import ChromaBuffer

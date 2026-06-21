@@ -1,6 +1,5 @@
 """Unit tests for metric handler."""
 from __future__ import annotations
-import pytest
 from unittest.mock import MagicMock, patch
 
 from backend.kafka.handlers.metric_handler import handle_metric

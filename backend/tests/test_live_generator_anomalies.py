@@ -6,7 +6,7 @@ progressive emission — one message per call, tracked across calls.
 """
 from __future__ import annotations
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from datetime import datetime, timezone
 
 from backend.generator.anomaly_injectors import (

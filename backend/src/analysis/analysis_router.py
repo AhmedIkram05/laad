@@ -1,9 +1,8 @@
 from __future__ import annotations
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
-from backend.src.auth.auth_router import get_current_user
 from backend.src.analysis.analysis import main as run_analysis
 from backend.src.analysis.metrics import get_time_bucketed_anomalies, get_anomaly_summary
 

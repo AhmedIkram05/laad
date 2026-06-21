@@ -1,6 +1,5 @@
 """Tests for RAG retriever module."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 

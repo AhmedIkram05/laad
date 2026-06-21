@@ -9,7 +9,7 @@ from backend.src.ingestion.parsers.kafka_metrics import KafkaMetricsParser
 from backend.src.ingestion.parsers.prometheus import PrometheusParser
 from backend.src.ingestion.parsers.terminal_handler import TerminalHandlerParser
 from backend.src.ingestion.parsers.windows_os import WindowsOSParser
-from backend.tests.helpers import reset_test_db, sample_path
+from backend.tests.helpers import reset_test_db
 
 
 def _feed_json(parser, path: str, source: str, max_records: int = 5) -> int:

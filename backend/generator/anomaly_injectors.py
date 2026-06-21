@@ -8,7 +8,7 @@ full signal cascade in a single call (matches real-world burst behavior).
 from __future__ import annotations
 import random
 from uuid import uuid4
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from backend.generator.config import ATMS, SERVERS, ATM_LOCATIONS
 

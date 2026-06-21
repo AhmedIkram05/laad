@@ -1,6 +1,5 @@
 """Tests for Redis Stream-based Dead Letter Queue."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 import time
 

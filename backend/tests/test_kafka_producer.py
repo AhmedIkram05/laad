@@ -1,7 +1,6 @@
 """Unit tests for Kafka producer."""
 from __future__ import annotations
-import pytest
-from unittest.mock import MagicMock, patch, Mock
+from unittest.mock import MagicMock, patch
 import sys
 from datetime import datetime, timezone
 

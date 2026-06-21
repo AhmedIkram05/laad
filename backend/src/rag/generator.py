@@ -10,13 +10,11 @@ Features:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from backend.src.rag.llm_client import get_llm_client, LLMResponse
@@ -480,7 +478,7 @@ If you find unsupported claims, list each one with:
             if "NO_ISSUES_FOUND" in critique_text:
                 logger.info("Reflexion: no issues found in generated answer")
                 return None
-            logger.warning(f"Reflexion: critique identified issues in answer")
+            logger.warning("Reflexion: critique identified issues in answer")
             return critique_text
         except Exception as e:
             logger.warning(f"Self-critique failed: {e}")
@@ -575,7 +573,6 @@ If the context doesn't contain enough information to fully answer the question, 
 
     def _generate_stats_fallback(self, chunks: list[RetrievedChunk]) -> str:
         """Generate stats response from chunks when DB is unavailable."""
-        from collections import Counter
         atms = [c.atm_id for c in chunks if c.atm_id]
         types = [_extract_anomaly_tag(c) for c in chunks]
 

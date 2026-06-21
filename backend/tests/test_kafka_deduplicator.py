@@ -1,7 +1,5 @@
 """Unit tests for Kafka deduplicator."""
 from __future__ import annotations
-import pytest
-from unittest.mock import patch
 from backend.kafka.deduplicator import Deduplicator
 
 

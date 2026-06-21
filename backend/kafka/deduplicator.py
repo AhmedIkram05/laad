@@ -17,7 +17,6 @@ import logging
 from collections import OrderedDict
 from typing import Optional
 
-import redis
 
 from backend.src.cache import get_redis_client
 

@@ -1,6 +1,5 @@
 """Tests for Redis Pub/Sub anomaly alerting."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 
