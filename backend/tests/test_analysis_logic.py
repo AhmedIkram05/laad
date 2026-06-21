@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -271,4 +271,4 @@ class TestBuildDetailedTable:
         assert "does not match" in result[0]["root_cause"].lower()
 
 
-import json
+import json  # noqa: E402

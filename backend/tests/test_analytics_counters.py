@@ -1,6 +1,5 @@
 """Tests for Redis analytics counters and HyperLogLog."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone, timedelta
 
@@ -126,7 +125,6 @@ class TestAnalyticsCounters:
     def test_realtime_stats_all_time_uses_db(self, mock_get_client):
         """Test that hours=0 skips Redis and uses DB fallback."""
         from backend.src.analytics.analytics_router import get_realtime_stats
-        from backend.src.database.connection import get_conn, release_conn
 
         # Redis client should not be called for hours=0
         mock_get_client.return_value = MagicMock()

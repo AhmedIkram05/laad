@@ -235,8 +235,6 @@ def train() -> None:
             log.error("No training data found. Ensure the generator has been running.")
             return
 
-        start_ts = all_rows[0]["timestamp"]
-        end_ts   = all_rows[-1]["timestamp"]
         window_delta = timedelta(seconds=WINDOW_SECONDS)
         step_delta   = timedelta(seconds=STEP_SECONDS)
 
@@ -269,11 +267,11 @@ def train() -> None:
             return
 
         X_all = np.stack(X_list)
-        label_counts = {str(l): labels.count(l) for l in set(labels) if l is not None}
+        label_counts = {str(lb): labels.count(lb) for lb in set(labels) if lb is not None}
         label_counts["NORMAL"] = labels.count(None)
         print(f"Loaded {len(X_all)} non-overlapping windows. Label distribution: {label_counts}")
 
-        normal_mask = np.array([l is None for l in labels])
+        normal_mask = np.array([lb is None for lb in labels])
         X_normal = X_all[normal_mask]
         X_anomaly = X_all[~normal_mask]
 
@@ -289,7 +287,7 @@ def train() -> None:
         # XGBoost training — runs first so we can use its feature importance
         # for IF feature selection.
         # ─────────────────────────────────────────────────────────────────────
-        label_strings = [l if l is not None else "NORMAL" for l in labels]
+        label_strings = [lb if lb is not None else "NORMAL" for lb in labels]
         le = LabelEncoder()
         y  = le.fit_transform(label_strings)
 
@@ -361,10 +359,6 @@ def train() -> None:
         # Fit scaler on ALL 49 features (inference pipeline scales before subsetting)
         scaler = StandardScaler()
         scaler.fit(X_normal)
-
-        X_all_if = X_all[:, if_feature_indices]
-        X_normal_if = X_all_if[normal_mask]
-        X_anomaly_if = X_all_if[~normal_mask]
 
         X_normal_scaled = scaler.transform(X_normal)
         X_normal_scaled_if = X_normal_scaled[:, if_feature_indices]

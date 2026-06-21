@@ -1,7 +1,6 @@
 import os
 import sys
 import pytest
-from unittest.mock import patch
 
 test_host = os.getenv("TEST_POSTGRES_HOST")
 if test_host is None:

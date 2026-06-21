@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,8 +22,8 @@ def sample_anomaly():
 
 class TestAnomalySyncerInit:
     def test_init_sets_empty_synced_ids(self):
-        with patch("backend.kafka.anomaly_syncer.ChromaBuffer") as mock_buffer:
-            from backend.kafka.anomaly_syncer import AnomalySyncer
+        with patch("backend.kafka.anomaly_syncer.ChromaBuffer") as mock_buffer:  # noqa: F841
+            from backend.kafka.anomaly_syncer import AnomalySyncer  # noqa: E402
             syncer = AnomalySyncer()
         assert syncer._synced_ids == set()
 

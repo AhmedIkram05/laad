@@ -26,7 +26,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.github
 AGENTS.md
 .agents
 test-results
@@ -34,6 +33,7 @@ test-results
 # Terraform state files (stored remotely in S3)
 *.tfstate
 *.tfstate.backup
+terraform/tfplan
 
 # Terraform provider/plugin cache
 .terraform/
@@ -48,3 +48,4 @@ data/
 skills-lock.json
 backend/coverage.xml
 frontend/coverage
+

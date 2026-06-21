@@ -1,5 +1,4 @@
 """Tests for the standalone detection functions and AnomalyDetector class."""
-import pytest
 from datetime import datetime, timezone
 import json
 
@@ -370,7 +369,7 @@ class TestDetectAnomaliesFromWindow:
         window_start = datetime(2024, 1, 1, 9, 0, tzinfo=timezone.utc)
         window_end = datetime(2024, 1, 1, 10, 0, tzinfo=timezone.utc)
         data = []
-        ingestion_errors = [
+        ingestion_errors = [  # noqa: F841
             {"id": 1, "ts": datetime(2024, 1, 1, 9, 30, tzinfo=timezone.utc),
              "source": "PROMETHEUS", "raw_input": "{}", "error_detail": "parse error"},
             {"id": 2, "ts": datetime(2024, 1, 1, 9, 32, tzinfo=timezone.utc),

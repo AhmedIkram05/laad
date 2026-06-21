@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 from backend.generator.config import (
-    TICK_SECONDS, BACKFILL_MINUTES, ANOMALY_PROB, GENERATOR_SEED, ATMS
+    TICK_SECONDS, BACKFILL_MINUTES, ANOMALY_PROB, GENERATOR_SEED
 )
 from backend.generator.emitters import BASELINE_EMITTERS
 from backend.generator.anomaly_injectors import ANOMALY_REGISTRY

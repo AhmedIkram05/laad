@@ -5,7 +5,7 @@ Tests mock the Kafka producer to verify correct topic routing and field structur
 """
 from __future__ import annotations
 import pytest
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 
 from backend.generator.emitters import (
@@ -29,7 +29,9 @@ class TestEmitAtmAppEvents:
     def test_sends_event_to_atm_events_topic(self):
         mock = _mock_producer()
         t = datetime.now(timezone.utc)
-        emit_atm_app_events(mock, t)
+        # Use deterministic random to avoid flaky failures (0.35 probability × 10 ATMs)
+        with patch("backend.generator.emitters.random.random", return_value=0.1):
+            emit_atm_app_events(mock, t)
         mock.send_event.assert_called()
 
 

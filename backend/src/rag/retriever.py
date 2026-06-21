@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -322,7 +321,7 @@ class RAGRetriever:
                 "collection_name": config.chroma_collection,
             }
         except Exception as e:
-            logger.error(f"Failed to get collection stats: %s", str(e))
+            logger.error("Failed to get collection stats: %s", str(e))
             return {"error": str(e)}
 
     def clear_collection(self) -> dict[str, Any]:
@@ -340,7 +339,7 @@ class RAGRetriever:
             logger.warning("Cleared and recreated ChromaDB collection: %s", config.chroma_collection)
             return {"success": True, "message": f"Cleared collection: {config.chroma_collection}"}
         except Exception as e:
-            logger.error(f"Failed to clear collection: %s", str(e))
+            logger.error("Failed to clear collection: %s", str(e))
             return {"error": str(e)}
 
     def rebuild_collection(self, new_client: bool = False) -> dict[str, Any]:
@@ -365,7 +364,7 @@ class RAGRetriever:
             logger.info("Rebuilt ChromaDB collection: %s", config.chroma_collection)
             return {"success": True, "message": f"Rebuilt collection: {config.chroma_collection}"}
         except Exception as e:
-            logger.error(f"Failed to rebuild collection: %s", str(e))
+            logger.error("Failed to rebuild collection: %s", str(e))
             return {"error": str(e)}
 
 

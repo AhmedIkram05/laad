@@ -1,6 +1,5 @@
 """Tests for RAG utility functions."""
 
-import pytest
 from backend.src.rag.utils import (
     detect_query_intent,
     extract_atm_id_from_query,

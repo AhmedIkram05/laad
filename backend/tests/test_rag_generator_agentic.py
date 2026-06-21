@@ -185,7 +185,7 @@ class TestGeneratorFallback:
 
     @patch("backend.src.rag.generator.config")
     def test_generate_without_chunks(self, mock_config):
-        from backend.src.rag.generator import RAGGenerator, QueryType
+        from backend.src.rag.generator import RAGGenerator
 
         mock_config.reflexion_enabled = False
         mock_config.citation_grounding_enabled = False

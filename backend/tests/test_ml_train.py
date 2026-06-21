@@ -4,17 +4,13 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
-from pathlib import Path
 
-import numpy as np
-import pytest
 
 from backend.src.anomaly_detection.ml.train import (
     train, WINDOW_SECONDS, STEP_SECONDS,
     IF_CONTAMINATION, XGB_N_ESTIMATORS, MLFLOW_EXPERIMENT, ARTIFACT_DIR,
     USE_OFFLINE_DATA, TRAINING_DATA,
 )
-from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
 
 
 class TestLoadOfflineDataset:

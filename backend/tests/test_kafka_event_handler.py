@@ -1,10 +1,8 @@
 """Unit tests for event handler."""
 from __future__ import annotations
-import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
 
-from backend.kafka.handlers.event_handler import handle_event, REQUIRED_FIELDS
+from backend.kafka.handlers.event_handler import handle_event
 
 
 class MockChromaBuffer:

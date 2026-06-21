@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: atm_platform
+          POSTGRES_USER: atm_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Lint with Ruff
+        run: |
+          pip install ruff
+          ruff check backend/
+
+      - name: Audit dependencies for CVEs
+        run: pip install pip-audit && pip-audit -r backend/requirements.txt --desc on --ignore-vuln CVE-2026-45829
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: 1
+          skip-dirs: node_modules,frontend/node_modules,.git
+
+      - name: Initialize database schema
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: atm_platform
+          POSTGRES_USER: atm_user
+          POSTGRES_PASSWORD: test_password
+          LAAD_ENV: production
+        run: python -c "from backend.src.database.init_db import init_db; init_db()"
+
+      - name: Run backend tests
+        env:
+          TEST_POSTGRES_HOST: localhost
+          TEST_POSTGRES_PORT: 5432
+          TEST_POSTGRES_DB: atm_platform
+          TEST_POSTGRES_USER: atm_user
+          TEST_POSTGRES_PASSWORD: test_password
+          JWT_SECRET_KEY: ci-test-secret-key-for-laad-pipeline
+          LAAD_ENV: production
+        run: |
+          python -m pytest backend/tests/ -v --tb=short \
+            --ignore=backend/tests/stress \
+            --ignore=backend/tests/integration \
+            -k "not chroma and not rag and not kafka"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run frontend tests
+        run: npx vitest run --coverage
+        working-directory: frontend

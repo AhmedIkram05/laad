@@ -1,6 +1,5 @@
 """Tests for anomaly query caching via Redis."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 

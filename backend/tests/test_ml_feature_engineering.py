@@ -1,9 +1,7 @@
 """Unit tests for feature engineering — pure functions, no DB needed."""
 from __future__ import annotations
 
-import json
 import numpy as np
-import pytest
 
 from backend.src.anomaly_detection.ml.feature_engineering import extract_features, extract_label, FEATURE_NAMES, FEATURE_COUNT
 
@@ -37,7 +35,6 @@ class TestExtractFeatures:
         idx_ndc = FEATURE_NAMES.index("network_disconnect_count")
         idx_tag = FEATURE_NAMES.index("anomaly_tag_count")
         idx_has_nd = FEATURE_NAMES.index("has_network_disconnect")
-        idx_has_nd2 = FEATURE_NAMES.index("has_network_disconnect")
         assert feat[idx_ndc] == 1.0, f"network_disconnect_count should be 1, got {feat[idx_ndc]}"
         assert feat[idx_tag] == 1.0, f"anomaly_tag_count should be 1, got {feat[idx_tag]}"
         assert feat[idx_has_nd] == 1.0, f"has_network_disconnect should be 1, got {feat[idx_has_nd]}"

@@ -1,6 +1,5 @@
 """Unit tests for ChromaDB buffer."""
 from __future__ import annotations
-import pytest
 from unittest.mock import MagicMock, patch
 from collections import defaultdict
 

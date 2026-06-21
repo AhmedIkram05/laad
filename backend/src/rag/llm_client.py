@@ -6,7 +6,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 import requests
 

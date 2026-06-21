@@ -4,9 +4,8 @@ Simulates multiple emitters running concurrently, verifying that the
 producer interface handles concurrent calls gracefully.
 """
 from __future__ import annotations
-import pytest
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from datetime import datetime, timezone
 
 from backend.generator.continuous_generator import emit_tick

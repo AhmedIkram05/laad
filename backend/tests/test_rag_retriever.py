@@ -1,6 +1,5 @@
 """Tests for RAG retriever module."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -171,7 +170,7 @@ class TestRetrievedChunk:
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
             with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
                 retriever = RAGRetriever()
-                chunks = retriever.retrieve(
+                _ = retriever.retrieve(
                     query="test",
                     atm_id="ATM-GB-0001",
                     anomaly_type="A3",

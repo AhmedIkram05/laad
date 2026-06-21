@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from backend.src.cache import get_redis_client
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -137,8 +137,9 @@ class TestCallProvider:
 class TestGetLLMClient:
     def test_returns_singleton(self):
         with patch("backend.src.rag.llm_client.LLMClient") as mock_cls:
-            from backend.src.rag.llm_client import get_llm_client, _llm_client
-            _llm_client = None
+            from backend.src.rag.llm_client import get_llm_client  # noqa: E402
+            import backend.src.rag.llm_client as _llm_mod
+            _llm_mod._llm_client = None
             client = get_llm_client()
             assert client is not None
             # Second call should return same instance

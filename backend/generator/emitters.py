@@ -2,7 +2,7 @@
 from __future__ import annotations
 import random
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import uuid4
 
 from backend.generator.config import ATMS, ATM_LOCATIONS, POD_NAME, OS_VERSION
