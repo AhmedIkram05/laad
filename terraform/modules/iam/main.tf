@@ -32,7 +32,7 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:ahmedikram05/laad:ref:refs/heads/main"]
+      values   = ["repo:AhmedIkram05/laad:ref:refs/heads/main"]
     }
   }
 }
