@@ -32,7 +32,7 @@ resource "aws_instance" "kafka" {
   instance_type               = "t4g.small"
   subnet_id                   = var.public_subnet_id
   vpc_security_group_ids      = [var.kafka_sg_id]
-  associate_public_ip_address = false
+  associate_public_ip_address = true
   key_name                    = null
 
   root_block_device {

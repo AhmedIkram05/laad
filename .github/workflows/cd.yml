@@ -35,7 +35,7 @@ jobs:
           echo "━━━ Files changed in this commit ━━━"
           echo "$CHANGED_FILES"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          if echo "$CHANGED_FILES" | grep -q -E '^(backend/|frontend/|docker-compose.yml|Makefile|\.github/workflows/cd\.yml)'; then
+          if echo "$CHANGED_FILES" | grep -q -E '^(backend/|frontend/|terraform/|docker-compose.yml|Makefile|\.github/workflows/cd\.yml)'; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "→ Deployable changes detected."
           else

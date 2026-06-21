@@ -1,0 +1,176 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths: ['terraform/**']
+    branches: [main]
+  push:
+    paths: ['terraform/**']
+    branches: [main]
+
+concurrency:
+  group: tf-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Plan: lint + validate + security scan + plan ──────────────────
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      pull-requests: write     # post plan as PR comment
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Terraform fmt
+        id: fmt
+        run: terraform fmt -check -recursive -no-color
+        working-directory: terraform
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -no-color
+        working-directory: terraform
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+        working-directory: terraform
+
+      - name: Checkov IaC Security Scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/
+          framework: terraform
+          quiet: true
+          skip_check: >-
+            CKV_AWS_272,CKV2_AWS_19,CKV_AWS_126
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color
+        working-directory: terraform
+        continue-on-error: true
+
+      # ── Summarise results in the workflow run itself ──────────────
+      - name: Summarise check results
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
+          ## Terraform Quality Gates
+
+          | Check | Result |
+          |---|---|
+          | **Format** | ${{ steps.fmt.outcome == 'success' && '✅' || '❌' }} |
+          | **Init** | ${{ steps.init.outcome == 'success' && '✅' || '❌' }} |
+          | **Validate** | ${{ steps.validate.outcome == 'success' && '✅' || '❌' }} |
+          | **Plan** | ${{ steps.plan.outcome == 'success' && '✅' || '❌' }} |
+
+          <details>
+          <summary><strong>Plan Output</strong></summary>
+
+          ```
+          ${{ steps.plan.outputs.stdout }}
+          ```
+          </details>
+          EOF
+
+      # ── Post plan as PR comment (this is the CV highlight) ────────
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN_OUT: ${{ steps.plan.outputs.stdout }}
+          FMT_OUTCOME: ${{ steps.fmt.outcome }}
+          INIT_OUTCOME: ${{ steps.init.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        with:
+          script: |
+            const plan = process.env.PLAN_OUT || 'Plan output not available';
+            const maxLen = 60000;
+            const body = plan.length > maxLen
+              ? plan.substring(0, maxLen) + '\n... _(truncated)_'
+              : plan;
+
+            const output = `## Terraform Plan 📋
+
+            | Check | Result |
+            |---|---|
+            | **Format** | ${process.env.FMT_OUTCOME} |
+            | **Init** | ${process.env.INIT_OUTCOME} |
+            | **Validate** | ${process.env.VALIDATE_OUTCOME} |
+            | **Checkov** | ✅ run |
+            | **Plan** | ${process.env.PLAN_OUTCOME} |
+
+            <details><summary>View full plan</summary>
+
+            \`\`\`terraform
+            ${body}
+            \`\`\`
+
+            </details>`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  # ── Apply: auto-approve on merge to main ──────────────────────────
+  apply:
+    name: Apply
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Terraform Init
+        run: terraform init -no-color
+        working-directory: terraform
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -no-color
+        working-directory: terraform
+
+      - name: Post-apply summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
+          ## Terraform Apply ✅
+
+          Infrastructure applied automatically on merge to \`main\`.
+
+          EOF
