@@ -112,12 +112,14 @@ class TestInitDb:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
-        with patch("backend.src.database.init_db.get_conn", return_value=mock_conn), \
-             patch("backend.src.database.init_db.release_conn"):
-            with patch("backend.src.database.init_db.seed_atms"):
-                with patch("backend.src.database.init_db.seed_default_admin"):
-                    with patch("backend.src.database.init_db.seed_retention_config"):
-                        result = init_db(force=True)
+        # Override LAAD_ENV so the production guard doesn't block force=True
+        with patch("backend.src.database.init_db.os.getenv", return_value="test"):
+            with patch("backend.src.database.init_db.get_conn", return_value=mock_conn), \
+                 patch("backend.src.database.init_db.release_conn"):
+                with patch("backend.src.database.init_db.seed_atms"):
+                    with patch("backend.src.database.init_db.seed_default_admin"):
+                        with patch("backend.src.database.init_db.seed_retention_config"):
+                            result = init_db(force=True)
 
         assert result is True
         # Should execute DROP statements (all in one multi-statement call)
