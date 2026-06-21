@@ -25,10 +25,10 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
@@ -75,10 +75,11 @@ jobs:
           python -m pytest backend/tests/ -v --tb=short \
             --ignore=backend/tests/stress \
             --ignore=backend/tests/integration \
-            -k "not chroma and not rag and not kafka"
+            -k "not chroma and not rag and not kafka" \
+            --cov=backend/src --cov-report=term-missing --cov-report=xml:coverage-backend.xml
 
       - name: Set up Node.js 22
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -89,3 +90,11 @@ jobs:
       - name: Run frontend tests
         run: npx vitest run --coverage
         working-directory: frontend
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage-backend.xml,frontend/coverage/lcov.info
+          flags: backend,frontend
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

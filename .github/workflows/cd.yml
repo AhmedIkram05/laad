@@ -20,12 +20,12 @@ jobs:
 
     steps:
       - name: Checkout the commit that triggered CI
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -35,10 +35,10 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Cache Docker layers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.event.workflow_run.head_sha }}
@@ -105,3 +105,36 @@ jobs:
             echo "API health check failed — deployment may be unhealthy"
             exit 1
           }
+
+      - name: Initialize database schema (idempotent)
+        run: |
+          # Extract network config from the stable API service
+          NETWORK_CONFIG=$(aws ecs describe-services --cluster laad-cluster --services laad-api \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration' \
+            --output json)
+
+          echo "Network config: $(echo $NETWORK_CONFIG | jq -c '{subnets, securityGroups}')"
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster laad-cluster \
+            --task-definition laad-api \
+            --overrides '{"containerOverrides":[{"name":"api","command":["python","-c","from backend.src.database.init_db import init_db; init_db(force=False)"]}]}' \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK_CONFIG" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "Schema init task: $TASK_ARN"
+
+          # Wait for task to finish
+          aws ecs wait tasks-stopped --cluster laad-cluster --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks --cluster laad-cluster --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[?name==`api`].exitCode' --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Schema init FAILED with exit code $EXIT_CODE"
+            exit 1
+          fi
+
+          echo "Schema init completed (exit code 0)"
