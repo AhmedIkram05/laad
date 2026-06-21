@@ -58,6 +58,7 @@ Per batch:
 | 2a | Frontend infra module | `build` | S3 + CloudFront |
 | 2a | Monitoring module | `build` | Dashboard + budget alerts |
 | 2b | CI/CD pipelines | `code-architect` | ci.yml + cd.yml with all quality gates |
+| 2b | Terraform workflow | `build` | terraform.yml — plan-on-PR + apply-on-merge + Checkov |
 | 3 | SageMaker module | `code-architect` | Endpoint config, stop/start scheduler |
 
 ---
@@ -199,16 +200,31 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 ---
 
-### Batch 2b — CI/CD (✅ Tested, CD Trigger Fixed)
+### Batch 2b — CI/CD (✅ Testing)
 
-**Status:** ✅ CI passing &nbsp;|&nbsp; **Date:** 2026-06-21 &nbsp;|&nbsp; **Commander gate:** G2b ✅ (secrets set) → G2c 🔄 (CD trigger fixed, awaiting deploy)
+**Status:** ✅ CI passing &nbsp;|&nbsp; **Date:** 2026-06-22 &nbsp;|&nbsp; **Commander gate:** G2b ✅ (secrets set) → G2c 🔄 (awaiting deploy)
 
-**Modules:** CI/CD pipelines (architect) — `ci.yml` + `cd.yml`
+**Modules:** CI/CD pipelines (architect) — `ci.yml` + `cd.yml` + `terraform.yml`
 
 **Corrections from DEPLOYMENT_PLAN:**
 - ECS service names: `laad-api`, `laad-consumer`, `laad-generator` (no `-service` suffix). Updated in `cd.yml`.
 - S3 bucket: `laad-frontend-676433090516` (not `laad-frontend-ahmedikram`). Sent via `S3_BUCKET` secret.
 - `workflow_run` trigger uses `github.event.workflow_run.head_sha` for correct commit checkout.
+
+**CI/CD Refinements (path-based filtering + deploy guard):**
+
+| # | Change | What | Why |
+|---|--------|------|-----|
+| 1 | `ci.yml` refactored to 4 parallel jobs | `changes` → `lint` (always) + `backend` (if backend/ changed) + `frontend` (if frontend/ changed) | Monolithic job ran all 3 on every push. Path-based filtering skips backend/frontend tests when only docs or unrelated files change. Uses `dorny/paths-filter@v3`. |
+| 2 | Path filters in `ci.yml` | Check `backend/**`, `frontend/**`, `docker-compose.yml`, `Makefile`, `.github/workflows/ci.yml` | Edits to CI workflow itself should trigger full test validation. |
+| 3 | Concurrency group in `ci.yml` | `ci-${{ github.ref }}` with `cancel-in-progress: true` | Prevents wasted runs when pushing multiple commits in quick succession. |
+| 4 | `should-deploy` job in `cd.yml` | Checks `git diff --name-only HEAD~1 HEAD` for deployable paths | Docs-only changes (README, docs/) skip the expensive deploy pipeline. |
+| 5 | Deployable paths in `cd.yml` | `backend/`, `frontend/`, `docker-compose.yml`, `Makefile`, `.github/workflows/cd.yml` | Modifying the deployment pipeline itself must also trigger a deploy to validate it. |
+| 6 | Concurrency group in `cd.yml` | `cd-${{ github.event.workflow_run.head_branch }}` | Prevents concurrent deploys on the same branch. |
+| 7 | `terraform/` added to `ci.yml` + `cd.yml` path filters | `terraform/**` in both workflows | Terraform changes trigger backend CI and CD deploy. |
+| 8 | `terraform.yml` — dedicated Terraform workflow | Plan-on-PR + apply-on-merge + Checkov + fmt | Industry-standard IaC pattern. PR comments show exact plan. |
+| 9 | `deps` job in `ci.yml` | `actions/dependency-review-action@v4` | Supply chain security — flags high-severity vulnerabilities in new/modified deps. |
+
 
 **CI Bugs Fixed (6 rounds):**
 
@@ -232,8 +248,8 @@ Every checkpoint requires you to run a command and confirm the output before the
 - [ ] 🚀 **Next:** Push to `main` → CI passes → CD auto-triggers → deploy + schema init
 
 **After push to `main`:**
-- [ ] `ci.yml` passes on push (CI already green, verify one more run)
-- [ ] `cd.yml` triggers automatically after CI succeeds (previously blocked by name mismatch)
+- [x] `ci.yml` passes on push (CI already green, verify one more run)
+- [x] `cd.yml` triggers automatically after CI succeeds (previously blocked by name mismatch)
 - [ ] CD deploys: image built, tagged thrice (api/consumer/generator), pushed to ECR
 - [ ] API service shows `runningCount=1`
 - [x] **Schema init:** Auto-run in CD pipeline after smoke test (idempotent `init_db(force=False)`, `CREATE TABLE IF NOT EXISTS`)
@@ -245,6 +261,7 @@ Every checkpoint requires you to run a command and confirm the output before the
 |------|-------|---------|----------|
 | `ci.yml` | build | `.github/workflows/ci.yml` | CI run #2790xxxxx — ✅ All steps pass |
 | `cd.yml` | build | `.github/workflows/cd.yml` | YAML syntax OK, trigger fixed |
+| `terraform.yml` | orchestrator | `.github/workflows/terraform.yml` | fmt + validate + Checkov + plan-on-PR + apply-on-merge |
 
 ---
 
@@ -310,6 +327,12 @@ Every checkpoint requires you to run a command and confirm the output before the
 | D18 | 2026-06-21 | CD `workflow_run` references `["CI"]` (not `["LAAD CI"]`) | CI workflow is named `CI`. CD trigger was set to `LAAD CI` which never matched, preventing CD from auto-running after CI success. Fixed to `["CI"]` to match. | orchestrator |
 | D19 | 2026-06-21 | Actions upgraded to Node 24-compatible versions: checkout@v5, configure-aws-credentials@v6, setup-buildx-action@v4, cache@v5 | GitHub runners switched to Node 24 as default on June 16, 2026. Older action versions use Node 20 which is deprecated. `amazon-ecr-login@v2` already supports Node 24 via v2.1.x. | orchestrator |
 | D20 | 2026-06-21 | IAM trust policy sub claim: `ahmedikram` → `ahmedikram05`; S3 bucket ARN: `ahmedikram` → `676433090516` | GitHub repo owner is `AhmedIkram05` (with `05` suffix). OIDC sub claim uses normalized lowercase `ahmedikram05/laad`, but trust policy had `ahmedikram/laad` — mismatch caused `Not authorized to perform sts:AssumeRoleWithWebIdentity`. S3 bucket uses AWS account ID as unique suffix, not hardcoded `ahmedikram`. | orchestrator |
+| D21 | 2026-06-22 | CI refactored to path-based job filtering: `lint` (always), `backend` (if backend/ changed), `frontend` (if frontend/ changed) | Monolithic job ran all tests on every push. Path filtering via `dorny/paths-filter@v3` skips irrelevant test jobs, saving ~4 min per commit when only docs or one side changes. CI workflow edits also trigger full validation. | orchestrator |
+| D22 | 2026-06-22 | CD deploy guard: `should-deploy` job checks `git diff HEAD~1 HEAD` for deployable paths; `.github/workflows/cd.yml` marked as deployable | Prevents expensive deploy pipeline on docs-only changes. Including `cd.yml` ensures deployment pipeline changes are validated on push. | orchestrator |
+| D23 | 2026-06-22 | Dedicated `terraform.yml` workflow: plan-on-PR (fmt + validate + Checkov + plan → PR comment) + apply-on-merge to `main` | Terraform was previously gated behind Commander running apply manually. Separating infra workflow from app CD follows industry best practice. PR comment with plan output is the most impressive CI feature for interviews. | orchestrator |
+| D24 | 2026-06-22 | `terraform/` added to CI and CD path filters | Ensures terraform changes trigger backend test validation and app redeployment when infra changes affect backend connectivity (RDS endpoints, Kafka IPs, etc.) | orchestrator |
+| D25 | 2026-06-22 | Dependency review job in CI: `actions/dependency-review-action@v4` | Supply chain security scan runs on PRs only (needs PR context). Flags high-severity vulnerabilities in new or modified dependencies before merge. | orchestrator |
+
 
 ---
 
@@ -320,6 +343,10 @@ Every checkpoint requires you to run a command and confirm the output before the
 ```bash
 # Terraform apply (gated phases)
 cd terraform && terraform init && terraform plan && terraform apply
+
+# Or push terraform changes → automated via terraform.yml workflow:
+#   On PR: fmt + validate + Checkov + plan posted as comment
+#   On merge to main: auto-apply
 
 # Schema init (one-shot, after first deploy)
 aws ecs run-task \
