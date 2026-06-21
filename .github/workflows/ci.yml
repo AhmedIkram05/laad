@@ -52,6 +52,15 @@ jobs:
           exit-code: 1
           skip-dirs: node_modules,frontend/node_modules,.git
 
+      - name: Initialize database schema
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: atm_platform
+          POSTGRES_USER: atm_user
+          POSTGRES_PASSWORD: test_password
+        run: python -c "from backend.src.database.init_db import init_db; init_db()"
+
       - name: Run backend tests
         env:
           TEST_POSTGRES_HOST: localhost
