@@ -59,6 +59,7 @@ jobs:
           POSTGRES_DB: atm_platform
           POSTGRES_USER: atm_user
           POSTGRES_PASSWORD: test_password
+          LAAD_ENV: production
         run: python -c "from backend.src.database.init_db import init_db; init_db()"
 
       - name: Run backend tests
@@ -69,6 +70,7 @@ jobs:
           TEST_POSTGRES_USER: atm_user
           TEST_POSTGRES_PASSWORD: test_password
           JWT_SECRET_KEY: ci-test-secret-key-for-laad-pipeline
+          LAAD_ENV: production
         run: |
           python -m pytest backend/tests/ -v --tb=short \
             --ignore=backend/tests/stress \
