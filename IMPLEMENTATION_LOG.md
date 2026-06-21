@@ -332,6 +332,7 @@ Every checkpoint requires you to run a command and confirm the output before the
 | D23 | 2026-06-22 | Dedicated `terraform.yml` workflow: plan-on-PR (fmt + validate + Checkov + plan → PR comment) + apply-on-merge to `main` | Terraform was previously gated behind Commander running apply manually. Separating infra workflow from app CD follows industry best practice. PR comment with plan output is the most impressive CI feature for interviews. | orchestrator |
 | D24 | 2026-06-22 | `terraform/` added to CI and CD path filters | Ensures terraform changes trigger backend test validation and app redeployment when infra changes affect backend connectivity (RDS endpoints, Kafka IPs, etc.) | orchestrator |
 | D25 | 2026-06-22 | Dependency review job in CI: `actions/dependency-review-action@v4` | Supply chain security scan runs on PRs only (needs PR context). Flags high-severity vulnerabilities in new or modified dependencies before merge. | orchestrator |
+| D26 | 2026-06-22 | GitHub Actions role granted S3 read/write + DynamoDB lock table access for Terraform state `laad-terraform-state-ahmedikram` | Terraform workflow fails on `terraform init` with `403 Forbidden` — the GitHub Actions role had no permissions to read the S3 state file. Also relaxed trust policy `sub` condition from only `refs/heads/main` to also allow `pull_request` and `refs/pull/*` so PRs can run `terraform plan`. | orchestrator |
 
 
 ---

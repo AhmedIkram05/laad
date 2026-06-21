@@ -32,7 +32,11 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:AhmedIkram05/laad:ref:refs/heads/main"]
+      values = [
+        "repo:AhmedIkram05/laad:ref:refs/heads/main",
+        "repo:AhmedIkram05/laad:pull_request",
+        "repo:AhmedIkram05/laad:ref:refs/pull/*"
+      ]
     }
   }
 }
@@ -399,6 +403,54 @@ resource "aws_iam_role_policy" "sagemaker_ecr" {
   name   = "${var.project_name}-sagemaker-ecr"
   role   = aws_iam_role.sagemaker_execution.id
   policy = data.aws_iam_policy_document.sagemaker_ecr.json
+}
+
+# --- GitHub Actions: Terraform State (S3 + DynamoDB) inline policy ---
+
+data "aws_iam_policy_document" "github_actions_tfstate" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject"
+    ]
+    resources = [
+      "arn:aws:s3:::laad-terraform-state-ahmedikram",
+      "arn:aws:s3:::laad-terraform-state-ahmedikram/*"
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:ListBucket"
+    ]
+    resources = [
+      "arn:aws:s3:::laad-terraform-state-ahmedikram"
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:UpdateItem"
+    ]
+    resources = [
+      "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/laad-terraform-lock"
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_tfstate" {
+  name   = "${var.project_name}-github-tfstate"
+  role   = aws_iam_role.github_actions.id
+  policy = data.aws_iam_policy_document.github_actions_tfstate.json
 }
 
 # ---------------------------------------------------------------------------
