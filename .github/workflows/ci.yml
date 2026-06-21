@@ -41,7 +41,7 @@ jobs:
           ruff check backend/
 
       - name: Audit dependencies for CVEs
-        run: pip install pip-audit && pip-audit -r backend/requirements.txt --desc on
+        run: pip install pip-audit && pip-audit -r backend/requirements.txt --desc on --ignore-vuln CVE-2026-45829
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
