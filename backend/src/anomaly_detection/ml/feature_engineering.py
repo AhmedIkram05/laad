@@ -162,7 +162,6 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
         os_mem = metric_stats("windows_os_snapshot")
 
     network_err = metric_stats("network_errors")
-    os_cpu = metric_stats("cpu_usage_percent")
 
     kafka_rt_payload = df.loc[df["source"] == "KAFKA", "raw_payload"].apply(
         lambda p: parse_payload(p).get("response_time_ms", 0)
@@ -211,10 +210,14 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
     fatal_critical_weighted = th_fatals * 3 + atm_app_errors * 2
 
     error_sources = set()
-    if atm_app_errors > 0:      error_sources.add("ATM_APP")
-    if th_fatals > 0:           error_sources.add("TERMINAL_HANDLER")
-    if hw_cassette_empty > 0:  error_sources.add("HARDWARE")
-    if kafka_offline > 0:       error_sources.add("KAFKA")
+    if atm_app_errors > 0:
+        error_sources.add("ATM_APP")
+    if th_fatals > 0:
+        error_sources.add("TERMINAL_HANDLER")
+    if hw_cassette_empty > 0:
+        error_sources.add("HARDWARE")
+    if kafka_offline > 0:
+        error_sources.add("KAFKA")
 
     has_oom              = int(((th["event_type"] == "OOM_ERROR") | (th["event_type"] == "OutOfMemoryError")).any())
     has_network_disconnect = int((atm_app["event_type"] == "NETWORK_DISCONNECT").any())
@@ -295,7 +298,7 @@ def extract_label(rows: list[dict[str, Any]]) -> str | None:
     if not labels:
         return None
 
-    label_counts = {l: labels.count(l) for l in set(labels)}
+    label_counts = {lab: labels.count(lab) for lab in set(labels)}
     dominant = max(label_counts, key=label_counts.get)
     count = label_counts[dominant]
 

@@ -80,7 +80,7 @@ class TestRedisClient:
         from backend.src.cache.redis_client import get_redis_client, reset_redis_client
 
         with patch("backend.src.cache.redis_client.redis.ConnectionPool") as mock_pool_class, \
-             patch("backend.src.cache.redis_client.redis.Redis") as mock_redis_class:
+             patch("backend.src.cache.redis_client.redis.Redis") as mock_redis_class:  # noqa: F841
 
             mock_instance = MagicMock()
             mock_instance.ping.return_value = True

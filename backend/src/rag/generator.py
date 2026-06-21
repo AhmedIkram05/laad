@@ -48,7 +48,6 @@ def _normalize_markdown_spacing(text: str) -> str:
     while i < len(lines):
         line = lines[i]
         stripped = line.rstrip()
-        is_empty = stripped == ''
 
         is_bold_heading = bool(_BOLD_HEADING_RE.match(stripped))
         is_hash_heading = bool(_HASH_HEADING_RE.match(stripped))

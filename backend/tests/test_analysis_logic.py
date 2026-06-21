@@ -271,4 +271,4 @@ class TestBuildDetailedTable:
         assert "does not match" in result[0]["root_cause"].lower()
 
 
-import json
+import json  # noqa: E402

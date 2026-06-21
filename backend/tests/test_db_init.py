@@ -23,7 +23,7 @@ class TestSeedAtms:
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_cursor.rowcount = 13
 
-        with patch("backend.src.database.init_db.logger") as mock_logger:
+        with patch("backend.src.database.init_db.logger") as mock_logger:  # noqa: F841
             seed_atms(mock_conn)
 
         mock_conn.cursor.assert_called_once()
@@ -54,7 +54,7 @@ class TestSeedDefaultAdmin:
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_cursor.rowcount = 1
 
-        with patch("backend.src.database.init_db.logger") as mock_logger:
+        with patch("backend.src.database.init_db.logger") as mock_logger:  # noqa: F841
             seed_default_admin(mock_conn)
 
         mock_conn.cursor.assert_called_once()
@@ -81,7 +81,7 @@ class TestSeedRetentionConfig:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
-        with patch("backend.src.database.init_db.logger") as mock_logger:
+        with patch("backend.src.database.init_db.logger") as mock_logger:  # noqa: F841
             seed_retention_config(mock_conn)
 
         mock_conn.cursor.assert_called_once()
@@ -98,9 +98,9 @@ class TestInitDb:
 
         with patch("backend.src.database.init_db.get_conn", return_value=mock_conn), \
              patch("backend.src.database.init_db.release_conn"):
-            with patch("backend.src.database.init_db.seed_atms") as mock_seed_atms:
-                with patch("backend.src.database.init_db.seed_default_admin") as mock_seed_admin:
-                    with patch("backend.src.database.init_db.seed_retention_config") as mock_seed_ret:
+            with patch("backend.src.database.init_db.seed_atms") as mock_seed_atms:  # noqa: F841
+                with patch("backend.src.database.init_db.seed_default_admin") as mock_seed_admin:  # noqa: F841
+                    with patch("backend.src.database.init_db.seed_retention_config") as mock_seed_ret:  # noqa: F841
                         result = init_db(force=False)
 
         assert result is True

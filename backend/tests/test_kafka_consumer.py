@@ -9,7 +9,7 @@ _kafka_mock = MagicMock()
 sys.modules["kafka"] = _kafka_mock
 sys.modules["kafka.errors"] = _kafka_mock.errors
 
-from backend.kafka.consumer import (
+from backend.kafka.consumer import (  # noqa: E402
     _deserialise,
     _trigger_anomaly_detection,
     _handle_sigterm,
@@ -17,8 +17,8 @@ from backend.kafka.consumer import (
     TOPIC_EVENTS,
     TOPIC_METRICS,
 )
-from backend.kafka import consumer as c
-from backend.kafka.handlers import event_handler, metric_handler
+from backend.kafka import consumer as c  # noqa: E402
+from backend.kafka.handlers import event_handler, metric_handler  # noqa: E402
 
 
 class TestDeserialise:

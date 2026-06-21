@@ -8,7 +8,7 @@ _kafka_mock = MagicMock()
 sys.modules["kafka"] = _kafka_mock
 sys.modules["kafka.errors"] = _kafka_mock.errors
 
-from backend.kafka.producer import ATMProducer, get_producer, TOPIC_EVENTS, TOPIC_METRICS
+from backend.kafka.producer import ATMProducer, get_producer, TOPIC_EVENTS, TOPIC_METRICS  # noqa: E402
 
 
 class TestATMProducer:

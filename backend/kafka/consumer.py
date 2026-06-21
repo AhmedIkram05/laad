@@ -41,6 +41,7 @@ from backend.kafka.chroma_buffer import ChromaBuffer
 from backend.kafka.deduplicator import Deduplicator
 from backend.kafka.handlers import event_handler, metric_handler
 from backend.kafka.handlers.event_handler import _route_to_ingestion_errors as route_raw_ingestion_errors
+from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.cache import get_redis_client
 
 log = logging.getLogger(__name__)

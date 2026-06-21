@@ -73,7 +73,7 @@ def generate_baseline(t: datetime, atm: str, rng: random.Random) -> list[dict]:
     rows.append(_metric("network_errors", network_err, t, "OS", atm, _payload({"atm_id": atm})))
     rows.append(_metric("cpu_usage_percent", cpu, t, "OS", atm, _payload({"atm_id": atm})))
     rows.append(_event(t, "ATM_APP", atm, "HEARTBEAT", "INFO", "ATM operational", _payload({"atm_id": atm, "location_code": loc})))
-    rows.append(_event(t, "KAFKA", atm, "METRIC", "INFO", "Latency update", _payload({"atm_id": atm, "response_time_ms": round(kafka_rt, 1), "transaction_success_rate": round(kafka_sr, 2), "atm_id": atm})))
+    rows.append(_event(t, "KAFKA", atm, "METRIC", "INFO", "Latency update", _payload({"atm_id": atm, "response_time_ms": round(kafka_rt, 1), "transaction_success_rate": round(kafka_sr, 2)})))
     rows.append(_event(t, "TERMINAL_HANDLER", atm, "HEARTBEAT", "INFO", "Pod healthy", _payload({"atm_id": atm, "pod_name": f"th-{atm.lower()}-1"})))
     rows.append(_event(t, "HARDWARE", atm, "SENSOR", "INFO", "Cassette nominal", _payload({"atm_id": atm})))
     return rows

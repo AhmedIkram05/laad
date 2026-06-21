@@ -145,7 +145,7 @@ class TestMultiSignalFusion:
         from backend.src.rag.retriever import RetrievedChunk
 
         estimator = UncertaintyEstimator()
-        chunks = [
+        chunks = [  # noqa: F841
             RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
                            timestamp="2026-05-15T10:00:00Z", distance=0.2, confidence_score=0.8)
         ]
@@ -276,9 +276,9 @@ class TestUncertaintyEstimator:
         from backend.src.rag.retriever import RetrievedChunk
 
         estimator = UncertaintyEstimator()
-        chunks = [
+        chunks = [  # noqa: F841
             RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
-                           timestamp="2026-05-15T10:00:00Z", distance=0.1, confidence_score=0.9)
+                           timestamp="2026-05-15T10:00:00Z", distance=0.2, confidence_score=0.8)
         ]
 
         result = estimator.estimate(
