@@ -50,16 +50,16 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
         run: |
-          # Build once with cache, tag thrice
-          docker build \
+          # Build once with cache, tag all variants, push once
+          docker buildx build \
             --cache-from type=local,src=/tmp/.buildx-cache \
             --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-            -t laad-app:$IMAGE_TAG backend/
-
-          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:api-latest
-          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:consumer-latest
-          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:generator-latest
-          docker tag laad-app:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+            -t $ECR_REGISTRY/$ECR_REPO:api-latest \
+            -t $ECR_REGISTRY/$ECR_REPO:consumer-latest \
+            -t $ECR_REGISTRY/$ECR_REPO:generator-latest \
+            -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG \
+            --load \
+            backend/
 
           docker push --all-tags $ECR_REGISTRY/$ECR_REPO
 
