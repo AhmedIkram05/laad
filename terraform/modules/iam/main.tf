@@ -182,6 +182,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "ec2:DescribeAvailabilityZones",
       "ec2:DescribeImages",
       "ec2:DescribeInstances",
+      "ec2:DescribeInstanceTypes",
       "ec2:DescribeInternetGateways",
       "ec2:DescribeNatGateways",
       "ec2:DescribeNetworkInterfaces",
@@ -191,12 +192,14 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "ec2:DescribeSubnets",
       "ec2:DescribeTags",
       "ec2:DescribeVpcAttribute",
+      "ec2:DescribeVpcEndpoints",
       "ec2:DescribeVpcs",
       # ECR
       "ecr:BatchGetImage",
       "ecr:DescribeRepositories",
       "ecr:GetLifecyclePolicy",
       "ecr:ListImages",
+      "ecr:ListTagsForResource",
       # ECS
       "ecs:DescribeClusters",
       "ecs:DescribeTaskDefinition",
@@ -208,7 +211,9 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "logs:DescribeLogGroups",
       "logs:DescribeLogStreams",
       "logs:ListTagsLogGroup",
+      "logs:ListTagsForResource",
       # S3
+      "s3:GetBucketAcl",
       "s3:GetBucketLocation",
       "s3:GetBucketPolicy",
       "s3:GetBucketPublicAccessBlock",
@@ -221,6 +226,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "cloudfront:ListDistributions",
       "cloudfront:ListOriginAccessControls",
       # IAM
+      "iam:GetOpenIDConnectProvider",
       "iam:GetRole",
       "iam:GetRolePolicy",
       "iam:ListAttachedRolePolicies",
@@ -233,17 +239,21 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "sns:ListTopics",
       # Secrets Manager
       "secretsmanager:DescribeSecret",
+      "secretsmanager:GetResourcePolicy",
       "secretsmanager:GetSecretValue",
       "secretsmanager:ListSecrets",
       # RDS
       "rds:DescribeDBInstances",
       "rds:DescribeDBParameterGroups",
+      "rds:DescribeDBParameters",
       "rds:DescribeDBSubnetGroups",
       "rds:ListTagsForResource",
       # ELB (ALB)
       "elasticloadbalancing:DescribeListeners",
+      "elasticloadbalancing:DescribeLoadBalancerAttributes",
       "elasticloadbalancing:DescribeLoadBalancers",
       "elasticloadbalancing:DescribeTags",
+      "elasticloadbalancing:DescribeTargetGroupAttributes",
       "elasticloadbalancing:DescribeTargetGroups",
       # CloudWatch
       "cloudwatch:DescribeAlarms",
