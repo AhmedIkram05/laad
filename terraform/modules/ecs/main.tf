@@ -119,6 +119,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "RDS_DB", value = var.rds_db_name },
         { name = "RDS_USER", value = "laad_admin" },
         { name = "CORS_ORIGINS", value = var.cors_origins },
+        { name = "AWS_REGION", value = var.aws_region },
       ]
 
       secrets = [
@@ -127,7 +128,6 @@ resource "aws_ecs_task_definition" "api" {
         { name = "SAGEMAKER_ENDPOINT_NAME", valueFrom = "${var.sagemaker_secret_arn}:SAGEMAKER_ENDPOINT_NAME::" },
         { name = "MLFLOW_TRACKING_URI", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_TRACKING_URI::" },
         { name = "MLFLOW_S3_ARTIFACT_ROOT", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_S3_ARTIFACT_ROOT::" },
-        { name = "AWS_REGION", valueFrom = "${var.mlflow_tracking_secret_arn}:AWS_REGION::" },
         { name = "OLLAMA_API_KEY", valueFrom = "${var.rag_ollama_secret_arn}:OLLAMA_API_KEY::" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${var.rag_ollama_secret_arn}:OPENROUTER_API_KEY::" },
       ]

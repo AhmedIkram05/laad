@@ -44,8 +44,8 @@ jobs:
             echo "→ Only docs/config/other changed — skipping deploy."
           fi
 
-  # ── Deploy to AWS ECS ────────────────────────────────────────────
-  deploy:
+  # ── Deploy backend: Docker → ECR → ECS ─────────────────────────────
+  deploy-backend:
     needs: should-deploy
     if: needs.should-deploy.outputs.deploy == 'true'
     runs-on: ubuntu-latest
@@ -57,7 +57,7 @@ jobs:
       - name: Checkout the commit that triggered CI
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -72,46 +72,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Cache Docker layers
-        uses: actions/cache@v5
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.event.workflow_run.head_sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-
-      - name: Build, tag, and push Docker image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          # Build once with cache, tag all variants, push once
-          docker buildx build \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-            -t $ECR_REGISTRY/$ECR_REPO:api-latest \
-            -t $ECR_REGISTRY/$ECR_REPO:consumer-latest \
-            -t $ECR_REGISTRY/$ECR_REPO:generator-latest \
-            -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG \
-            --load \
-            backend/
-
-          docker push --all-tags $ECR_REGISTRY/$ECR_REPO
-
-          # Move cache so it doesn't grow indefinitely
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-
-      - name: Build frontend
-        run: |
-          npm ci
-          VITE_API_URL=${{ secrets.API_URL }} npm run build
-        working-directory: frontend
-
-      - name: Sync frontend to S3
-        run: |
-          aws s3 sync ./dist s3://${{ secrets.S3_BUCKET }} --delete
-        working-directory: frontend
+          context: backend/
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:api-latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:consumer-latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:generator-latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.event.workflow_run.head_sha || github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Force ECS deploy — API
         run: |
@@ -173,3 +146,47 @@ jobs:
           fi
 
           echo "Schema init completed (exit code 0)"
+
+  # ── Deploy frontend: npm build → S3 → CloudFront (parallel to backend) ─
+  deploy-frontend:
+    needs: should-deploy
+    if: needs.should-deploy.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build frontend
+        run: |
+          npm ci
+          VITE_API_URL=${{ secrets.API_URL }} npm run build
+        working-directory: frontend
+
+      - name: Sync frontend to S3
+        run: |
+          aws s3 sync ./dist s3://${{ secrets.S3_BUCKET }} --delete
+        working-directory: frontend
+
+      - name: Invalidate CloudFront cache
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Origins.Items[0].DomainName, '${{ secrets.S3_BUCKET }}')].Id" \
+            --output text)
+          if [ -n "$DIST_ID" ] && [ "$DIST_ID" != "None" ]; then
+            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+            echo "CloudFront invalidation submitted for $DIST_ID"
+          else
+            echo "No CloudFront distribution found for S3 bucket — skipping invalidation"
+          fi

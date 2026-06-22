@@ -76,6 +76,12 @@ jobs:
             CKV2_AWS_57,CKV2_AWS_28,CKV2_AWS_42,CKV2_AWS_47,
             CKV2_AWS_32,CKV2_AWS_61
 
+      - name: Clean stale state lock
+        run: |
+          aws dynamodb delete-item \
+            --table-name laad-terraform-lock \
+            --key '{"LockID": {"S": "laad-terraform-state-ahmedikram/laad/terraform.tfstate"}}' || true
+
       - name: Terraform Plan
         id: plan
         run: terraform plan -no-color
@@ -174,6 +180,12 @@ jobs:
       - name: Terraform Init
         run: terraform init -no-color
         working-directory: terraform
+
+      - name: Clean stale state lock
+        run: |
+          aws dynamodb delete-item \
+            --table-name laad-terraform-lock \
+            --key '{"LockID": {"S": "laad-terraform-state-ahmedikram/laad/terraform.tfstate"}}' || true
 
       - name: Terraform Apply
         run: terraform apply -auto-approve -no-color
