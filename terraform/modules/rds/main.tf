@@ -89,9 +89,9 @@ resource "aws_db_instance" "main" {
   deletion_protection = true
 
   auto_minor_version_upgrade = true
-  backup_retention_period = 1
-  backup_window           = "03:00-04:00"
-  maintenance_window      = "sun:04:00-sun:05:00"
+  backup_retention_period    = 1
+  backup_window              = "03:00-04:00"
+  maintenance_window         = "sun:04:00-sun:05:00"
 
   tags = {
     Name        = "laad-postgres"

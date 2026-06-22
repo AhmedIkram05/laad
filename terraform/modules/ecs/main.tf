@@ -422,11 +422,11 @@ resource "aws_ecs_service" "api" {
 }
 
 resource "aws_ecs_service" "consumer" {
-  name             = "laad-consumer"
-  cluster          = aws_ecs_cluster.main.id
-  task_definition  = aws_ecs_task_definition.consumer.arn
-  desired_count    = 1
-  launch_type      = "FARGATE"
+  name            = "laad-consumer"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.consumer.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.ecs_consumer_sg_id]
@@ -441,11 +441,11 @@ resource "aws_ecs_service" "consumer" {
 }
 
 resource "aws_ecs_service" "generator" {
-  name             = "laad-generator"
-  cluster          = aws_ecs_cluster.main.id
-  task_definition  = aws_ecs_task_definition.generator.arn
-  desired_count    = 1
-  launch_type      = "FARGATE"
+  name            = "laad-generator"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.generator.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.ecs_generator_sg_id]
@@ -460,11 +460,11 @@ resource "aws_ecs_service" "generator" {
 }
 
 resource "aws_ecs_service" "redis" {
-  name             = "laad-redis"
-  cluster          = aws_ecs_cluster.main.id
-  task_definition  = aws_ecs_task_definition.redis.arn
-  desired_count    = 1
-  launch_type      = "FARGATE"
+  name            = "laad-redis"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.redis.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.redis_sg_id]
@@ -479,11 +479,11 @@ resource "aws_ecs_service" "redis" {
 }
 
 resource "aws_ecs_service" "chromadb" {
-  name             = "laad-chromadb"
-  cluster          = aws_ecs_cluster.main.id
-  task_definition  = aws_ecs_task_definition.chromadb.arn
-  desired_count    = 1
-  launch_type      = "FARGATE"
+  name            = "laad-chromadb"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.chromadb.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.chromadb_sg_id]
