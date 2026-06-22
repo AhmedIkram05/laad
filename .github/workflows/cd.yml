@@ -2,6 +2,12 @@ name: CD
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force deploy (skip change detection)'
+        type: boolean
+        default: false
+        required: false
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -32,16 +38,21 @@ jobs:
       - name: Detect deployable changes
         id: check
         run: |
-          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-          echo "━━━ Files changed in this commit ━━━"
-          echo "$CHANGED_FILES"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          if echo "$CHANGED_FILES" | grep -q -E '^(backend/|frontend/|terraform/|docker-compose.yml|Makefile|\.github/workflows/cd\.yml)'; then
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
-            echo "→ Deployable changes detected."
+            echo "→ Force deploy requested via workflow_dispatch."
           else
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-            echo "→ Only docs/config/other changed — skipping deploy."
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+            echo "━━━ Files changed in this commit ━━━"
+            echo "$CHANGED_FILES"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            if echo "$CHANGED_FILES" | grep -q -E '^(backend/|frontend/|terraform/|docker-compose.yml|Makefile|\.github/workflows/cd\.yml)'; then
+              echo "deploy=true" >> "$GITHUB_OUTPUT"
+              echo "→ Deployable changes detected."
+            else
+              echo "deploy=false" >> "$GITHUB_OUTPUT"
+              echo "→ Only docs/config/other changed — skipping deploy."
+            fi
           fi
 
   # ── Deploy backend: Docker → ECR → ECS ─────────────────────────────
