@@ -168,27 +168,96 @@ resource "aws_iam_role_policy" "github_actions_cloudfront" {
   policy = data.aws_iam_policy_document.github_actions_cloudfront.json
 }
 
-# --- GitHub Actions: Terraform EC2 read (state refresh) ---
+# --- GitHub Actions: Terraform read-only (state refresh) ---
+# Broad read-only access so Terraform can refresh state for all managed resources.
 
-data "aws_iam_policy_document" "github_actions_terraform_ec2" {
+data "aws_iam_policy_document" "github_actions_terraform_readonly" {
   statement {
     effect = "Allow"
     actions = [
+      # EC2
+      "ec2:DescribeAccountAttributes",
       "ec2:DescribeAddresses",
+      "ec2:DescribeAddressesAttribute",
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeImages",
       "ec2:DescribeInstances",
-      "ec2:DescribeVpcs",
-      "ec2:DescribeSubnets",
-      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeInternetGateways",
+      "ec2:DescribeNatGateways",
       "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeRouteTables",
+      "ec2:DescribeSecurityGroupRules",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeTags",
+      "ec2:DescribeVpcAttribute",
+      "ec2:DescribeVpcs",
+      # ECR
+      "ecr:BatchGetImage",
+      "ecr:DescribeRepositories",
+      "ecr:GetLifecyclePolicy",
+      "ecr:ListImages",
+      # ECS
+      "ecs:DescribeClusters",
+      "ecs:DescribeTaskDefinition",
+      "ecs:DescribeTasks",
+      "ecs:ListClusters",
+      "ecs:ListServices",
+      "ecs:ListTaskDefinitions",
+      # CloudWatch Logs
+      "logs:DescribeLogGroups",
+      "logs:DescribeLogStreams",
+      "logs:ListTagsLogGroup",
+      # S3
+      "s3:GetBucketLocation",
+      "s3:GetBucketPolicy",
+      "s3:GetBucketPublicAccessBlock",
+      "s3:GetBucketVersioning",
+      "s3:ListAllMyBuckets",
+      # CloudFront
+      "cloudfront:GetDistribution",
+      "cloudfront:GetDistributionConfig",
+      "cloudfront:GetOriginAccessControl",
+      "cloudfront:ListDistributions",
+      "cloudfront:ListOriginAccessControls",
+      # IAM
+      "iam:GetRole",
+      "iam:GetRolePolicy",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListOpenIDConnectProviders",
+      "iam:ListRolePolicies",
+      # SNS
+      "sns:GetTopicAttributes",
+      "sns:ListSubscriptionsByTopic",
+      "sns:ListTagsForResource",
+      "sns:ListTopics",
+      # Secrets Manager
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:ListSecrets",
+      # RDS
+      "rds:DescribeDBInstances",
+      "rds:DescribeDBParameterGroups",
+      "rds:DescribeDBSubnetGroups",
+      "rds:ListTagsForResource",
+      # ELB (ALB)
+      "elasticloadbalancing:DescribeListeners",
+      "elasticloadbalancing:DescribeLoadBalancers",
+      "elasticloadbalancing:DescribeTags",
+      "elasticloadbalancing:DescribeTargetGroups",
+      # CloudWatch
+      "cloudwatch:DescribeAlarms",
+      "cloudwatch:GetMetricData",
+      "cloudwatch:ListTagsForResource",
     ]
     resources = ["*"]
   }
 }
 
-resource "aws_iam_role_policy" "github_actions_terraform_ec2" {
-  name   = "${var.project_name}-github-terraform-ec2"
+resource "aws_iam_role_policy" "github_actions_terraform_readonly" {
+  name   = "${var.project_name}-github-terraform-readonly"
   role   = aws_iam_role.github_actions.id
-  policy = data.aws_iam_policy_document.github_actions_terraform_ec2.json
+  policy = data.aws_iam_policy_document.github_actions_terraform_readonly.json
 }
 
 # ---------------------------------------------------------------------------

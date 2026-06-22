@@ -73,18 +73,21 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: backend/
-          file: backend/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:api-latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:consumer-latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:generator-latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.event.workflow_run.head_sha || github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          REPO=${{ env.ECR_REPO }}
+          SHA_TAG=${{ github.event.workflow_run.head_sha || github.sha }}
+
+          docker buildx build \
+            -f backend/Dockerfile \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --tag "$REGISTRY/$REPO:api-latest" \
+            --tag "$REGISTRY/$REPO:consumer-latest" \
+            --tag "$REGISTRY/$REPO:generator-latest" \
+            --tag "$REGISTRY/$REPO:$SHA_TAG" \
+            --push \
+            backend/
 
       - name: Force ECS deploy — API
         run: |
