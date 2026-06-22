@@ -114,17 +114,17 @@ resource "aws_ecs_task_definition" "api" {
       environment = [
         { name = "LAAD_ENV", value = "production" },
         { name = "KAFKA_BOOTSTRAP_SERVERS", value = var.kafka_bootstrap_servers },
-        { name = "RDS_HOST", value = var.rds_endpoint },
-        { name = "RDS_PORT", value = tostring(var.rds_port) },
-        { name = "RDS_DB", value = var.rds_db_name },
-        { name = "RDS_USER", value = "laad_admin" },
+        { name = "POSTGRES_HOST", value = split(":", var.rds_endpoint)[0] },
+        { name = "POSTGRES_PORT", value = tostring(var.rds_port) },
+        { name = "POSTGRES_DB", value = var.rds_db_name },
+        { name = "POSTGRES_USER", value = "laad_admin" },
         { name = "CORS_ORIGINS", value = var.cors_origins },
         { name = "AWS_REGION", value = var.aws_region },
       ]
 
       secrets = [
         { name = "JWT_SECRET_KEY", valueFrom = "${var.jwt_secret_arn}:JWT_SECRET_KEY::" },
-        { name = "RDS_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
+        { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
         { name = "SAGEMAKER_ENDPOINT_NAME", valueFrom = "${var.sagemaker_secret_arn}:SAGEMAKER_ENDPOINT_NAME::" },
         { name = "MLFLOW_TRACKING_URI", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_TRACKING_URI::" },
         { name = "MLFLOW_S3_ARTIFACT_ROOT", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_S3_ARTIFACT_ROOT::" },
@@ -183,14 +183,14 @@ resource "aws_ecs_task_definition" "consumer" {
       environment = [
         { name = "LAAD_ENV", value = "production" },
         { name = "KAFKA_BOOTSTRAP_SERVERS", value = var.kafka_bootstrap_servers },
-        { name = "RDS_HOST", value = var.rds_endpoint },
-        { name = "RDS_PORT", value = tostring(var.rds_port) },
-        { name = "RDS_DB", value = var.rds_db_name },
-        { name = "RDS_USER", value = "laad_admin" },
+        { name = "POSTGRES_HOST", value = split(":", var.rds_endpoint)[0] },
+        { name = "POSTGRES_PORT", value = tostring(var.rds_port) },
+        { name = "POSTGRES_DB", value = var.rds_db_name },
+        { name = "POSTGRES_USER", value = "laad_admin" },
       ]
 
       secrets = [
-        { name = "RDS_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
+        { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
       ]
 
       healthCheck = {

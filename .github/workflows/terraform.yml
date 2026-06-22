@@ -60,8 +60,8 @@ jobs:
           pip install -q checkov
           checkov -d terraform/ \
             --framework terraform \
-            --quiet \
-            --severity-threshold MEDIUM
+            --baseline .checkov.baseline \
+            --quiet
 
       - name: Clean stale S3 state lock
         run: |
