@@ -219,6 +219,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "cloudfront:GetOriginAccessControl",
       "cloudfront:ListDistributions",
       "cloudfront:ListOriginAccessControls",
+      "cloudfront:ListTagsForResource",
       # IAM
       "iam:GetOpenIDConnectProvider",
       "iam:GetRole",
