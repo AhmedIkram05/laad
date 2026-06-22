@@ -1,6 +1,7 @@
 name: CD
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -17,7 +18,7 @@ env:
 jobs:
   # ── Check if deployable code actually changed ─────────────────────
   should-deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       deploy: ${{ steps.check.outputs.deploy }}
@@ -25,7 +26,7 @@ jobs:
       - name: Checkout with depth 2 (to diff against parent)
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 2
 
       - name: Detect deployable changes
