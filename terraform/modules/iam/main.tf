@@ -204,9 +204,11 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "logs:Describe*",
       "logs:List*",
       # S3 — wildcard: Terraform reads many bucket attributes
-      # Note: GetAccelerateConfiguration is NOT covered by GetBucket* (different IAM prefix)
+      # Note: GetAccelerateConfiguration and GetLifecycleConfiguration do NOT
+      # use the GetBucket prefix, so add them separately.
       "s3:GetAccelerateConfiguration",
       "s3:GetBucket*",
+      "s3:GetLifecycleConfiguration",
       "s3:ListAllMyBuckets",
       # CloudFront
       "cloudfront:GetDistribution",
