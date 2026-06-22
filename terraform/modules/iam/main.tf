@@ -175,29 +175,8 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
   statement {
     effect = "Allow"
     actions = [
-      # EC2
-      "ec2:DescribeAccountAttributes",
-      "ec2:DescribeAddresses",
-      "ec2:DescribeAddressesAttribute",
-      "ec2:DescribeAvailabilityZones",
-      "ec2:DescribeImages",
-      "ec2:DescribeInstanceAttribute",
-      "ec2:DescribeInstanceCreditSpecifications",
-      "ec2:DescribeInstances",
-      "ec2:DescribeInstanceTypes",
-      "ec2:DescribeInternetGateways",
-      "ec2:DescribeNatGateways",
-      "ec2:DescribeNetworkInterfaces",
-      "ec2:DescribePrefixLists",
-      "ec2:DescribeRouteTables",
-      "ec2:DescribeSecurityGroupRules",
-      "ec2:DescribeSecurityGroups",
-      "ec2:DescribeSubnets",
-      "ec2:DescribeTags",
-      "ec2:DescribeVolumes",
-      "ec2:DescribeVpcAttribute",
-      "ec2:DescribeVpcEndpoints",
-      "ec2:DescribeVpcs",
+      # EC2 — wildcard: Terraform reads many instance/bucket/network attributes
+      "ec2:Describe*",
       # ECR
       "ecr:BatchGetImage",
       "ecr:DescribeRepositories",
@@ -211,21 +190,11 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "ecs:ListClusters",
       "ecs:ListServices",
       "ecs:ListTaskDefinitions",
-      # CloudWatch Logs
-      "logs:DescribeLogGroups",
-      "logs:DescribeLogStreams",
-      "logs:DescribeMetricFilters",
-      "logs:ListTagsLogGroup",
-      "logs:ListTagsForResource",
-      # S3
-      "s3:GetAccelerateConfiguration",
-      "s3:GetBucketAcl",
-      "s3:GetBucketCORS",
-      "s3:GetBucketLocation",
-      "s3:GetBucketPolicy",
-      "s3:GetBucketPublicAccessBlock",
-      "s3:GetBucketVersioning",
-      "s3:GetBucketWebsite",
+      # CloudWatch Logs — wildcard: Terraform reads metric filters, streams, etc.
+      "logs:Describe*",
+      "logs:List*",
+      # S3 — wildcard: Terraform reads many bucket attributes
+      "s3:GetBucket*",
       "s3:ListAllMyBuckets",
       # CloudFront
       "cloudfront:GetDistribution",
@@ -256,14 +225,8 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "rds:DescribeDBParameters",
       "rds:DescribeDBSubnetGroups",
       "rds:ListTagsForResource",
-      # ELB (ALB)
-      "elasticloadbalancing:DescribeListenerAttributes",
-      "elasticloadbalancing:DescribeListeners",
-      "elasticloadbalancing:DescribeLoadBalancerAttributes",
-      "elasticloadbalancing:DescribeLoadBalancers",
-      "elasticloadbalancing:DescribeTags",
-      "elasticloadbalancing:DescribeTargetGroupAttributes",
-      "elasticloadbalancing:DescribeTargetGroups",
+      # ELB (ALB) — wildcard: Terraform reads listener attributes, target groups, etc.
+      "elasticloadbalancing:Describe*",
       # CloudWatch
       "cloudwatch:DescribeAlarms",
       "cloudwatch:GetMetricData",
