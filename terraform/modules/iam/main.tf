@@ -187,6 +187,10 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
     actions = [
       # EC2 — wildcard: Terraform reads many instance/bucket/network attributes
       "ec2:Describe*",
+      # StopInstances/StartInstances needed for Terraform to update user_data
+      # on existing EC2 instances (e.g. Kafka) by stopping, modifying, then starting.
+      "ec2:StartInstances",
+      "ec2:StopInstances",
       # ECR
       "ecr:BatchGetImage",
       "ecr:DescribeRepositories",
