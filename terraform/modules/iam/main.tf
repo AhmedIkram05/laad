@@ -182,6 +182,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "ec2:DescribeAvailabilityZones",
       "ec2:DescribeImages",
       "ec2:DescribeInstanceAttribute",
+      "ec2:DescribeInstanceCreditSpecifications",
       "ec2:DescribeInstances",
       "ec2:DescribeInstanceTypes",
       "ec2:DescribeInternetGateways",
@@ -217,6 +218,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "logs:ListTagsLogGroup",
       "logs:ListTagsForResource",
       # S3
+      "s3:GetAccelerateConfiguration",
       "s3:GetBucketAcl",
       "s3:GetBucketCORS",
       "s3:GetBucketLocation",
