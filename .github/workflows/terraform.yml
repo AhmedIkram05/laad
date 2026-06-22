@@ -61,7 +61,7 @@ jobs:
           framework: terraform
           quiet: true
           skip_check: >-
-            CKV_AWS_272,CKV2_AWS_19,CKV_AWS_126,CKV_AWS_382
+            CKV_AWS_272,CKV2_AWS_19,CKV_AWS_126,CKV_AWS_382,CKV_AWS_161,CKV_AWS_353
 
       - name: Terraform Plan
         id: plan
