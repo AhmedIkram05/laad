@@ -41,6 +41,12 @@ resource "aws_instance" "kafka" {
     encrypted   = true
   }
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
   user_data = base64encode(<<EOF
 #!/bin/bash
 set -euxo pipefail

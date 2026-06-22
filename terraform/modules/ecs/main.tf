@@ -427,8 +427,6 @@ resource "aws_ecs_service" "consumer" {
   task_definition  = aws_ecs_task_definition.consumer.arn
   desired_count    = 1
   launch_type      = "FARGATE"
-  platform_version = "1.4.0"
-
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.ecs_consumer_sg_id]
@@ -448,8 +446,6 @@ resource "aws_ecs_service" "generator" {
   task_definition  = aws_ecs_task_definition.generator.arn
   desired_count    = 1
   launch_type      = "FARGATE"
-  platform_version = "1.4.0"
-
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.ecs_generator_sg_id]
@@ -469,8 +465,6 @@ resource "aws_ecs_service" "redis" {
   task_definition  = aws_ecs_task_definition.redis.arn
   desired_count    = 1
   launch_type      = "FARGATE"
-  platform_version = "1.4.0"
-
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.redis_sg_id]
@@ -490,8 +484,6 @@ resource "aws_ecs_service" "chromadb" {
   task_definition  = aws_ecs_task_definition.chromadb.arn
   desired_count    = 1
   launch_type      = "FARGATE"
-  platform_version = "1.4.0"
-
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.chromadb_sg_id]
