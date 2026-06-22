@@ -187,7 +187,7 @@ jobs:
       - name: Build frontend
         run: |
           npm ci
-          VITE_API_URL=${{ secrets.API_URL }} npm run build
+          npm run build
         working-directory: frontend
 
       - name: Sync frontend to S3

@@ -95,6 +95,7 @@ module "frontend" {
 
   project_name = var.project_name
   environment  = var.environment
+  alb_dns_name = module.ecs.alb_dns_name
 }
 
 # Batch 2a: Monitoring module (budget alerts + alarms)

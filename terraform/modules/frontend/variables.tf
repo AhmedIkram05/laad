@@ -11,3 +11,8 @@ variable "environment" {
   type        = string
   default     = "production"
 }
+
+variable "alb_dns_name" {
+  description = "DNS name of the ALB for proxying API requests"
+  type        = string
+}

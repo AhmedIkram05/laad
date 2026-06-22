@@ -8,7 +8,8 @@
 import React, { useEffect, useState } from "react";
 import { AuthContext } from "./useAuth";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// All API calls use relative paths — CloudFront proxies /auth/* to the ALB
+const API_BASE_URL = "";
 
 export function AuthProvider({ children }) {
     const [token, setToken] = useState(() => localStorage.getItem("jwt") || null);
