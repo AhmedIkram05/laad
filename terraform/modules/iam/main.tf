@@ -111,8 +111,8 @@ data "aws_iam_policy_document" "github_actions_ecs" {
   # iam:PassRole is required by aws ecs run-task (schema init) to pass the
   # ECS execution and task roles to the new task.
   statement {
-    effect    = "Allow"
-    actions   = ["iam:PassRole"]
+    effect  = "Allow"
+    actions = ["iam:PassRole"]
     resources = [
       "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-*"
     ]
@@ -204,11 +204,12 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "logs:Describe*",
       "logs:List*",
       # S3 — wildcard: Terraform reads many bucket attributes
-      # Note: GetAccelerateConfiguration, GetLifecycleConfiguration, and
-      # GetReplicationConfiguration do NOT use the GetBucket prefix,
-      # so add them separately.
+      # Note: GetAccelerateConfiguration, GetEncryptionConfiguration,
+      # GetLifecycleConfiguration, and GetReplicationConfiguration do NOT
+      # use the GetBucket prefix, so add them separately.
       "s3:GetAccelerateConfiguration",
       "s3:GetBucket*",
+      "s3:GetEncryptionConfiguration",
       "s3:GetLifecycleConfiguration",
       "s3:GetReplicationConfiguration",
       "s3:ListAllMyBuckets",
