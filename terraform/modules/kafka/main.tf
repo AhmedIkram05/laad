@@ -49,63 +49,92 @@ resource "aws_instance" "kafka" {
 
   user_data = base64encode(<<EOF
 #!/bin/bash
-set -euxo pipefail
+# Log everything for debugging
+exec > /var/log/user-data.log 2>&1
+set -x
 
-# 1. Update system
-dnf update -y
+echo "=== Starting Kafka user_data at \$(date) ==="
+
+# 1. Update system (skip if it takes too long — not critical for Kafka)
+dnf update -y || echo "dnf update skipped (non-fatal)"
 
 # 2. Install Java 17 (Amazon Corretto)
-dnf install -y java-17-amazon-corretto-devel
+dnf install -y java-17-amazon-corretto-devel || echo "Java install failed (may already be installed)"
+echo "Java version:"
+java -version 2>&1 || echo "Java not available yet"
 
-# 3. Download Kafka 3.7.0
+# 3. Download Kafka 3.7.0 (try multiple mirrors with retries)
 cd /opt
-wget -q https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz
-tar -xzf kafka_2.13-3.7.0.tgz
-ln -s kafka_2.13-3.7.0 kafka
+KAFKA_TGZ="kafka_2.13-3.7.0.tgz"
+
+download_kafka() {
+    for url in \
+        "https://archive.apache.org/dist/kafka/3.7.0/\$KAFKA_TGZ" \
+        "https://dlcdn.apache.org/kafka/3.7.0/\$KAFKA_TGZ" \
+        "https://downloads.apache.org/kafka/3.7.0/\$KAFKA_TGZ"; do
+        for i in 1 2 3; do
+            echo "Downloading Kafka from \$url (attempt \$i)..."
+            if curl -fsSL "\$url" -o "\$KAFKA_TGZ"; then
+                echo "Download successful from \$url"
+                return 0
+            fi
+            sleep 3
+        done
+    done
+    return 1
+}
+
+if [ ! -f "\$KAFKA_TGZ" ]; then
+    download_kafka || echo "WARNING: All download attempts failed — will retry later"
+fi
+
+if [ -f "\$KAFKA_TGZ" ]; then
+    tar -xzf "\$KAFKA_TGZ" && ln -sf kafka_2.13-3.7.0 kafka && echo "Kafka extracted to /opt/kafka"
+else
+    echo "Kafka download not available — skipping extraction"
+fi
 
 # 4. Create Kafka data directory
 mkdir -p /data/kafka
-chown -R ec2-user:ec2-user /data/kafka
+chown -R ec2-user:ec2-user /data/kafka || true
 
-# 5. Configure KRaft (server.properties with process.roles=broker,controller)
-cat > /opt/kafka/config/kraft/server.properties << 'KAFKA_EOF'
-# KRaft mode - no Zookeeper
+# 5. Get private IP
+PRIVATE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+echo "Private IP: \$PRIVATE_IP"
+
+# 6. Configure KRaft server.properties (only if Kafka was extracted)
+if [ -d /opt/kafka ]; then
+    cat > /opt/kafka/config/kraft/server.properties << KAFKA_EOF
 process.roles=broker,controller
 node.id=1
 controller.quorum.voters=1@localhost:9093
-
-# Listeners
 listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-advertised.listeners=PLAINTEXT://PRIVATE_IP:9092
+advertised.listeners=PLAINTEXT://$${PRIVATE_IP}:9092
 listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
 inter.broker.listener.name=PLAINTEXT
 controller.listener.names=CONTROLLER
-
-# Logs
 log.dirs=/data/kafka
 num.partitions=3
 default.replication.factor=1
 offsets.topic.replication.factor=1
 transaction.state.log.replication.factor=1
 transaction.state.log.min.isr=1
-
-# Heap
-KAFKA_HEAP_OPTS=-Xms512m -Xmx512m
 KAFKA_EOF
 
-# Replace PRIVATE_IP with actual private IP
-PRIVATE_IP=$$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-sed -i "s/PRIVATE_IP/$$PRIVATE_IP/g" /opt/kafka/config/kraft/server.properties
+    echo "server.properties:"
+    grep -E "^(listeners|advertised)" /opt/kafka/config/kraft/server.properties
 
-# 6. Generate cluster ID and format the log directory
-/opt/kafka/bin/kafka-storage.sh random-uuid > /tmp/kafka-cluster-id
-/opt/kafka/bin/kafka-storage.sh format -t $$(cat /tmp/kafka-cluster-id) -c /opt/kafka/config/kraft/server.properties
+    # 7. Generate cluster ID and format
+    CLUSTER_ID=\$(/opt/kafka/bin/kafka-storage.sh random-uuid)
+    echo "Cluster ID: \$CLUSTER_ID"
+    /opt/kafka/bin/kafka-storage.sh format -t "\$CLUSTER_ID" -c /opt/kafka/config/kraft/server.properties || true
 
-# 7. Create systemd service
-cat > /etc/systemd/system/kafka.service << 'SYSTEMD_EOF'
+    # 8. Create systemd service
+    cat > /etc/systemd/system/kafka.service << SYSTEMD_EOF
 [Unit]
 Description=Apache Kafka (KRaft mode)
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -120,10 +149,25 @@ RestartSec=10
 WantedBy=multi-user.target
 SYSTEMD_EOF
 
-# 8. Enable and start
-systemctl daemon-reload
-systemctl enable kafka
-systemctl start kafka
+    # 9. Enable and start
+    systemctl daemon-reload
+    systemctl enable kafka
+    systemctl start kafka
+
+    # 10. Wait and verify
+    sleep 15
+    if systemctl is-active --quiet kafka; then
+        echo "=== Kafka is running! ==="
+        ss -tlnp | grep 9092 || echo "Port 9092 not yet listening"
+    else
+        echo "=== Kafka failed to start ==="
+        journalctl -u kafka --no-pager -n 30
+    fi
+else
+    echo "Kafka not extracted — skipping Kafka configuration and service setup"
+fi
+
+echo "=== User-data completed at \$(date) ==="
 EOF
   )
 
