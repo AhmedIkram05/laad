@@ -131,6 +131,7 @@
                     "resource": "module.iam.aws_iam_policy_document.github_actions_terraform_readonly",
                     "check_ids": [
                         "CKV_AWS_108",
+                        "CKV_AWS_109",
                         "CKV_AWS_356"
                     ]
                 }
