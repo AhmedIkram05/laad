@@ -193,6 +193,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeSubnets",
       "ec2:DescribeTags",
+      "ec2:DescribeVolumes",
       "ec2:DescribeVpcAttribute",
       "ec2:DescribeVpcEndpoints",
       "ec2:DescribeVpcs",
@@ -222,6 +223,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "s3:GetBucketPolicy",
       "s3:GetBucketPublicAccessBlock",
       "s3:GetBucketVersioning",
+      "s3:GetBucketWebsite",
       "s3:ListAllMyBuckets",
       # CloudFront
       "cloudfront:GetDistribution",

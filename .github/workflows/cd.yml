@@ -131,11 +131,13 @@ jobs:
       - name: Initialize database schema (idempotent)
         run: |
           # Extract network config from the stable API service
-          NETWORK_CONFIG=$(aws ecs describe-services --cluster laad-cluster --services laad-api \
+          # --network-configuration expects {"awsvpcConfiguration": {...}}
+          NETWORK_CONFIG_RAW=$(aws ecs describe-services --cluster laad-cluster --services laad-api \
             --query 'services[0].networkConfiguration.awsvpcConfiguration' \
             --output json)
+          NETWORK_CONFIG=$(echo "$NETWORK_CONFIG_RAW" | jq -c '{awsvpcConfiguration: .}')
 
-          echo "Network config: $(echo $NETWORK_CONFIG | jq -c '{subnets, securityGroups}')"
+          echo "Network config: $(echo $NETWORK_CONFIG_RAW | jq -c '{subnets, securityGroups}')"
 
           TASK_ARN=$(aws ecs run-task \
             --cluster laad-cluster \
