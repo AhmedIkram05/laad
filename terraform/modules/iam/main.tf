@@ -168,6 +168,29 @@ resource "aws_iam_role_policy" "github_actions_cloudfront" {
   policy = data.aws_iam_policy_document.github_actions_cloudfront.json
 }
 
+# --- GitHub Actions: Terraform EC2 read (state refresh) ---
+
+data "aws_iam_policy_document" "github_actions_terraform_ec2" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeAddresses",
+      "ec2:DescribeInstances",
+      "ec2:DescribeVpcs",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeNetworkInterfaces",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_terraform_ec2" {
+  name   = "${var.project_name}-github-terraform-ec2"
+  role   = aws_iam_role.github_actions.id
+  policy = data.aws_iam_policy_document.github_actions_terraform_ec2.json
+}
+
 # ---------------------------------------------------------------------------
 # Role 2: ECS Task Execution Role
 # ---------------------------------------------------------------------------

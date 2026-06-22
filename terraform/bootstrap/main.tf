@@ -61,8 +61,12 @@ data "aws_iam_policy_document" "tf_state_restrict" {
       "s3:DeleteObject",
       "s3:DeleteObjectVersion"
     ]
-    resources = [
-      "${aws_s3_bucket.tf_state.arn}/*"
+    # Deny DeleteObject on all bucket objects EXCEPT the Terraform lock
+    # file (.tflock). CI/CD pipelines need to create/delete lock files
+    # during terraform plan/apply without MFA. State files (.tfstate)
+    # remain fully MFA-protected.
+    not_resources = [
+      "${aws_s3_bucket.tf_state.arn}/laad/terraform.tfstate.tflock"
     ]
     condition {
       test     = "Bool"
