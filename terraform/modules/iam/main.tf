@@ -107,6 +107,16 @@ data "aws_iam_policy_document" "github_actions_ecs" {
       "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task/*",
     ]
   }
+
+  # iam:PassRole is required by aws ecs run-task (schema init) to pass the
+  # ECS execution and task roles to the new task.
+  statement {
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-ecs-*"
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "github_actions_ecs" {
