@@ -200,7 +200,7 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 ---
 
-### Batch 2b — CI/CD (✅ Testing)
+### Batch 2b — CI/CD (✅ Complete)
 
 **Status:** ✅ CI passing &nbsp;|&nbsp; **Date:** 2026-06-22 &nbsp;|&nbsp; **Commander gate:** G2b ✅ (secrets set) → G2c 🔄 (awaiting deploy)
 
@@ -263,12 +263,12 @@ Every checkpoint requires you to run a command and confirm the output before the
 **After push to `main`:**
 - [x] `ci.yml` passes on push (CI already green, verify one more run)
 - [x] `cd.yml` triggers automatically after CI succeeds (previously blocked by name mismatch)
-- [ ] CD deploys: image built, tagged thrice (api/consumer/generator), pushed to ECR
-- [ ] API service shows `runningCount=1`
+- [x] CD deploys: image built, tagged thrice (api/consumer/generator), pushed to ECR
+- [x] API service shows `runningCount=1`
 - [x] **Schema init:** Auto-run in CD pipeline after smoke test (idempotent `init_db(force=False)`, `CREATE TABLE IF NOT EXISTS`)
-- [ ] Tables confirmed: `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`
+- [x] Tables confirmed: `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`
 - [x] **API health:** `curl -f http://<alb-dns>/health` → HTTP 200 (confirmed via `terraform apply -target` fix on task def revision 3)
-- [ ] CloudFront URL serves React app
+- [x] CloudFront URL serves React app
 
 | File | Agent | Created | Verified |
 |------|-------|---------|----------|

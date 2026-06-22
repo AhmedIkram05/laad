@@ -3,6 +3,12 @@
 
 data "aws_caller_identity" "current" {}
 
+locals {
+  cloudfront_cache_policy_caching_disabled_id    = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  cloudfront_cache_policy_caching_optimized_id   = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+  cloudfront_origin_request_policy_all_viewer_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+}
+
 # S3 bucket for frontend static files
 resource "aws_s3_bucket" "frontend" {
   bucket        = "${var.project_name}-frontend-${data.aws_caller_identity.current.account_id}"
@@ -43,6 +49,55 @@ resource "aws_cloudfront_origin_access_control" "main" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_function" "api_path_rewrite" {
+  name    = "${var.project_name}-${var.environment}-api-path-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "Rewrite frontend API paths to backend route prefixes"
+  publish = true
+  code    = <<-EOT
+function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+
+  if (hasPathPrefix(uri, '/api/insights')) {
+    request.uri = '/api/analytics' + uri.substring('/api/insights'.length);
+  } else if (hasPathPrefix(uri, '/api/rag') || hasPathPrefix(uri, '/api/analytics')) {
+    request.uri = uri;
+  } else if (uri === '/api') {
+    request.uri = '/';
+  } else if (uri.indexOf('/api/') === 0) {
+    request.uri = uri.substring(4);
+  }
+
+  return request;
+}
+
+function hasPathPrefix(uri, prefix) {
+  return uri === prefix || uri.indexOf(prefix + '/') === 0;
+}
+EOT
+}
+
+resource "aws_cloudfront_function" "spa_path_rewrite" {
+  name    = "${var.project_name}-${var.environment}-spa-path-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "Serve React SPA routes from index.html"
+  publish = true
+  code    = <<-EOT
+function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+  var lastSegment = uri.substring(uri.lastIndexOf('/') + 1);
+
+  if (uri === '/' || uri.slice(-1) === '/' || lastSegment.indexOf('.') === -1) {
+    request.uri = '/index.html';
+  }
+
+  return request;
+}
+EOT
+}
+
 # CloudFront distribution serving the frontend
 resource "aws_cloudfront_distribution" "main" {
   enabled             = true
@@ -81,18 +136,8 @@ resource "aws_cloudfront_distribution" "main" {
 
     viewer_protocol_policy = "redirect-to-https"
 
-    forwarded_values {
-      query_string = true
-      headers      = ["Authorization", "Content-Type", "Origin"]
-
-      cookies {
-        forward = "all"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 0
-    max_ttl     = 0
+    cache_policy_id          = local.cloudfront_cache_policy_caching_disabled_id
+    origin_request_policy_id = local.cloudfront_origin_request_policy_all_viewer_id
   }
 
   ordered_cache_behavior {
@@ -104,18 +149,13 @@ resource "aws_cloudfront_distribution" "main" {
 
     viewer_protocol_policy = "redirect-to-https"
 
-    forwarded_values {
-      query_string = true
-      headers      = ["Authorization", "Content-Type", "Origin"]
+    cache_policy_id          = local.cloudfront_cache_policy_caching_disabled_id
+    origin_request_policy_id = local.cloudfront_origin_request_policy_all_viewer_id
 
-      cookies {
-        forward = "all"
-      }
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.api_path_rewrite.arn
     }
-
-    min_ttl     = 0
-    default_ttl = 0
-    max_ttl     = 0
   }
 
   ordered_cache_behavior {
@@ -127,17 +167,8 @@ resource "aws_cloudfront_distribution" "main" {
 
     viewer_protocol_policy = "redirect-to-https"
 
-    forwarded_values {
-      query_string = false
-
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 0
-    max_ttl     = 0
+    cache_policy_id          = local.cloudfront_cache_policy_caching_disabled_id
+    origin_request_policy_id = local.cloudfront_origin_request_policy_all_viewer_id
   }
 
   default_cache_behavior {
@@ -148,33 +179,12 @@ resource "aws_cloudfront_distribution" "main" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    forwarded_values {
-      query_string = true
+    cache_policy_id = local.cloudfront_cache_policy_caching_optimized_id
 
-      cookies {
-        forward = "all"
-      }
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_path_rewrite.arn
     }
-
-    min_ttl     = 0
-    default_ttl = 3600
-    max_ttl     = 86400
-  }
-
-  # SPA fallback: serve index.html for 403 (e.g. direct path access)
-  custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 300
-  }
-
-  # SPA fallback: serve index.html for 404
-  custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 300
   }
 
   price_class      = "PriceClass_100"
