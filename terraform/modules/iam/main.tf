@@ -227,8 +227,9 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "rds:ListTagsForResource",
       # ELB (ALB) — wildcard: Terraform reads listener attributes, target groups, etc.
       "elasticloadbalancing:Describe*",
-      # CloudWatch
+      # CloudWatch — wildcard not safe here; add specific dashboard read
       "cloudwatch:DescribeAlarms",
+      "cloudwatch:GetDashboard",
       "cloudwatch:GetMetricData",
       "cloudwatch:ListTagsForResource",
     ]
