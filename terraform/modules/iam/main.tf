@@ -227,6 +227,9 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "iam:ListAttachedRolePolicies",
       "iam:ListOpenIDConnectProviders",
       "iam:ListRolePolicies",
+      # PutRolePolicy needed for Terraform to update the role's own inline
+      # policies (e.g. adding new S3/CloudFront read actions for state refresh)
+      "iam:PutRolePolicy",
       # SNS
       "sns:GetTopicAttributes",
       "sns:ListSubscriptionsByTopic",
