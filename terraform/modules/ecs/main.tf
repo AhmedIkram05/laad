@@ -164,6 +164,8 @@ resource "aws_ecs_task_definition" "consumer" {
       image     = "${var.ecr_repository_url}:consumer-latest"
       essential = true
 
+      command = ["python", "-m", "backend.kafka.consumer"]
+
       portMappings = [
         {
           containerPort = 8081
@@ -191,6 +193,7 @@ resource "aws_ecs_task_definition" "consumer" {
 
       secrets = [
         { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
+        { name = "JWT_SECRET_KEY", valueFrom = "${var.jwt_secret_arn}:JWT_SECRET_KEY::" },
       ]
 
       healthCheck = {
@@ -224,6 +227,8 @@ resource "aws_ecs_task_definition" "generator" {
       image     = "${var.ecr_repository_url}:generator-latest"
       essential = true
 
+      command = ["python", "-m", "backend.generator.continuous_generator"]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -235,6 +240,7 @@ resource "aws_ecs_task_definition" "generator" {
 
       environment = [
         { name = "KAFKA_BOOTSTRAP_SERVERS", value = var.kafka_bootstrap_servers },
+        { name = "LAAD_ENV", value = "production" },
       ]
     }
   ])

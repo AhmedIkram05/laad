@@ -225,8 +225,11 @@ Every checkpoint requires you to run a command and confirm the output before the
 | 8 | `terraform.yml` — dedicated Terraform workflow | Plan-on-PR + apply-on-merge + Checkov + fmt | Industry-standard IaC pattern. PR comments show exact plan. |
 | 9 | `deps` job in `ci.yml` | `actions/dependency-review-action@v4` | Supply chain security — flags high-severity vulnerabilities in new/modified deps. |
 | 10 | `AWS_REGION` moved from `secrets` to `environment` in ECS API task definition | CD failed — `services-stable` waiter timed out. API task crashed at startup: `did not contain json key AWS_REGION` from `laad/mlflow` secret | `laad/mlflow` has `MLFLOW_REGION` not `AWS_REGION`. `AWS_REGION` is non-sensitive, belongs in plain `environment`. |
+| 11 | `RDS_HOST`/`RDS_PORT`/`RDS_DB`/`RDS_USER`/`RDS_PASSWORD` → `POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD` in ECS task definitions (API + Consumer) | CD pipeline smoke test returned 502 — API container connected to `localhost:5432` instead of RDS | App reads `POSTGRES_*` env vars (from `backend/src/database/config.py`), but ECS task defs passed `RDS_*` names. With none set, app fell back to `localhost`. Also fixed `POSTGRES_HOST` to strip port from `var.rds_endpoint` via `split(":", ...)[0]`. |
+| 12 | `--baseline .checkov.baseline` → `--baseline terraform/.checkov.baseline` in `terraform.yml` | Terraform workflow `Plan` job failed: `FileNotFoundError: '.checkov.baseline'` | Checkov runs from repo root (no `working-directory`), so relative path `.checkov.baseline` resolves to `$GITHUB_WORKSPACE/.checkov.baseline` which doesn't exist. The file is at `terraform/.checkov.baseline`. |
+| 13 | Consumer + Generator ECS task definitions: added `command` overrides + `JWT_SECRET_KEY` (consumer) + `LAAD_ENV` (generator) | CD smoke test hung for 7m 50s — `aws ecs wait services-stable` timed out because consumer (0/1 running) and generator (0/1 running) kept crashing | All three services use the same Docker image (default `CMD`: uvicorn API). Consumer and generator had no `command` override — ECS started the API server instead, which crashed because `JWT_SECRET_KEY` wasn't set in those task defs. Fixed by adding correct `command` entries for each service. |
 
-**CI Bugs Fixed (6 rounds):**
+**CI Bugs Fixed (7 rounds):**
 
 | # | Fix | Cause | Round |
 |---|-----|-------|-------|
@@ -253,6 +256,7 @@ Every checkpoint requires you to run a command and confirm the output before the
 - [x] **Terraform fmt** fixed for `ecs/main.tf` and `rds/main.tf` (whitespace diffs causing fmt -check failures)
 - [x] **Stale state lock fix**: `aws dynamodb delete-item` step added before `terraform plan` and `terraform apply` in terraform.yml — prevents `Error acquiring the state lock` when `cancel-in-progress` leaves a stale DynamoDB lock
 - [x] 🚀 **Fix #10:** `AWS_REGION` moved from secret to env var in API task definition (revision 2) — fixes `did not contain json key AWS_REGION`
+- [x] 🚀 **Fix #11:** `RDS_*` → `POSTGRES_*` env var rename in ECS API + Consumer task definitions (revision 3) — fixes 502 `localhost:5432` fallback
 - [ ] 🚀 **Next:** Push to `main` → CI passes → CD auto-triggers → deploy + schema init
 
 **After push to `main`:**
@@ -262,7 +266,7 @@ Every checkpoint requires you to run a command and confirm the output before the
 - [ ] API service shows `runningCount=1`
 - [x] **Schema init:** Auto-run in CD pipeline after smoke test (idempotent `init_db(force=False)`, `CREATE TABLE IF NOT EXISTS`)
 - [ ] Tables confirmed: `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`
-- [ ] API health: `curl -f http://<alb-dns>/health` → HTTP 200
+- [x] **API health:** `curl -f http://<alb-dns>/health` → HTTP 200 (confirmed via `terraform apply -target` fix on task def revision 3)
 - [ ] CloudFront URL serves React app
 
 | File | Agent | Created | Verified |
@@ -346,6 +350,9 @@ Every checkpoint requires you to run a command and confirm the output before the
 | D29 | 2026-06-22 | `aws dynamodb delete-item` lock cleanup step added before `terraform plan` and `terraform apply` in `terraform.yml` | `cancel-in-progress: true` cancels previous workflow runs mid-plan, leaving a stale DynamoDB state lock. The next run's `apply` step fails with `Error acquiring the state lock` because the cancelled run never released it. Deleting the lock item before each terraform command is safe because concurrency ensures only one run executes at a time. | orchestrator |
 | D30 | 2026-06-22 | `AWS_REGION` moved from `secrets` to `environment` in ECS API task definition | Task definition referenced `AWS_REGION` JSON key in `laad/mlflow` secret, but that secret has `MLFLOW_REGION` (not `AWS_REGION`). Caused `retrieved secret did not contain json key AWS_REGION` — ECS tasks failed to start. `AWS_REGION` (`eu-west-2`) is not sensitive; belongs in `environment` as a plain env var via `var.aws_region`. | orchestrator |
 | D31 | 2026-06-22 | S3 bucket policy excludes `.tflock` from MFA-protected DeleteObject deny + added `ec2:Describe*` to GitHub Actions role | Terraform workflow `apply` step failed: stale state lock could not be released (`s3:DeleteObject` denied without MFA). Also `plan` failed: GitHub Actions role missing `ec2:DescribeAddresses` for EIP state refresh. Fixed: (a) bucket policy uses `not_resources` to exclude `.tflock`, (b) new `github_actions_terraform_ec2` inline policy grants EC2 read access, (c) `terraform.yml` stale lock cleanup replaced DynamoDB delete-item with S3 `rm` on `.tflock`. | orchestrator |
+| D32 | 2026-06-22 | ECS task definitions (API + Consumer) rename `RDS_HOST/RDS_PORT/RDS_DB/RDS_USER/RDS_PASSWORD` to `POSTGRES_HOST/POSTGRES_PORT/POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD` | CD pipeline deployed API to ECS, but the container fell back to `localhost:5432` because `backend/src/database/config.py` reads `POSTGRES_*` env vars while the task definitions were setting `RDS_*` names. The consumer had the same issue. `POSTGRES_HOST` also needed `split(":", ...)[0]` to strip the port from `var.rds_endpoint` (e.g., `host:5432` → `host`). Applied via `terraform apply -target` on API task definition revision 3. | orchestrator |
+| D33 | 2026-06-22 | Checkov `--baseline` path fixed: `.checkov.baseline` → `terraform/.checkov.baseline` | Checkov step runs from repo root (no `working-directory`). The `.checkov.baseline` file is at `terraform/.checkov.baseline`, but the relative path referenced just `.checkov.baseline`, which resolves to `$GITHUB_WORKSPACE/.checkov.baseline` — a file that doesn't exist. | orchestrator |
+| D34 | 2026-06-22 | Consumer + Generator ECS task definitions: added `command` overrides + `JWT_SECRET_KEY` (consumer only) + `LAAD_ENV` (generator) | All three ECS services (API, consumer, generator) share the same Docker image whose default `CMD` runs `uvicorn backend.src.api.server:app`. Consumer and generator had no `command` override, so ECS started the API server instead. The API server then crashed on import because `JWT_SECRET_KEY` wasn't set in those task definitions. Fixes: (a) consumer: `command: ["python", "-m", "backend.kafka.consumer"]` + `JWT_SECRET_KEY` secret; (b) generator: `command: ["python", "-m", "backend.generator.continuous_generator"]` + `LAAD_ENV=production`. | orchestrator |
 
 
 ---
