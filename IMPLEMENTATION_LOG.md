@@ -290,7 +290,6 @@ Every checkpoint requires you to run a command and confirm the output before the
 - [ ] SageMaker endpoint status is `InService` (`aws sagemaker describe-endpoint --endpoint-name laad-xgb-champion` returns `EndpointStatus: InService`)
 - [ ] `laad/sagemaker` secret updated with endpoint name from Terraform output (`aws secretsmanager get-secret-value --secret-id laad/sagemaker`)
 - [ ] ECS services redeployed (API + Consumer) to pick up new endpoint name
-- [ ] Scheduled stop (22:00) and start (06:00) EventBridge rules created (`aws scheduler list-schedules`)
 - [ ] Anomaly detection test: API endpoint returns SageMaker-backed result (not heuristic-only fallback)
 
 | Module | Agent ID | Files Created | Re-rolls | Verified |
