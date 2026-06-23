@@ -241,6 +241,14 @@ resource "aws_ecs_task_definition" "generator" {
       environment = [
         { name = "KAFKA_BOOTSTRAP_SERVERS", value = var.kafka_bootstrap_servers },
         { name = "LAAD_ENV", value = "production" },
+        { name = "POSTGRES_HOST", value = split(":", var.rds_endpoint)[0] },
+        { name = "POSTGRES_PORT", value = tostring(var.rds_port) },
+        { name = "POSTGRES_DB", value = var.rds_db_name },
+        { name = "POSTGRES_USER", value = "laad_admin" },
+      ]
+
+      secrets = [
+        { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
       ]
     }
   ])
