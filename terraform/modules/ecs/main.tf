@@ -40,6 +40,33 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 # ---------------------------------------------------------------------------
+# Service Discovery — Internal DNS for inter-service communication
+# ---------------------------------------------------------------------------
+
+resource "aws_service_discovery_private_dns_namespace" "internal" {
+  name        = "laad.internal"
+  description = "Internal DNS namespace for ECS service discovery"
+  vpc         = var.vpc_id
+}
+
+resource "aws_service_discovery_service" "redis" {
+  name = "redis"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.internal.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
+# ---------------------------------------------------------------------------
 # CloudWatch Log Groups
 # ---------------------------------------------------------------------------
 
@@ -71,6 +98,28 @@ resource "aws_cloudwatch_log_group" "generator" {
 
   tags = {
     Name        = "/ecs/laad-generator"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_log_group" "chromadb" {
+  name              = "/ecs/laad-chromadb"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "/ecs/laad-chromadb"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_log_group" "redis" {
+  name              = "/ecs/laad-redis"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "/ecs/laad-redis"
     Environment = var.environment
     Project     = var.project_name
   }
@@ -189,11 +238,16 @@ resource "aws_ecs_task_definition" "consumer" {
         { name = "POSTGRES_PORT", value = tostring(var.rds_port) },
         { name = "POSTGRES_DB", value = var.rds_db_name },
         { name = "POSTGRES_USER", value = "laad_admin" },
+        { name = "REDIS_HOST", value = "redis.laad.internal" },
+        { name = "REDIS_PORT", value = "6379" },
       ]
 
       secrets = [
         { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
         { name = "JWT_SECRET_KEY", valueFrom = "${var.jwt_secret_arn}:JWT_SECRET_KEY::" },
+        { name = "SAGEMAKER_ENDPOINT_NAME", valueFrom = "${var.sagemaker_secret_arn}:SAGEMAKER_ENDPOINT_NAME::" },
+        { name = "MLFLOW_TRACKING_URI", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_TRACKING_URI::" },
+        { name = "MLFLOW_S3_ARTIFACT_ROOT", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_S3_ARTIFACT_ROOT::" },
       ]
 
       healthCheck = {
@@ -241,6 +295,14 @@ resource "aws_ecs_task_definition" "generator" {
       environment = [
         { name = "KAFKA_BOOTSTRAP_SERVERS", value = var.kafka_bootstrap_servers },
         { name = "LAAD_ENV", value = "production" },
+        { name = "POSTGRES_HOST", value = split(":", var.rds_endpoint)[0] },
+        { name = "POSTGRES_PORT", value = tostring(var.rds_port) },
+        { name = "POSTGRES_DB", value = var.rds_db_name },
+        { name = "POSTGRES_USER", value = "laad_admin" },
+      ]
+
+      secrets = [
+        { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
       ]
     }
   ])
@@ -317,7 +379,7 @@ resource "aws_ecs_task_definition" "chromadb" {
       ]
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
+        command     = ["CMD-SHELL", "grep -qs '00000000:1F40' /proc/net/tcp || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
@@ -475,6 +537,10 @@ resource "aws_ecs_service" "redis" {
     subnets          = var.private_subnet_ids
     security_groups  = [var.redis_sg_id]
     assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.redis.arn
   }
 
   tags = {

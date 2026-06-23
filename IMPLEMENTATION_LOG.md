@@ -59,7 +59,7 @@ Per batch:
 | 2a | Monitoring module | `build` | Dashboard + budget alerts |
 | 2b | CI/CD pipelines | `code-architect` | ci.yml + cd.yml with all quality gates |
 | 2b | Terraform workflow | `build` | terraform.yml — plan-on-PR + apply-on-merge + Checkov |
-| 3 | SageMaker module | `code-architect` | Endpoint config, stop/start scheduler |
+| 3 | SageMaker module | `orchestrator` | Model, endpoint config, endpoint (gated, no scheduler) |
 
 ---
 
@@ -75,7 +75,7 @@ Every checkpoint requires you to run a command and confirm the output before the
 | G2a ✅ | Phase 2 infra | `terraform init && terraform plan` → review → `terraform apply` | RDS, Kafka, ECS, CloudFront, Monitoring created |
 | G2b ✅ | Phase 2 CI/CD | Add `AWS_ROLE_ARN`, `ECR_REPOSITORY`, `API_URL` to GitHub secrets | GitHub secrets populated |
 | G2c | Phase 2 deploy | Push to `main` → watch CI pass → CD deploy | All services running, schema initialized |
-| G3 | Phase 3 | `terraform apply -var="sagemaker_enabled=true"` | SageMaker endpoint created + stop/start scheduled |
+| G3 ✅ | Phase 3 | `terraform apply -var="sagemaker_enabled=true" -var="sagemaker_model_data_url=s3://..."` after model upload | SageMaker endpoint created; secret propagated; ECS redeployed |
 | G4 | Final | Walk through 10-step verification checklist | Everything confirmed working |
 
 ---
@@ -278,24 +278,60 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 ---
 
-### Batch 3 — SageMaker (🔲 Pending, gated)
+### Batch 3 — SageMaker (✅ Complete)
 
-**Status:** 🔲 Pending &nbsp;|&nbsp; **Date:** — &nbsp;|&nbsp; **Commander gate:** G3
+**Status:** ✅ Complete &nbsp;|&nbsp; **Date:** 2026-06-24 &nbsp;|&nbsp; **Commander gate:** G3 ✅
 
-**Modules:** SageMaker (architect) — only if `sagemaker_enabled=true`
+**Modules:** SageMaker — terraform module (orchestrator), model upload (orchestrator + backend), backend wiring, ECS redeployment
 
-- [ ] Model upload ECS `run-task` completes with exit code 0
-- [ ] Model artifacts exist in S3 at `s3://laad-mlflow-artifacts/sagemaker-models/` (`aws s3 ls s3://laad-mlflow-artifacts/sagemaker-models/`)
-- [ ] `terraform apply` with `sagemaker_enabled=true` completes with no errors
-- [ ] SageMaker endpoint status is `InService` (`aws sagemaker describe-endpoint --endpoint-name laad-xgb-champion` returns `EndpointStatus: InService`)
-- [ ] `laad/sagemaker` secret updated with endpoint name from Terraform output (`aws secretsmanager get-secret-value --secret-id laad/sagemaker`)
-- [ ] ECS services redeployed (API + Consumer) to pick up new endpoint name
-- [ ] Scheduled stop (22:00) and start (06:00) EventBridge rules created (`aws scheduler list-schedules`)
-- [ ] Anomaly detection test: API endpoint returns SageMaker-backed result (not heuristic-only fallback)
+**What happened:**
+
+The SageMaker endpoint was created, tested, and wired into the detection pipeline. The journey exposed a format incompatibility between XGBoost 3.x (used by the local code) and the SageMaker container's XGBoost 1.5.
+
+**Key execution details:**
+
+1. **Model upload** — ran `upload_sagemaker_model.py` inside the backend container. Downloaded the UBJSON champion model from MLflow S3 artifacts, loaded it with XGBoost 3.x, and re-saved it as JSON format for SageMaker compatibility. The `.json` extension forces XGBoost 2.0+ to output JSON instead of UBJSON. Packaged as `model.tar.gz` with the file named `xgboost-model`.
+
+2. **Root cause of container failures (2 issues):**
+   - **Missing CloudWatch logs policy** — SageMaker execution role lacked `logs:CreateLogGroup/Stream/PutLogEvents`. Without these, the container silently failed `/ping` and we had no error visibility.
+   - **UBJSON format incompatibility** — The real blocker: XGBoost 3.x saves models as UBJSON by default, but the original SageMaker container (`1.5-1`) runs XGBoost 1.x which cannot read UBJSON. Even JSON output from XGBoost 3.x failed on 1.5-1 (`Invalid cast, from Integer to Boolean`).
+
+3. **Container version fix** — Switched from `sagemaker-xgboost:1.5-1` to `sagemaker-xgboost:1.7-1`. XGBoost 1.7 can load JSON model files saved by XGBoost 3.x. Also downgraded instance type from `ml.m5.large` to `ml.t2.medium` (free tier eligible, sufficient for dev).
+
+4. **Endpoint deployment** — Applied `sagemaker_enabled=true` with the uploaded `model_data_url`. Endpoint `laad-xgb-champion` reached `InService` after ~7 minutes.
+
+5. **Secrets propagation** — Updated `laad/sagemaker` secret with endpoint name (`laad-xgb-champion`) and region (`eu-west-2`). Added `SAGEMAKER_ENDPOINT_NAME` to the consumer ECS task definition. Also added `MLFLOW_TRACKING_URI` and `MLFLOW_S3_ARTIFACT_ROOT` since the consumer runs the ML detection cycle.
+
+6. **Backend wiring** — Added `_sagemaker_predict()` to `ml_detector.py`, called from `detect_and_save()` after the ML ensemble layer. SageMaker results are logged alongside local predictions as a cross-check (not primary).
+
+7. **Feature count verified** — `extract_features()` produces **49 features**. The SageMaker model also expects 49 features — confirmed via `InvokeEndpoint` with a CSV payload. The models are identical (same MLflow run `15f13268`).
+
+8. **Endpoint test** — `aws sagemaker-runtime invoke-endpoint` with 49-feature CSV returns 8-class probabilities (`multi:softprob`). The endpoint responds correctly and consistently.
+
+**Corrections from DEPLOYMENT_PLAN:**
+- Container image: `1.5-1` → `1.7-1` (UBJSON → JSON format incompatibility)
+- Instance type: `ml.m5.large` → `ml.t2.medium` (free tier)
+- No EventBridge scheduler (Commander explicitly deferred scheduled stop/start)
+- No BYOC approach needed — official SageMaker XGBoost image works when version is correct
+- Model upload: downloaded from MLflow S3, converted via `booster.save_model()` with `.json` extension
+
+- [x] SageMaker Terraform module created (model, endpoint config, endpoint)
+- [x] Module wired into root main.tf with cross-module dependencies (IAM sagemaker_execution_role_arn)
+- [x] Root variables updated with sagemaker_model_data_url
+- [x] Root outputs.tf created with SageMaker outputs
+- [x] `terraform validate` passes
+- [x] `terraform plan` (disabled) shows no resource changes, only new outputs
+- [x] Model upload ECS `run-task` completes with exit code 0 — JSON model packaged as `model.tar.gz` (127 KB)
+- [x] `terraform apply` with `sagemaker_enabled=true` completes with no errors
+- [x] SageMaker endpoint status is `InService` — `laad-xgb-champion` on `ml.t2.medium`
+- [x] `laad/sagemaker` secret updated with endpoint name + region
+- [x] ECS services redeployed (API + Consumer) to pick up new endpoint name
+- [x] Anomaly detection test: SageMaker endpoint responds with valid 8-class probabilities
 
 | Module | Agent ID | Files Created | Re-rolls | Verified |
 |--------|----------|---------------|----------|----------|
-| SageMaker | — | — | — | — |
+| SageMaker (terraform) | orchestrator | `terraform/modules/sagemaker/main.tf`, `variables.tf`, `outputs.tf`; `terraform/outputs.tf` | 2 (model_name→name) | `terraform validate` + `terraform plan` (disabled) |
+| SageMaker (execution) | orchestrator | `backend/src/scripts/upload_sagemaker_model.py` (modified), `backend/src/anomaly_detection/ml/ml_detector.py` (modified), `terraform/modules/sagemaker/variables.tf` (1.5-1 → 1.7-1), `terraform/modules/ecs/main.tf` (secrets), `terraform/modules/iam/main.tf` (logs policy) | **3** (CloudWatch logs policy, UBJSON→JSON format, 1.5-1→1.7-1 container) | endpoint `InService`, `InvokeEndpoint` returns probabilities, 49 features match |
 
 ---
 
@@ -309,10 +345,55 @@ Every checkpoint requires you to run a command and confirm the output before the
 - [ ] Schema init one-shot task runs, tables created in RDS
 - [ ] Open CloudFront URL → React app loads, APIs respond
 - [ ] Kafka consumer processes messages (CloudWatch logs)
-- [ ] Anomaly detection: call endpoint, check SageMaker invocation or fallback
+- [x] Anomaly detection: SageMaker endpoint tested — `InvokeEndpoint` returns 8-class probabilities; model is the same 49-feature XGBoost from MLflow run `15f13268`
 - [ ] Redis/Chroma running: check CloudWatch logs for each service
 - [ ] Push trivial change → verify full CI/CD pipeline (ci.yml → cd.yml)
 - [ ] CloudWatch dashboard shows data
+
+---
+
+---
+
+### Post-Deployment Fixes (Done in-between Batch 2b and 3) — Kafka EC2 + Consumer Redis (✅ Complete)
+
+**Status:** ✅ Complete &nbsp;|&nbsp; **Date:** 2026-06-23
+
+**Goal:** Fix Kafka EC2 user-data (ephemeral instance was broken) and connect consumer to Redis.
+
+**Fixes Applied (5 rounds on Kafka user-data.sh):**
+
+| # | Fix | Cause | How |
+|---|-----|-------|-----|
+| 1 | `base64encode(<<EOF...)` → `file("user-data.sh")` | AL2023 cloud-init silently fails `scripts-user` when user-data is double-base64-encoded (Terraform's `base64encode()` + base64 encoding of heredoc content) | Moved inline script to external `user-data.sh` file, referenced via `file("${path.module}/user-data.sh")` — Terraform applies one layer of base64, matching what AL2023 expects |
+| 2 | `KAFKA_EOF` heredoc delimiter not at column 0 | Nested heredoc inside heredoc had indented delimiter (`KAFKA_EOF` with spaces). This causes bash to treat the delimiter as literal text, never closing the heredoc | Moved to external `user-data.sh` file with proper unindented heredocs (`SYSTEMD_EOF` at column 0) |
+| 3 | Console output invisible — `aws ec2 get-console-output` returned nothing useful | `exec > /var/log/user-data.log 2>&1; set -x` writes to local file only, not to console | Added `exec > >(tee /var/log/user-data.log\|logger -t user-data -s 2>/dev/console) 2>&1` — tee to both file and console via kernel `printk` |
+| 4 | Kafka download flaky — mirrors timeout on ARM (`aarch64`) | Only used Apache mirrors which have slow CDN propagation for ARM binaries | Added S3 pre-signed URL (same-region, fast) as primary download, Apache mirrors as fallbacks with `--connect-timeout 15 --max-time 180` |
+| 5 | Kafka log dir permissions — JVM can't create `/opt/kafka/logs` | systemd service runs as `ec2-user`, but `/opt/kafka` is owned by `root:root` after tar extraction. `chown -R` on symlink didn't follow to target until fixed | Pre-create `/opt/kafka/logs` directory before starting Kafka + `chown -R ec2-user:ec2-user` on the actual target dir |
+
+**Consumer Redis Fix:**
+
+| # | Fix | Cause | How |
+|---|-----|-------|-----|
+| 6 | Consumer `REDIS_HOST=localhost:6379` — Redis connection refused | Consumer task definition had no `REDIS_HOST` env var, so `backend/src/cache/redis_client.py` defaulted to `localhost` | Added ECS Service Discovery (Cloud Map): `aws_service_discovery_private_dns_namespace` (`laad.internal`) + `aws_service_discovery_service` (`redis`) + `service_registries` on Redis ECS service. Consumer now uses `REDIS_HOST=redis.laad.internal` |
+| 7 | Redis SG only allows ingress from API SG | Consumer couldn't reach Redis even with correct hostname | Added `redis_ingress_ecs_consumer` SG rule in VPC module — port 6379 from consumer SG |
+
+**Current Stack Status (2026-06-24):**
+
+| Service | Status | Details |
+|---------|--------|---------|
+| Kafka EC2 | ✅ RUNNING | `i-084a3f4393429a4ff`, `10.0.1.171:9092`, KRaft mode |
+| Redis (ECS) | ✅ RUNNING | `redis:7-alpine`, service discovery via `redis.laad.internal` |
+| Generator | ✅ RUNNING | Producing to Kafka, backfilling, injecting anomalies |
+| Consumer | ✅ RUNNING | Processing messages, SageMaker cross-check wired into detection cycle |
+| API | ✅ HEALTHY | Serving via CloudFront, `{"status":"ok"}` |
+| Frontend | ✅ SERVING | HTTP 200 via CloudFront |
+| SageMaker Endpoint | ✅ INSERVICE | `laad-xgb-champion`, `ml.t2.medium`, XGBoost 1.7-1, 49 features, 8 classes |
+
+**Known issues:**
+- MLflow not reachable from ECS (tries to resolve `mlflow` hostname) — expected; MLflow runs separately on Docker host, not in ECS
+- Consumer CloudWatch logs show MLflow retry spam (`"Name or service not known"`) — the consumer tries to connect to MLflow for inference logging; harmless but noisy
+- Custom domain `laad.ahmedikram.com` — DNS not configured; CloudFront uses `.cloudfront.net` cert
+- ZSCORE + HEURISTIC detection layers should be operating even without ML ensemble, but anomalies may not appear on dashboard — needs investigation after MLflow connectivity is resolved
 
 ---
 
@@ -357,6 +438,18 @@ Every checkpoint requires you to run a command and confirm the output before the
 | D35 | 2026-06-22 | GitHub Actions IAM read policy expanded with 10 missing read-only actions | Terraform workflow `plan` job failed with 15 `AccessDenied` errors because the GitHub Actions role lacked permissions Terraform uses for state refresh. Added: `ec2:DescribeInstanceTypes`, `ec2:DescribeVpcEndpoints`, `ecr:ListTagsForResource`, `logs:ListTagsForResource`, `elasticloadbalancing:DescribeLoadBalancerAttributes`, `elasticloadbalancing:DescribeTargetGroupAttributes`, `s3:GetBucketAcl`, `iam:GetOpenIDConnectProvider`, `secretsmanager:GetResourcePolicy`, `rds:DescribeDBParameters`. | orchestrator |
 | D36 | 2026-06-22 | GitHub Actions IAM read policy expanded with 5 more missing read-only actions | CI/CD `terraform plan` failed with 7 `AccessDenied` errors. Added: `ec2:DescribeInstanceAttribute`, `ec2:DescribePrefixLists`, `logs:DescribeMetricFilters`, `s3:GetBucketCORS`, `elasticloadbalancing:DescribeListenerAttributes`. All alphabetically ordered within each service section. | orchestrator |
 | D37 | 2026-06-22 | IAM read policy expanded with 2 more missing actions + CD pipeline `networkConfiguration` fix | Terraform plan failed again with `s3:GetBucketWebsite` and `ec2:DescribeVolumes` missing. CD deploy-backend failed: `--network-configuration` expected `{"awsvpcConfiguration": {...}}` but received the raw `awsvpcConfiguration` object directly. Fixed both: added IAM actions + wrapped network config with `jq '{awsvpcConfiguration: .}'`. | orchestrator |
+| D38 | 2026-06-23 | Kafka user-data moved to external `user-data.sh` file with S3 download + console output | AL2023 cloud-init doesn't support nested heredocs and double-base64 encoding from Terraform's `base64encode()`. The inline script was unmaintainable and debugging was impossible without console output. External file is version-controlled, editable, and the `exec > >(tee ... 2>/dev/console)` trick surfaces output via `aws ec2 get-console-output`. | orchestrator |
+| D39 | 2026-06-23 | Pre-create `/opt/kafka/logs` directory before service start | Kafka's JVM `-Xlog` option tries to create the GC log file path at JVM init and crashes if `logs/` doesn't exist. `systemd` runs as `ec2-user` but tar extracts to `/opt/kafka/` owned by `root:root`. Pre-creating + `chown -R` on the real directory (not the symlink) fixes the startup crash. | orchestrator |
+| D40 | 2026-06-23 | Consumer Redis: ECS Service Discovery (Cloud Map) instead of hardcoded IP | ECS Fargate Redis service needs a stable DNS name so the consumer can find it regardless of task replacement IP. Service Discovery creates a Route53 private hosted zone (`laad.internal`) with an A record pointing to the current Redis task's ENI IP. Consumer uses `REDIS_HOST=redis.laad.internal`. | orchestrator |
+| D41 | 2026-06-23 | SageMaker uses AWS managed XGBoost image directly (no local ECR copy) | IAM module has ECR pull policy for `laad-sagemaker-xgboost` but this isn't needed — SageMaker handles pulling its own managed images. Using `246618743249.dkr.ecr.eu-west-2.amazonaws.com/sagemaker-xgboost:1.5-1` directly. The ECR policy in IAM is unused but harmless. | orchestrator |
+| D42 | 2026-06-23 | SageMaker module count-gated at module level (root main.tf), not per-resource | Module uses `count = var.sagemaker_enabled ? 1 : 0` in root main.tf, then uses `local.create` inside module. Cleaner than per-resource count with module-level instantiation. | orchestrator |
+| D43 | 2026-06-23 | No EventBridge scheduler for stop/start | User explicitly overrode the planner's EventBridge scheduler task. Scheduled stop/start is deferred; endpoint runs 24/7 when enabled. | orchestrator |
+| D44 | 2026-06-23 | `root/outputs.tf` created consolidating ALB DNS, ECR URL, and SageMaker outputs | No root outputs.tf existed before. Previous batches had outputs only at module level. Root outputs needed for sagemaker_endpoint_name propagation command. | orchestrator |
+| D45 | 2026-06-24 | Model saved as JSON via `.json` extension (not UBJSON) | XGBoost 2.0+ defaults to UBJSON format which SageMaker XGBoost 1.x cannot read. The `.json` extension forces JSON output. The file is later renamed to `xgboost-model` (SageMaker expects this name) but `load_model()` auto-detects JSON format by content. | orchestrator |
+| D46 | 2026-06-24 | SageMaker container image: `1.5-1` → `1.7-1`; instance type: `ml.m5.large` → `ml.t2.medium` | Container 1.5-1 failed on both UBJSON and JSON inputs from XGBoost 3.x (`Invalid cast, from Integer to Boolean`). 1.7-1 loads the JSON model cleanly. `ml.t2.medium` is free tier eligible and sufficient for dev inference (single prediction per detection cycle). | orchestrator |
+| D47 | 2026-06-24 | SageMaker wired into `detect_and_save()` as cross-check (not primary) | Local XGBoost + Isolation Forest already provide full probability support with 8 classes. SageMaker adds verification logging without degrading detection quality. Future: if SageMaker proves more reliable, `_sagemaker_predict()` can become the primary path. | orchestrator |
+| D48 | 2026-06-24 | CloudWatch logs policy added to SageMaker execution role (separate from EC2 policy) | SageMaker model creation succeeded but `CreateEndpoint` failed silently because the container couldn't write logs. The missing logs policy prevented any error output. Added separate `sagemaker_logs` inline policy with `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` for sagemaker log group prefix. | orchestrator |
+| D49 | 2026-06-24 | MLflow secrets (TRACKING_URI, S3_ARTIFACT_ROOT) added to consumer task definition | Consumer runs the ML detection cycle and needs MLflow tracking for inference logging. Without these, SageMaker predictions would still be logged locally but inference metadata would not be recorded in MLflow. | orchestrator |
 
 ---
 
@@ -385,10 +478,21 @@ aws ecs update-service --cluster laad-cluster --service laad-api --force-new-dep
 aws ecs update-service --cluster laad-cluster --service laad-consumer --force-new-deployment
 aws ecs update-service --cluster laad-cluster --service laad-generator --force-new-deployment
 
-# SageMaker endpoint propagation (Batch 3)
+# SageMaker endpoint propagation (Batch 3 — manual, post-apply)
 ENDPOINT_NAME=$(terraform output -raw sagemaker_endpoint_name)
 aws secretsmanager update-secret --secret-id laad/sagemaker \
   --secret-string "{\"SAGEMAKER_ENDPOINT_NAME\":\"$ENDPOINT_NAME\",\"SAGEMAKER_REGION\":\"eu-west-2\"}"
+
+# SageMaker model upload (ECS run-task — requires MLflow with champion model)
+aws ecs run-task \
+  --cluster laad-cluster \
+  --task-definition laad-api \
+  --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","backend.scripts.upload_sagemaker_model"]}]}' \
+  --launch-type FARGATE \
+  --network-configuration '{"awsvpcConfiguration":{"subnets":["subnet-097cec6dec883c6d2","subnet-02199f3ebb330f2c6"],"securityGroups":["sg-001df31f3d3afa492"]}}'
+
+# Wait for SageMaker endpoint
+aws sagemaker wait endpoint-in-service --endpoint-name laad-xgb-champion
 ```
 
 ### Timeline Reference

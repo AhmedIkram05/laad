@@ -353,6 +353,16 @@ resource "aws_security_group_rule" "rds_ingress_ecs_consumer" {
   security_group_id        = aws_security_group.rds_sg.id
 }
 
+resource "aws_security_group_rule" "rds_ingress_ecs_generator" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ecs_generator_sg.id
+  security_group_id        = aws_security_group.rds_sg.id
+  description              = "PostgreSQL from ECS generator"
+}
+
 # ---------------------------------------------------------------------------
 # 6. Kafka Security Group — Port 9092 from ECS Consumer SG
 # ---------------------------------------------------------------------------
@@ -386,6 +396,16 @@ resource "aws_security_group_rule" "kafka_ingress_ecs_consumer" {
   security_group_id        = aws_security_group.kafka_sg.id
 }
 
+resource "aws_security_group_rule" "kafka_ingress_ecs_generator" {
+  type                     = "ingress"
+  from_port                = 9092
+  to_port                  = 9092
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ecs_generator_sg.id
+  security_group_id        = aws_security_group.kafka_sg.id
+  description              = "Kafka from ECS generator"
+}
+
 # ---------------------------------------------------------------------------
 # 7. Redis Security Group — Port 6379 from ECS API SG
 # ---------------------------------------------------------------------------
@@ -417,6 +437,16 @@ resource "aws_security_group_rule" "redis_ingress_ecs_api" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.ecs_api_sg.id
   security_group_id        = aws_security_group.redis_sg.id
+}
+
+resource "aws_security_group_rule" "redis_ingress_ecs_consumer" {
+  type                     = "ingress"
+  from_port                = 6379
+  to_port                  = 6379
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ecs_consumer_sg.id
+  security_group_id        = aws_security_group.redis_sg.id
+  description              = "Redis from ECS consumer"
 }
 
 # ---------------------------------------------------------------------------

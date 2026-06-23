@@ -106,4 +106,15 @@ module "monitoring" {
   environment  = var.environment
 }
 
-# Batch 3: SageMaker module will be added here (gated by sagemaker_enabled)
+# Batch 3: SageMaker module (gated by sagemaker_enabled — requires model upload first)
+module "sagemaker" {
+  count  = var.sagemaker_enabled ? 1 : 0
+  source = "./modules/sagemaker"
+
+  project_name                 = var.project_name
+  environment                  = var.environment
+  aws_region                   = var.aws_region
+  sagemaker_execution_role_arn = module.iam.sagemaker_execution_role_arn
+  sagemaker_enabled            = var.sagemaker_enabled
+  model_data_url               = var.sagemaker_model_data_url
+}

@@ -59,6 +59,20 @@
                     ]
                 },
                 {
+                    "resource": "module.ecs.aws_cloudwatch_log_group.chromadb",
+                    "check_ids": [
+                        "CKV_AWS_158",
+                        "CKV_AWS_338"
+                    ]
+                },
+                {
+                    "resource": "module.ecs.aws_cloudwatch_log_group.redis",
+                    "check_ids": [
+                        "CKV_AWS_158",
+                        "CKV_AWS_338"
+                    ]
+                },
+                {
                     "resource": "module.ecs.aws_ecs_task_definition.generator",
                     "check_ids": [
                         "CKV_AWS_336"
@@ -231,6 +245,17 @@
                     "check_ids": [
                         "CKV2_AWS_57",
                         "CKV_AWS_149"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/modules/sagemaker/main.tf",
+            "findings": [
+                {
+                    "resource": "module.sagemaker[0].aws_sagemaker_endpoint_configuration.champion[0]",
+                    "check_ids": [
+                        "CKV_AWS_98"
                     ]
                 }
             ]

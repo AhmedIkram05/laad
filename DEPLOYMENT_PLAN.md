@@ -1244,8 +1244,7 @@ Batch 3: SageMaker (gated, after model upload)
    aws ecs update-service --cluster laad-cluster --service laad-api-service --force-new-deployment
    aws ecs update-service --cluster laad-cluster --service laad-consumer-service --force-new-deployment
    ```
-6. EventBridge Scheduler for stop (22:00) / start (06:00) to extend credits
-7. SageMaker inference client code already done in Batch 1b
+6. SageMaker inference client code already done in Batch 1b
 
 **Dependencies:** Model uploaded to S3, Batch 1a complete (IAM roles)
 **Depended by:** Final verification
@@ -1257,7 +1256,6 @@ Batch 3: SageMaker (gated, after model upload)
 - [ ] SageMaker endpoint status is `InService` (`aws sagemaker describe-endpoint --endpoint-name laad-xgb-champion` returns `EndpointStatus: InService`)
 - [ ] `laad/sagemaker` secret updated with endpoint name from Terraform output (`aws secretsmanager get-secret-value --secret-id laad/sagemaker`)
 - [ ] ECS services redeployed (API + Consumer) to pick up new endpoint name
-- [ ] Scheduled stop (22:00) and start (06:00) EventBridge rules created (`aws scheduler list-schedules`)
 - [ ] Anomaly detection test: API endpoint returns SageMaker-backed result (not heuristic-only fallback)
 
 ### Verification (You, ~1 hr)

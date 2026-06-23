@@ -35,3 +35,9 @@ variable "sagemaker_enabled" {
   type        = bool
   default     = false
 }
+
+variable "sagemaker_model_data_url" {
+  description = "S3 path to the SageMaker model artifact (set after model upload run-task)"
+  type        = string
+  default     = ""
+}

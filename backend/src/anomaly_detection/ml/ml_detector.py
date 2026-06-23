@@ -675,6 +675,17 @@ class MLAnomalyDetector:
             log.info("ML: %d entity groups classified, %d anomalies saved", len(atm_groups), saved)
 
         # ─────────────────────────────────────────────────────────────────────────
+        # SageMaker cross-check: invoke the SageMaker endpoint for verification
+        # alongside local inference. Runs if SAGEMAKER_ENDPOINT_NAME is configured.
+        # Logs the prediction; cross-references with local ML ensemble results.
+        # ─────────────────────────────────────────────────────────────────────────
+        sm_result = self._sagemaker_predict(global_features)
+        if sm_result is not None:
+            raw = sm_result.get("raw_prediction", "").strip()
+            log.info("SageMaker cross-check: %s | global rows=%d, local detections=%d",
+                     raw, len(rows), len(ml_ensemble_detections))
+
+        # ─────────────────────────────────────────────────────────────────────────
         # Layer 2: ZSCORE DETECTION (Novel patterns — always runs)
         # Detects: UNKNOWN via rolling Z-score >3σ deviation from historical median
         # ─────────────────────────────────────────────────────────────────────────
