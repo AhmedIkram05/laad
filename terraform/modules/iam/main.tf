@@ -222,6 +222,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       # CloudFront
       "cloudfront:DescribeFunction",
       "cloudfront:GetDistribution",
+      "cloudfront:GetFunction",
       "cloudfront:GetDistributionConfig",
       "cloudfront:GetOriginAccessControl",
       "cloudfront:ListDistributions",
@@ -241,9 +242,11 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "servicediscovery:GetNamespace",
       "servicediscovery:ListNamespaces",
       "servicediscovery:ListServices",
+      "servicediscovery:ListTagsForResource",
       # SageMaker
       "sagemaker:DescribeModel",
       "sagemaker:ListModels",
+      "sagemaker:ListTags",
       # SNS
       "sns:GetTopicAttributes",
       "sns:ListSubscriptionsByTopic",
