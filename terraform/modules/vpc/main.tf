@@ -353,6 +353,15 @@ resource "aws_security_group_rule" "rds_ingress_ecs_consumer" {
   security_group_id        = aws_security_group.rds_sg.id
 }
 
+resource "aws_security_group_rule" "rds_ingress_ecs_generator" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ecs_generator_sg.id
+  security_group_id        = aws_security_group.rds_sg.id
+}
+
 # ---------------------------------------------------------------------------
 # 6. Kafka Security Group — Port 9092 from ECS Consumer SG
 # ---------------------------------------------------------------------------
@@ -383,6 +392,15 @@ resource "aws_security_group_rule" "kafka_ingress_ecs_consumer" {
   to_port                  = 9092
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.ecs_consumer_sg.id
+  security_group_id        = aws_security_group.kafka_sg.id
+}
+
+resource "aws_security_group_rule" "kafka_ingress_ecs_generator" {
+  type                     = "ingress"
+  from_port                = 9092
+  to_port                  = 9092
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ecs_generator_sg.id
   security_group_id        = aws_security_group.kafka_sg.id
 }
 
