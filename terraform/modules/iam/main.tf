@@ -238,15 +238,12 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       # PutRolePolicy needed for Terraform to update the role's own inline
       # policies (e.g. adding new S3/CloudFront read actions for state refresh)
       "iam:PutRolePolicy",
-      # Service Discovery
-      "servicediscovery:GetNamespace",
-      "servicediscovery:ListNamespaces",
-      "servicediscovery:ListServices",
-      "servicediscovery:ListTagsForResource",
-      # SageMaker
-      "sagemaker:DescribeModel",
-      "sagemaker:ListModels",
-      "sagemaker:ListTags",
+      # Service Discovery — wildcard: Terraform reads namespace/service properties
+      "servicediscovery:Get*",
+      "servicediscovery:List*",
+      # SageMaker — wildcard: Terraform reads endpoint/model/config properties
+      "sagemaker:Describe*",
+      "sagemaker:List*",
       # SNS
       "sns:GetTopicAttributes",
       "sns:ListSubscriptionsByTopic",
