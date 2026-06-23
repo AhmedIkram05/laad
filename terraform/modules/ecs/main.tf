@@ -40,6 +40,33 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 # ---------------------------------------------------------------------------
+# Service Discovery — Internal DNS for inter-service communication
+# ---------------------------------------------------------------------------
+
+resource "aws_service_discovery_private_dns_namespace" "internal" {
+  name        = "laad.internal"
+  description = "Internal DNS namespace for ECS service discovery"
+  vpc         = var.vpc_id
+}
+
+resource "aws_service_discovery_service" "redis" {
+  name = "redis"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.internal.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
+# ---------------------------------------------------------------------------
 # CloudWatch Log Groups
 # ---------------------------------------------------------------------------
 
@@ -189,6 +216,8 @@ resource "aws_ecs_task_definition" "consumer" {
         { name = "POSTGRES_PORT", value = tostring(var.rds_port) },
         { name = "POSTGRES_DB", value = var.rds_db_name },
         { name = "POSTGRES_USER", value = "laad_admin" },
+        { name = "REDIS_HOST", value = "redis.laad.internal" },
+        { name = "REDIS_PORT", value = "6379" },
       ]
 
       secrets = [
@@ -483,6 +512,10 @@ resource "aws_ecs_service" "redis" {
     subnets          = var.private_subnet_ids
     security_groups  = [var.redis_sg_id]
     assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.redis.arn
   }
 
   tags = {
