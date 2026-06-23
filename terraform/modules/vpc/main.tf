@@ -360,6 +360,7 @@ resource "aws_security_group_rule" "rds_ingress_ecs_generator" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.ecs_generator_sg.id
   security_group_id        = aws_security_group.rds_sg.id
+  description              = "PostgreSQL from ECS generator"
 }
 
 # ---------------------------------------------------------------------------
@@ -402,6 +403,7 @@ resource "aws_security_group_rule" "kafka_ingress_ecs_generator" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.ecs_generator_sg.id
   security_group_id        = aws_security_group.kafka_sg.id
+  description              = "Kafka from ECS generator"
 }
 
 # ---------------------------------------------------------------------------
@@ -444,6 +446,7 @@ resource "aws_security_group_rule" "redis_ingress_ecs_consumer" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.ecs_consumer_sg.id
   security_group_id        = aws_security_group.redis_sg.id
+  description              = "Redis from ECS consumer"
 }
 
 # ---------------------------------------------------------------------------

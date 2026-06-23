@@ -59,6 +59,20 @@
                     ]
                 },
                 {
+                    "resource": "module.ecs.aws_cloudwatch_log_group.chromadb",
+                    "check_ids": [
+                        "CKV_AWS_158",
+                        "CKV_AWS_338"
+                    ]
+                },
+                {
+                    "resource": "module.ecs.aws_cloudwatch_log_group.redis",
+                    "check_ids": [
+                        "CKV_AWS_158",
+                        "CKV_AWS_338"
+                    ]
+                },
+                {
                     "resource": "module.ecs.aws_ecs_task_definition.generator",
                     "check_ids": [
                         "CKV_AWS_336"
