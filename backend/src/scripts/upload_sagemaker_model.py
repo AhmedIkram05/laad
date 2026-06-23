@@ -11,7 +11,6 @@ Or via Docker:
     docker exec laad-backend-1 python -m backend.src.scripts.upload_sagemaker_model
 """
 
-import json
 import logging
 import os
 import tarfile
@@ -107,7 +106,7 @@ def main():
         model_data_url = f"s3://{BUCKET}/{DEST_KEY}"
         print(f"\n{'=' * 60}")
         print(f"✅ Model uploaded to: {model_data_url}")
-        print(f"Use this terraform command:")
+        print("Use this terraform command:")
         print(f"  terraform apply -var='sagemaker_enabled=true' -var='sagemaker_model_data_url={model_data_url}'")
         print(f"{'=' * 60}")
 
