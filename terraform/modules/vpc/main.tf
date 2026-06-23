@@ -437,6 +437,15 @@ resource "aws_security_group_rule" "redis_ingress_ecs_api" {
   security_group_id        = aws_security_group.redis_sg.id
 }
 
+resource "aws_security_group_rule" "redis_ingress_ecs_consumer" {
+  type                     = "ingress"
+  from_port                = 6379
+  to_port                  = 6379
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.ecs_consumer_sg.id
+  security_group_id        = aws_security_group.redis_sg.id
+}
+
 # ---------------------------------------------------------------------------
 # 8. ChromaDB Security Group — Port 8000 from ECS API SG
 # ---------------------------------------------------------------------------
