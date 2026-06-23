@@ -486,25 +486,26 @@ resource "aws_iam_role_policy" "sagemaker_s3" {
   policy = data.aws_iam_policy_document.sagemaker_s3.json
 }
 
-# --- SageMaker: ECR pull for XGBoost inference image ---
+# --- SageMaker: CloudWatch Logs ---
 
-data "aws_iam_policy_document" "sagemaker_ecr" {
+data "aws_iam_policy_document" "sagemaker_logs" {
   statement {
     effect = "Allow"
     actions = [
-      "ecr:GetDownloadUrlForLayer",
-      "ecr:BatchGetImage"
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
     ]
     resources = [
-      "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${var.project_name}-sagemaker-xgboost"
+      "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/*"
     ]
   }
 }
 
-resource "aws_iam_role_policy" "sagemaker_ecr" {
-  name   = "${var.project_name}-sagemaker-ecr"
+resource "aws_iam_role_policy" "sagemaker_logs" {
+  name   = "${var.project_name}-sagemaker-logs"
   role   = aws_iam_role.sagemaker_execution.id
-  policy = data.aws_iam_policy_document.sagemaker_ecr.json
+  policy = data.aws_iam_policy_document.sagemaker_logs.json
 }
 
 # --- GitHub Actions: Terraform State (S3 + DynamoDB) inline policy ---
