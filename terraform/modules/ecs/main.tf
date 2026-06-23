@@ -245,6 +245,9 @@ resource "aws_ecs_task_definition" "consumer" {
       secrets = [
         { name = "POSTGRES_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
         { name = "JWT_SECRET_KEY", valueFrom = "${var.jwt_secret_arn}:JWT_SECRET_KEY::" },
+        { name = "SAGEMAKER_ENDPOINT_NAME", valueFrom = "${var.sagemaker_secret_arn}:SAGEMAKER_ENDPOINT_NAME::" },
+        { name = "MLFLOW_TRACKING_URI", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_TRACKING_URI::" },
+        { name = "MLFLOW_S3_ARTIFACT_ROOT", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_S3_ARTIFACT_ROOT::" },
       ]
 
       healthCheck = {
