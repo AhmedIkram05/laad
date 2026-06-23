@@ -315,6 +315,50 @@ Every checkpoint requires you to run a command and confirm the output before the
 
 ---
 
+---
+
+### Post-Deployment Fixes (Done in-between Batch 2b and 3) — Kafka EC2 + Consumer Redis (✅ Complete)
+
+**Status:** ✅ Complete &nbsp;|&nbsp; **Date:** 2026-06-23
+
+**Goal:** Fix Kafka EC2 user-data (ephemeral instance was broken) and connect consumer to Redis.
+
+**Fixes Applied (5 rounds on Kafka user-data.sh):**
+
+| # | Fix | Cause | How |
+|---|-----|-------|-----|
+| 1 | `base64encode(<<EOF...)` → `file("user-data.sh")` | AL2023 cloud-init silently fails `scripts-user` when user-data is double-base64-encoded (Terraform's `base64encode()` + base64 encoding of heredoc content) | Moved inline script to external `user-data.sh` file, referenced via `file("${path.module}/user-data.sh")` — Terraform applies one layer of base64, matching what AL2023 expects |
+| 2 | `KAFKA_EOF` heredoc delimiter not at column 0 | Nested heredoc inside heredoc had indented delimiter (`KAFKA_EOF` with spaces). This causes bash to treat the delimiter as literal text, never closing the heredoc | Moved to external `user-data.sh` file with proper unindented heredocs (`SYSTEMD_EOF` at column 0) |
+| 3 | Console output invisible — `aws ec2 get-console-output` returned nothing useful | `exec > /var/log/user-data.log 2>&1; set -x` writes to local file only, not to console | Added `exec > >(tee /var/log/user-data.log\|logger -t user-data -s 2>/dev/console) 2>&1` — tee to both file and console via kernel `printk` |
+| 4 | Kafka download flaky — mirrors timeout on ARM (`aarch64`) | Only used Apache mirrors which have slow CDN propagation for ARM binaries | Added S3 pre-signed URL (same-region, fast) as primary download, Apache mirrors as fallbacks with `--connect-timeout 15 --max-time 180` |
+| 5 | Kafka log dir permissions — JVM can't create `/opt/kafka/logs` | systemd service runs as `ec2-user`, but `/opt/kafka` is owned by `root:root` after tar extraction. `chown -R` on symlink didn't follow to target until fixed | Pre-create `/opt/kafka/logs` directory before starting Kafka + `chown -R ec2-user:ec2-user` on the actual target dir |
+
+**Consumer Redis Fix:**
+
+| # | Fix | Cause | How |
+|---|-----|-------|-----|
+| 6 | Consumer `REDIS_HOST=localhost:6379` — Redis connection refused | Consumer task definition had no `REDIS_HOST` env var, so `backend/src/cache/redis_client.py` defaulted to `localhost` | Added ECS Service Discovery (Cloud Map): `aws_service_discovery_private_dns_namespace` (`laad.internal`) + `aws_service_discovery_service` (`redis`) + `service_registries` on Redis ECS service. Consumer now uses `REDIS_HOST=redis.laad.internal` |
+| 7 | Redis SG only allows ingress from API SG | Consumer couldn't reach Redis even with correct hostname | Added `redis_ingress_ecs_consumer` SG rule in VPC module — port 6379 from consumer SG |
+
+**Current Stack Status (2026-06-23):**
+
+| Service | Status | Details |
+|---------|--------|---------|
+| Kafka EC2 | ✅ RUNNING | `i-084a3f4393429a4ff`, `10.0.1.171:9092`, KRaft mode |
+| Redis (ECS) | ✅ RUNNING | `redis:7-alpine`, service discovery via `redis.laad.internal` |
+| Generator | ✅ RUNNING | Producing to Kafka, backfilling, injecting anomalies |
+| Consumer | ✅ RUNNING | Processing messages, Redis connected via `redis.laad.internal:6379` |
+| API | ✅ HEALTHY | Serving via CloudFront, `{"status":"ok"}` |
+| Frontend | ✅ SERVING | HTTP 200 via CloudFront |
+
+**Known issues deferred to Batch 3:**
+- ML model artifacts not trained/deployed — `ML_ENSEMBLE` layer disabled (ZSCORE + HEURISTIC should still operate, but no anomalies appear on the dashboard, will look into this further after Batch 3)
+- MLflow not reachable (tries to resolve `mlflow` hostname) — expected in ECS; MLflow runs separately
+- Custom domain `laad.ahmedikram.com` — DNS not configured; CloudFront uses `.cloudfront.net` cert
+- Consumer CloudWatch logs show MLflow retry spam (`"Name or service not known"`) until model training is completed
+
+---
+
 ## Decision Log
 
 | # | Date | Decision | Rationale | Author |
@@ -356,6 +400,9 @@ Every checkpoint requires you to run a command and confirm the output before the
 | D35 | 2026-06-22 | GitHub Actions IAM read policy expanded with 10 missing read-only actions | Terraform workflow `plan` job failed with 15 `AccessDenied` errors because the GitHub Actions role lacked permissions Terraform uses for state refresh. Added: `ec2:DescribeInstanceTypes`, `ec2:DescribeVpcEndpoints`, `ecr:ListTagsForResource`, `logs:ListTagsForResource`, `elasticloadbalancing:DescribeLoadBalancerAttributes`, `elasticloadbalancing:DescribeTargetGroupAttributes`, `s3:GetBucketAcl`, `iam:GetOpenIDConnectProvider`, `secretsmanager:GetResourcePolicy`, `rds:DescribeDBParameters`. | orchestrator |
 | D36 | 2026-06-22 | GitHub Actions IAM read policy expanded with 5 more missing read-only actions | CI/CD `terraform plan` failed with 7 `AccessDenied` errors. Added: `ec2:DescribeInstanceAttribute`, `ec2:DescribePrefixLists`, `logs:DescribeMetricFilters`, `s3:GetBucketCORS`, `elasticloadbalancing:DescribeListenerAttributes`. All alphabetically ordered within each service section. | orchestrator |
 | D37 | 2026-06-22 | IAM read policy expanded with 2 more missing actions + CD pipeline `networkConfiguration` fix | Terraform plan failed again with `s3:GetBucketWebsite` and `ec2:DescribeVolumes` missing. CD deploy-backend failed: `--network-configuration` expected `{"awsvpcConfiguration": {...}}` but received the raw `awsvpcConfiguration` object directly. Fixed both: added IAM actions + wrapped network config with `jq '{awsvpcConfiguration: .}'`. | orchestrator |
+| D38 | 2026-06-23 | Kafka user-data moved to external `user-data.sh` file with S3 download + console output | AL2023 cloud-init doesn't support nested heredocs and double-base64 encoding from Terraform's `base64encode()`. The inline script was unmaintainable and debugging was impossible without console output. External file is version-controlled, editable, and the `exec > >(tee ... 2>/dev/console)` trick surfaces output via `aws ec2 get-console-output`. | orchestrator |
+| D39 | 2026-06-23 | Pre-create `/opt/kafka/logs` directory before service start | Kafka's JVM `-Xlog` option tries to create the GC log file path at JVM init and crashes if `logs/` doesn't exist. `systemd` runs as `ec2-user` but tar extracts to `/opt/kafka/` owned by `root:root`. Pre-creating + `chown -R` on the real directory (not the symlink) fixes the startup crash. | orchestrator |
+| D40 | 2026-06-23 | Consumer Redis: ECS Service Discovery (Cloud Map) instead of hardcoded IP | ECS Fargate Redis service needs a stable DNS name so the consumer can find it regardless of task replacement IP. Service Discovery creates a Route53 private hosted zone (`laad.internal`) with an A record pointing to the current Redis task's ENI IP. Consumer uses `REDIS_HOST=redis.laad.internal`. | orchestrator |
 
 ---
 
