@@ -250,6 +250,17 @@
             ]
         },
         {
+            "file": "/modules/sagemaker/main.tf",
+            "findings": [
+                {
+                    "resource": "module.sagemaker.aws_sagemaker_endpoint_configuration.champion",
+                    "check_ids": [
+                        "CKV_AWS_98"
+                    ]
+                }
+            ]
+        },
+        {
             "file": "/modules/vpc/main.tf",
             "findings": [
                 {

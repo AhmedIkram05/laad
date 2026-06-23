@@ -18,9 +18,10 @@ locals {
 # uploaded by the model upload ECS run-task.
 
 resource "aws_sagemaker_model" "champion" {
-  count              = local.create
-  name               = "${var.project_name}-xgb-champion"
-  execution_role_arn = var.sagemaker_execution_role_arn
+  count                    = local.create
+  name                     = "${var.project_name}-xgb-champion"
+  execution_role_arn       = var.sagemaker_execution_role_arn
+  enable_network_isolation = true
 
   primary_container {
     image          = var.inference_image
