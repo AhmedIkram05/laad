@@ -220,6 +220,7 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       "s3:GetReplicationConfiguration",
       "s3:ListAllMyBuckets",
       # CloudFront
+      "cloudfront:DescribeFunction",
       "cloudfront:GetDistribution",
       "cloudfront:GetDistributionConfig",
       "cloudfront:GetOriginAccessControl",
@@ -236,6 +237,13 @@ data "aws_iam_policy_document" "github_actions_terraform_readonly" {
       # PutRolePolicy needed for Terraform to update the role's own inline
       # policies (e.g. adding new S3/CloudFront read actions for state refresh)
       "iam:PutRolePolicy",
+      # Service Discovery
+      "servicediscovery:GetNamespace",
+      "servicediscovery:ListNamespaces",
+      "servicediscovery:ListServices",
+      # SageMaker
+      "sagemaker:DescribeModel",
+      "sagemaker:ListModels",
       # SNS
       "sns:GetTopicAttributes",
       "sns:ListSubscriptionsByTopic",
