@@ -103,6 +103,28 @@ resource "aws_cloudwatch_log_group" "generator" {
   }
 }
 
+resource "aws_cloudwatch_log_group" "chromadb" {
+  name              = "/ecs/laad-chromadb"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "/ecs/laad-chromadb"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_log_group" "redis" {
+  name              = "/ecs/laad-redis"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "/ecs/laad-redis"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Task Definitions
 # ---------------------------------------------------------------------------
@@ -354,7 +376,7 @@ resource "aws_ecs_task_definition" "chromadb" {
       ]
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
+        command     = ["CMD-SHELL", "grep -qs '00000000:1F40' /proc/net/tcp || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
