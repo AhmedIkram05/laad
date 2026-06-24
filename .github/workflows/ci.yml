@@ -303,7 +303,7 @@ jobs:
         working-directory: frontend
         env:
           BASE_URL: http://localhost:5173
-        run: npx playwright test --reporter=list
+        run: npx playwright test
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v6
