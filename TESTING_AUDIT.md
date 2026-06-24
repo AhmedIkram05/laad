@@ -1,8 +1,8 @@
 # LAAD Testing Coverage Audit
 
-**Current**: 815 tests (656 backend pytest + 149 frontend vitest + 10 Playwright E2E)
+**Current**: 846 tests (655 backend pytest + 181 frontend vitest + 10 Playwright E2E)
 **Target**: ~1,015 tests across 6 layers
-**Progress**: ✅ Phase 2 written (+53 new), awaiting CI validation
+**Progress**: ✅ Phase 3 written (+32 frontend), awaiting CI
 
 ---
 
@@ -19,13 +19,13 @@
 | `backend/tests/test_analysis_router_full.py` | `/analysis/detailed` + `/analysis/metrics` endpoints | Integration + TestClient | 5 | ⏳ Written — awaiting CI |
 | `backend/tests/test_parsers_edge_cases.py` | 8 parsers × edge cases (malformed, missing, boundary) | Unit + parametrize | 32 | ⏳ Written — awaiting CI |
 
-### ✅ Phase 2: Under-Tested Backend — **IMPLEMENTED** (+53 new, +29 pre-existing analysis)
+### ✅ Phase 2: Under-Tested Backend — **IMPLEMENTED** (+52 new, +29 pre-existing analysis)
 
 | File | What | Type | Tests | Status |
 |------|------|------|-------|--------|
 | `backend/tests/test_anomalies_router_full.py` | Feedback PATCH, 3 grouping modes, 3 sort modes, 6 filters, cache, pagination, auth | Integration | 20 | ✅ New |
 | `backend/tests/test_admin_router_full.py` | Ingestion-errors CRUD, cleanup triggers, user create + validation | Integration | 10 | ✅ New |
-| `backend/tests/test_cleanup_direct.py` | `batched_delete()`, `batched_delete_all()`, `run_wipe()` — edge cases | Unit + mock conn | 10 | ✅ New |
+| `backend/tests/test_cleanup_direct.py` | `batched_delete()`, `batched_delete_all()`, `run_wipe()` — edge cases | Unit + mock conn | 9 | ✅ New |
 | `backend/tests/test_write_helper_retry.py` | Retry/backoff, execute_values vs executemany, transient errors | Unit + mock conn | 6 | ✅ New |
 | `backend/tests/test_continuous_generator.py` | `emit_tick()`, anomaly cooldown, backfill, producer flush | Unit + mock producer | 7 | ✅ New |
 | `backend/tests/test_analysis_logic.py` | A1–A7 functions, `_build_classifier_description()`, `build_detailed_table()`, `time_window()`, `rank_algorithm()` | Unit | 29 | ✅ Pre-existing (comprehensive) |
@@ -34,16 +34,16 @@
 | `backend/tests/test_admin_training_endpoint.py` | ML training route check, method, response model | Unit | 3 | ✅ Pre-existing |
 | `backend/tests/test_cleanup.py` | run_cleanup, defaults, batched_delete batches | Integration | 3 | ✅ Pre-existing |
 
-### Phase 3: Frontend Coverage (32 tests, 8h)
+### ✅ Phase 3: Frontend Coverage — **IMPLEMENTED** (+32 new, 4 new/2 enhanced files)
 
-| File | Current | Target | Tests |
-|------|---------|--------|-------|
-| `frontend/src/test/App.test.jsx` | 0% | 85%+ | 4 |
-| `frontend/src/test/DiagnosticAssistant.test.jsx` | 21% | 80%+ | 8 |
-| `frontend/src/test/AdminSettings.test.jsx` | 34% | 80%+ | 6 |
-| `frontend/src/test/AnomalyListPage.test.jsx` | 44% | 80%+ | 6 |
-| `frontend/src/test/Analytics.test.jsx` | 52% | 80%+ | 4 |
-| `frontend/src/test/AnomalyData.test.jsx` | 59% | 80%+ | 4 |
+| File | What | Type | Tests | Status |
+|------|------|------|-------|--------|
+| `frontend/src/test/App.test.jsx` | Auth routing, login page, dashboard, admin page | Integration + mocked context | 4 | ✅ New |
+| `frontend/src/test/DiagnosticAssistant.test.jsx` | Chat UI, tabs, new chat, example queries, input field, loading indicator, history tab | Component + mocked context | 8 | ✅ Enhanced |
+| `frontend/src/test/AdminSettings.test.jsx` | Page title, sections, loading state, no-errors state, save/cleanup buttons, create user form | Component + mocked auth | 6 | ✅ Enhanced |
+| `frontend/src/test/AnomalyListPage.test.jsx` | Title/subtitle, empty state, filter controls, data rendering, auth error, severity badges | Component + mocked fetch | 6 | ✅ Enhanced |
+| `frontend/src/test/Analytics.test.jsx` | Page title, stats section, loading skeletons, fetch error handling | Component + mocked fetch | 4 | ✅ Enhanced |
+| `frontend/src/test/AnomalyData.test.jsx` | Details loading, skeleton, star/complete buttons, empty data handling | Component + mocked fetch | 4 | ✅ Enhanced |
 
 ### Phase 4: Terraform Tests (35 tests, 8h)
 
