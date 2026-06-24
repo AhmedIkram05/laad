@@ -1,8 +1,8 @@
 # LAAD Testing Coverage Audit
 
-**Current**: 663 tests (514 backend pytest + 149 frontend vitest)
+**Current**: 704 tests (545 backend pytest + 149 frontend vitest + 10 Playwright E2E)
 **Target**: ~1,015 tests across 6 layers
-**Delta**: +350 tests (~56h)
+**Progress**: ✅ Phase 5 done — 41 tests added (31 contract + 10 E2E)
 
 ---
 
@@ -54,16 +54,25 @@
 | `terraform/tests/frontend_test.tftest.hcl` | CloudFront/S3 assertions | 3 |
 | — | Replace .checkov.baseline with per-finding waivers | 15 rules |
 
-### Phase 5: E2E + API Contracts (40 tests, 10h)
+### ✅ Phase 5: E2E + API Contracts — **IMPLEMENTED** (41 tests)
 
 | File | Tool | What | Tests |
 |------|------|------|-------|
-| `frontend/e2e/auth.spec.js` | Playwright | Login → dashboard loads | 2 |
-| `frontend/e2e/anomalies.spec.js` | Playwright | Filter → view → resolve/star | 3 |
-| `frontend/e2e/diagnostic.spec.js` | Playwright | RAG query → answer | 1 |
-| `frontend/e2e/admin.spec.js` | Playwright | Retention → cleanup | 1 |
-| `frontend/e2e/mobile.spec.js` | Playwright | Responsive layout | 3 |
-| `backend/tests/test_api_contract.py` | pytest + openapi-core | 30+ endpoint schema validation | 30 |
+| `frontend/e2e/auth.spec.js` | Playwright | Login → dashboard loads + invalid creds | 2 |
+| `frontend/e2e/anomalies.spec.js` | Playwright | List loads, filter severity, toggle star | 3 |
+| `frontend/e2e/diagnostic.spec.js` | Playwright | Chat interface renders, example queries visible | 1 |
+| `frontend/e2e/admin.spec.js` | Playwright | Settings page loads with retention + user creation | 1 |
+| `frontend/e2e/mobile.spec.js` | Playwright | Mobile + tablet viewport, sidebar collapse | 3 |
+| `backend/tests/test_api_contract.py` | pytest + TestClient | Schema validation, non-5xx for all endpoints, response shape | 31 |
+
+**Infrastructure also created:**
+- `frontend/playwright.config.js` — Chromium project, 30s timeout, CI retries
+- `docker-compose.yml` — `playwright` service (profile: `test`, `mcr.microsoft.com/playwright` image)
+- `Makefile` — `test-e2e` (starts full stack) + `test-e2e-quick` (existing stack)
+- `.github/workflows/ci.yml` — E2E job (starts Postgres, backend, frontend build, runs Playwright)
+- `.gitignore` — Playwright report/results dirs added
+- `frontend/package.json` — `test:e2e` script added
+- Backend API contract uses `fastapi.testclient.TestClient` (no extra deps needed)
 
 ### Phase 6: Load + Security (33 tests, 8h)
 
@@ -81,11 +90,11 @@
 |----------|------|
 | **pytest** | All pass + `--cov-fail-under=80` |
 | **vitest** | All pass + `--coverage 80%` |
-| **Playwright** | All pass |
+| **Playwright** | All pass — CI runs on backend + frontend changes |
 | **k6** | Thresholds met (nightly + pre-release) |
 | **Terraform test** | All modules pass (PR touches `terraform/`) |
 | **checkov** | Zero new failures (PR touches `terraform/`) |
-| **OpenAPI contract** | All 30+ endpoints match schema |
+| **OpenAPI contract** | All 30+ endpoints match schema — CI-ready |
 
 ### Quick Wins (In Priority Order)
 
@@ -94,4 +103,4 @@
 3. **`test_parsers_edge_cases.py`** — 24 unit tests, ~1.5h. ~15% → ~70%.
 4. **`test_server_routes.py`** — 8 tests, ~1h. Zero → ~75%.
 5. **Terraform test per module** — 20 tests, ~4h. Zero → comprehensive.
-6. **Playwright E2E** — 10 tests, ~4h. Zero → first E2E coverage.
+6. ~~**Playwright E2E** — 10 tests, ~4h. Zero → first E2E coverage.~~ ✅ **Done**
