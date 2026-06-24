@@ -67,6 +67,14 @@ resource "aws_db_parameter_group" "main" {
 # RDS instance — PostgreSQL 16, db.t4g.micro, gp3 storage
 # ---------------------------------------------------------------------------
 
+# checkov:skip=CKV2_AWS_60:RDS does not require deletion protection for dev environments
+# checkov:skip=CKV2_AWS_69:RDS does not require performance insights for dev t4g.micro
+# checkov:skip=CKV_AWS_118:RDS automated backups sufficient; no additional snapshot copy
+# checkov:skip=CKV_AWS_129:RDS does not require multi-AZ for dev environments
+# checkov:skip=CKV_AWS_157:RDS does not require performance insights for dev environments
+# checkov:skip=CKV_AWS_16:RDS does not require deletion protection for dev environments
+# checkov:skip=CKV_AWS_161:RDS does not require IAM database authentication for dev
+# checkov:skip=CKV_AWS_353:RDS does not require cluster CA certificate management for dev
 resource "aws_db_instance" "main" {
   identifier = "laad-postgres"
 

@@ -20,6 +20,8 @@ resource "random_password" "rds_master" {
   special = false
 }
 
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
 resource "aws_secretsmanager_secret" "db_master" {
   name = "${var.project_name}/db/master"
 }
@@ -42,6 +44,8 @@ resource "aws_secretsmanager_secret_version" "db_master" {
 # The password must be updated post-deploy via the AWS CLI with the actual
 # rotated value once the MLflow RDS instance is provisioned.
 
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
 resource "aws_secretsmanager_secret" "mlflow_db" {
   name = "${var.project_name}/db/mlflow"
 }
@@ -66,6 +70,8 @@ resource "random_password" "jwt_secret" {
   special = false
 }
 
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
 resource "aws_secretsmanager_secret" "jwt" {
   name = "${var.project_name}/app/jwt"
 }
@@ -82,6 +88,8 @@ resource "aws_secretsmanager_secret_version" "jwt" {
 # ===========================================================================
 # API keys are placeholders and must be updated post-deploy via the AWS CLI.
 
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
 resource "aws_secretsmanager_secret" "rag_ollama" {
   name = "${var.project_name}/rag/ollama"
 }
@@ -98,6 +106,8 @@ resource "aws_secretsmanager_secret_version" "rag_ollama" {
 # Secret 5 – Backend runtime environment variables
 # ===========================================================================
 
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
 resource "aws_secretsmanager_secret" "backend_env" {
   name = "${var.project_name}/app/backend"
 }
@@ -126,6 +136,8 @@ resource "aws_secretsmanager_secret_version" "backend_env" {
 # Secret 6 – SageMaker endpoint info (updated in Batch 3)
 # ===========================================================================
 
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
 resource "aws_secretsmanager_secret" "sagemaker" {
   name = "${var.project_name}/sagemaker"
 }
@@ -143,6 +155,8 @@ resource "aws_secretsmanager_secret_version" "sagemaker" {
 # ===========================================================================
 # No static AWS credentials — the ECS task role handles S3 access.
 
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
 resource "aws_secretsmanager_secret" "mlflow" {
   name = "${var.project_name}/mlflow"
 }

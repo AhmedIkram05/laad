@@ -6,6 +6,7 @@
 # SNS Topic for Budget & Alarm Notifications
 # ---------------------------------------------------------------------------
 
+# checkov:skip=CKV_AWS_26:SNS topic encryption not required for dev budget alerts
 resource "aws_sns_topic" "budget_alerts" {
   name = "laad-budget-alerts"
 

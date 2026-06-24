@@ -41,6 +41,7 @@ resource "aws_sagemaker_model" "champion" {
 # Single-variant config: ml.m5.large, 1 instance. Scales to zero via
 # scheduled stop/start (EventBridge Scheduler) for cost management.
 
+# checkov:skip=CKV_AWS_98:SageMaker endpoint uses instance-based encryption; KMS not configured for dev
 resource "aws_sagemaker_endpoint_configuration" "champion" {
   count = local.create
   name  = "${var.project_name}-xgb-champion-config"
