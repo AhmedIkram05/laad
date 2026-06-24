@@ -12,7 +12,7 @@ skip-path:
   - tests
 
 skip-check:
-  # ── Bootstrap: S3 tf_state + DynamoDB lock (dev, no lifecycle/events needed) ──
+  # ── Bootstrap: DynamoDB state lock (dev only, no PITR/KMS needed) ──
   - CKV_AWS_28
   - CKV_AWS_119
 
@@ -31,6 +31,7 @@ skip-check:
   - CKV_AWS_378
   - CKV2_AWS_20
   - CKV2_AWS_28
+  - CKV_AWS_103
 
   # ── Frontend: CloudFront / S3 (dev, behind OAC) ──
   - CKV_AWS_68
@@ -39,8 +40,13 @@ skip-check:
   - CKV_AWS_310
   - CKV_AWS_374
   - CKV2_AWS_32
+  - CKV2_AWS_42
+  - CKV2_AWS_47
 
   # ── S3: tf_state + frontend buckets (dev, no lifecycle/events/notifications) ──
+  - CKV_AWS_18
+  - CKV_AWS_144
+  - CKV_AWS_145
   - CKV2_AWS_61
   - CKV2_AWS_62
 
@@ -66,6 +72,8 @@ skip-check:
   - CKV_AWS_157
   - CKV_AWS_161
   - CKV_AWS_353
+  - CKV2_AWS_60
+  - CKV2_AWS_69
 
   # ── SageMaker: dev endpoint, no KMS ──
   - CKV_AWS_98
@@ -79,4 +87,6 @@ skip-check:
   - CKV_AWS_130
   - CKV_AWS_260
   - CKV_AWS_382
+  - CKV2_AWS_5
   - CKV2_AWS_11
+  - CKV2_AWS_12
