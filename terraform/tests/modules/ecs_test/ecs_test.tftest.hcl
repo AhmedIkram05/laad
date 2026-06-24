@@ -17,8 +17,8 @@ mock_provider "aws" {
   }
   mock_resource "aws_service_discovery_service" {
     defaults = {
-      id  = "srv-1234567890abcdef0"
-      arn = "arn:aws:servicediscovery:eu-west-2:123456789012:service/srv-1234567890abcdef0"
+      id   = "srv-1234567890abcdef0"
+      arn  = "arn:aws:servicediscovery:eu-west-2:123456789012:service/srv-1234567890abcdef0"
       name = "redis"
     }
   }
@@ -30,20 +30,20 @@ mock_provider "aws" {
   }
   mock_resource "aws_ecs_task_definition" {
     defaults = {
-      id         = "laad-api"
-      arn        = "arn:aws:ecs:eu-west-2:123456789012:task-definition/laad-api:1"
-      family     = "laad-api"
-      revision   = 1
+      id       = "laad-api"
+      arn      = "arn:aws:ecs:eu-west-2:123456789012:task-definition/laad-api:1"
+      family   = "laad-api"
+      revision = 1
     }
   }
   mock_resource "aws_lb" {
     defaults = {
-      id          = "arn:aws:elasticloadbalancing:eu-west-2:123456789012:loadbalancer/app/laad-alb/1234567890abcdef"
-      arn         = "arn:aws:elasticloadbalancing:eu-west-2:123456789012:loadbalancer/app/laad-alb/1234567890abcdef"
-      arn_suffix  = "app/laad-alb/1234567890abcdef"
-      dns_name    = "laad-alb-1234567890.eu-west-2.elb.amazonaws.com"
-      zone_id     = "Z3KABCDEFGHIJK"
-      name        = "laad-alb"
+      id         = "arn:aws:elasticloadbalancing:eu-west-2:123456789012:loadbalancer/app/laad-alb/1234567890abcdef"
+      arn        = "arn:aws:elasticloadbalancing:eu-west-2:123456789012:loadbalancer/app/laad-alb/1234567890abcdef"
+      arn_suffix = "app/laad-alb/1234567890abcdef"
+      dns_name   = "laad-alb-1234567890.eu-west-2.elb.amazonaws.com"
+      zone_id    = "Z3KABCDEFGHIJK"
+      name       = "laad-alb"
     }
   }
   mock_resource "aws_lb_target_group" {
@@ -70,7 +70,7 @@ mock_provider "aws" {
   }
   mock_resource "aws_cloudwatch_dashboard" {
     defaults = {
-      id = "laad-dashboard-production"
+      id             = "laad-dashboard-production"
       dashboard_name = "laad-dashboard-production"
     }
   }

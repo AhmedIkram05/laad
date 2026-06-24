@@ -5,7 +5,7 @@ terraform {
 }
 
 variable "project_name" { type = string }
-variable "environment"  { type = string }
+variable "environment" { type = string }
 
 module "ecr" {
   source = "../../../modules/ecr"
@@ -14,5 +14,5 @@ module "ecr" {
   environment  = var.environment
 }
 
-output "repository_url"  { value = module.ecr.repository_url }
-output "repository_arn"  { value = module.ecr.repository_arn }
+output "repository_url" { value = module.ecr.repository_url }
+output "repository_arn" { value = module.ecr.repository_arn }

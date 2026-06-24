@@ -14,7 +14,7 @@ mock_provider "aws" {
 run "test_mock_data_json" {
   command = plan
   assert {
-    condition = can(module.iam.ecs_execution_role_arn)
+    condition     = can(module.iam.ecs_execution_role_arn)
     error_message = "Cannot access role ARN"
   }
 }

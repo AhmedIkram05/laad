@@ -15,8 +15,8 @@ mock_provider "aws" {
   }
   mock_resource "aws_cloudwatch_metric_alarm" {
     defaults = {
-      id        = "laad-rds-cpu-credit-balance"
-      arn       = "arn:aws:cloudwatch:eu-west-2:123456789012:alarm:laad-rds-cpu-credit-balance"
+      id         = "laad-rds-cpu-credit-balance"
+      arn        = "arn:aws:cloudwatch:eu-west-2:123456789012:alarm:laad-rds-cpu-credit-balance"
       alarm_name = "laad-rds-cpu-credit-balance"
     }
   }

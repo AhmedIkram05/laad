@@ -82,11 +82,11 @@ run "test_apply_outputs" {
   command = apply
 
   assert {
-    condition = module.iam.ecs_execution_role_arn == "arn:aws:iam::123456789012:role/test-role"
+    condition     = module.iam.ecs_execution_role_arn == "arn:aws:iam::123456789012:role/test-role"
     error_message = "IAM role ARN should match mock default"
   }
   assert {
-    condition = module.ecr.repository_url == "test-url"
+    condition     = module.ecr.repository_url == "test-url"
     error_message = "ECR URL should match mock default"
   }
 }

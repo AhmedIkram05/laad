@@ -32,23 +32,23 @@ mock_provider "aws" {
   }
   mock_resource "aws_cloudfront_function" {
     defaults = {
-      id          = "laad-production-api-path-rewrite"
-      arn         = "arn:aws:cloudfront::123456789012:function/laad-production-api-path-rewrite"
-      etag        = "ETABCDEFGHIJKL"
+      id              = "laad-production-api-path-rewrite"
+      arn             = "arn:aws:cloudfront::123456789012:function/laad-production-api-path-rewrite"
+      etag            = "ETABCDEFGHIJKL"
       live_stage_etag = "ETABCDEFGHIJKL"
     }
   }
   mock_resource "aws_cloudfront_distribution" {
     defaults = {
-      id          = "E1ABCDEFGHIJKL"
-      arn         = "arn:aws:cloudfront::123456789012:distribution/E1ABCDEFGHIJKL"
-      domain_name = "d1234567890abcdef.cloudfront.net"
-      hosted_zone_id = "Z2FDTNDATAQYW2"
-      etag        = "E3ABCDEFGHIJKL"
-      last_modified_time = "2025-01-01T00:00:00Z"
+      id                             = "E1ABCDEFGHIJKL"
+      arn                            = "arn:aws:cloudfront::123456789012:distribution/E1ABCDEFGHIJKL"
+      domain_name                    = "d1234567890abcdef.cloudfront.net"
+      hosted_zone_id                 = "Z2FDTNDATAQYW2"
+      etag                           = "E3ABCDEFGHIJKL"
+      last_modified_time             = "2025-01-01T00:00:00Z"
       in_progress_validation_batches = 0
-      caller_reference = "test-ref"
-      status      = "Deployed"
+      caller_reference               = "test-ref"
+      status                         = "Deployed"
     }
   }
   mock_resource "aws_s3_bucket_policy" {

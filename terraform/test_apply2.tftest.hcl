@@ -65,39 +65,39 @@ run "test_apply_outputs" {
   command = apply
 
   assert {
-    condition = module.iam.ecs_execution_role_arn != ""
+    condition     = module.iam.ecs_execution_role_arn != ""
     error_message = "IAM role ARN should be present"
   }
   assert {
-    condition = module.iam.github_actions_role_arn != ""
+    condition     = module.iam.github_actions_role_arn != ""
     error_message = "GitHub Actions role ARN should be present"
   }
   assert {
-    condition = module.vpc.vpc_id == "vpc-12345"
+    condition     = module.vpc.vpc_id == "vpc-12345"
     error_message = "VPC ID should match mock"
   }
   assert {
-    condition = module.vpc.alb_sg_id == "sg-12345"
+    condition     = module.vpc.alb_sg_id == "sg-12345"
     error_message = "SG ID should match mock"
   }
   assert {
-    condition = length(module.vpc.public_subnet_ids) == 2
+    condition     = length(module.vpc.public_subnet_ids) == 2
     error_message = "Should have 2 public subnets"
   }
   assert {
-    condition = length(module.vpc.private_subnet_ids) == 2
+    condition     = length(module.vpc.private_subnet_ids) == 2
     error_message = "Should have 2 private subnets"
   }
   assert {
-    condition = module.ecr.repository_url != ""
+    condition     = module.ecr.repository_url != ""
     error_message = "ECR URL should be present"
   }
   assert {
-    condition = module.monitoring.budget_sns_topic_arn == "arn:aws:sns:eu-west-2:123456789012:test-topic"
+    condition     = module.monitoring.budget_sns_topic_arn == "arn:aws:sns:eu-west-2:123456789012:test-topic"
     error_message = "SNS topic ARN should match mock"
   }
   assert {
-    condition = module.monitoring.rds_cpu_alarm_arn != ""
+    condition     = module.monitoring.rds_cpu_alarm_arn != ""
     error_message = "RDS alarm ARN should be present"
   }
 }

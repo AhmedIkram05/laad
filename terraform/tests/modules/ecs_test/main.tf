@@ -4,31 +4,31 @@ terraform {
   }
 }
 
-variable "project_name"               { type = string }
-variable "environment"                { type = string }
-variable "vpc_id"                     { type = string }
-variable "public_subnet_ids"          { type = list(string) }
-variable "private_subnet_ids"         { type = list(string) }
-variable "alb_sg_id"                  { type = string }
-variable "ecs_api_sg_id"              { type = string }
-variable "ecs_consumer_sg_id"         { type = string }
-variable "ecs_generator_sg_id"        { type = string }
-variable "redis_sg_id"                { type = string }
-variable "chromadb_sg_id"             { type = string }
-variable "ecs_execution_role_arn"     { type = string }
-variable "ecs_task_role_arn"          { type = string }
-variable "ecr_repository_url"         { type = string }
-variable "kafka_bootstrap_servers"    { type = string }
-variable "rds_endpoint"               { type = string }
-variable "rds_port"                   { type = string }
-variable "rds_db_name"                { type = string }
-variable "db_master_secret_arn"       { type = string }
-variable "jwt_secret_arn"             { type = string }
-variable "sagemaker_secret_arn"       { type = string }
+variable "project_name" { type = string }
+variable "environment" { type = string }
+variable "vpc_id" { type = string }
+variable "public_subnet_ids" { type = list(string) }
+variable "private_subnet_ids" { type = list(string) }
+variable "alb_sg_id" { type = string }
+variable "ecs_api_sg_id" { type = string }
+variable "ecs_consumer_sg_id" { type = string }
+variable "ecs_generator_sg_id" { type = string }
+variable "redis_sg_id" { type = string }
+variable "chromadb_sg_id" { type = string }
+variable "ecs_execution_role_arn" { type = string }
+variable "ecs_task_role_arn" { type = string }
+variable "ecr_repository_url" { type = string }
+variable "kafka_bootstrap_servers" { type = string }
+variable "rds_endpoint" { type = string }
+variable "rds_port" { type = string }
+variable "rds_db_name" { type = string }
+variable "db_master_secret_arn" { type = string }
+variable "jwt_secret_arn" { type = string }
+variable "sagemaker_secret_arn" { type = string }
 variable "mlflow_tracking_secret_arn" { type = string }
-variable "rag_ollama_secret_arn"      { type = string }
-variable "aws_region"                 { type = string }
-variable "cors_origins"               { type = string }
+variable "rag_ollama_secret_arn" { type = string }
+variable "aws_region" { type = string }
+variable "cors_origins" { type = string }
 
 module "ecs" {
   source = "../../../modules/ecs"
@@ -61,8 +61,8 @@ module "ecs" {
 }
 
 output "ecs_cluster_name" { value = module.ecs.ecs_cluster_name }
-output "ecs_cluster_id"   { value = module.ecs.ecs_cluster_id }
-output "alb_arn"          { value = module.ecs.alb_arn }
-output "alb_dns_name"     { value = module.ecs.alb_dns_name }
-output "alb_zone_id"      { value = module.ecs.alb_zone_id }
+output "ecs_cluster_id" { value = module.ecs.ecs_cluster_id }
+output "alb_arn" { value = module.ecs.alb_arn }
+output "alb_dns_name" { value = module.ecs.alb_dns_name }
+output "alb_zone_id" { value = module.ecs.alb_zone_id }
 output "target_group_arn" { value = module.ecs.target_group_arn }

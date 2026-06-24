@@ -1,24 +1,24 @@
 mock_provider "aws" {
   mock_data "aws_ami" {
     defaults = {
-      id          = "ami-1234567890abcdef0"
+      id           = "ami-1234567890abcdef0"
       architecture = "arm64"
-      name        = "al2023-ami-2023.5.20241001.0-arm64"
+      name         = "al2023-ami-2023.5.20241001.0-arm64"
     }
   }
   mock_resource "aws_instance" {
     defaults = {
-      id          = "i-1234567890abcdef0"
-      private_ip  = "10.0.1.100"
-      public_ip   = "54.123.45.67"
-      arn         = "arn:aws:ec2:eu-west-2:123456789012:instance/i-1234567890abcdef0"
+      id         = "i-1234567890abcdef0"
+      private_ip = "10.0.1.100"
+      public_ip  = "54.123.45.67"
+      arn        = "arn:aws:ec2:eu-west-2:123456789012:instance/i-1234567890abcdef0"
     }
   }
   mock_resource "aws_eip" {
     defaults = {
-      id         = "eipalloc-12345678"
-      public_ip  = "54.123.45.67"
-      domain     = "vpc"
+      id        = "eipalloc-12345678"
+      public_ip = "54.123.45.67"
+      domain    = "vpc"
     }
   }
 }
