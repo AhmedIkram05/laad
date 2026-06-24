@@ -1,22 +1,23 @@
 # LAAD Testing Coverage Audit
 
-**Current**: 704 tests (545 backend pytest + 149 frontend vitest + 10 Playwright E2E)
+**Current**: 762 tests (603 backend pytest + 149 frontend vitest + 10 Playwright E2E)
 **Target**: ~1,015 tests across 6 layers
-**Progress**: ✅ Phase 5 done — 41 tests added (31 contract + 10 E2E)
+**Progress**: ⏳ Phase 1 written (+58 new), awaiting CI validation before marking done
 
 ---
 
 ## The Plan
 
-### Phase 1: Critical Backend Gaps (58 tests, 10h)
+### ✅ Phase 1: Critical Backend Gaps — **IMPLEMENTED** (+58 new, 76 total with pre-existing)
 
-| File | What | Type | Tests |
-|------|------|------|-------|
-| `backend/tests/test_pubsub.py` | Redis Pub/Sub alerting — zero coverage | Unit + mock Redis | 7 |
-| `backend/tests/test_server_routes.py` | Health probes, startup retry, lifespan, exception handler — zero coverage | Integration + TestClient | 8 |
-| `backend/tests/test_analytics_router.py` | 5 analytics endpoints + 4 helpers — zero coverage | Integration + TestClient | 14 |
-| `backend/tests/test_analysis_router_full.py` | `/analysis/metrics` endpoint | Integration | 4 |
-| `backend/tests/test_parsers_edge_cases.py` | 8 parsers × 3 edge cases (malformed, missing fields, boundary) | Unit + parametrize | 24 |
+| File | What | Type | Tests | Status |
+|------|------|------|-------|--------|
+| `backend/tests/test_pubsub_alerts.py` | Redis Pub/Sub alerting | Unit + mock Redis | 7 | ✅ Pre-existing |
+| `backend/tests/test_analytics_counters.py` | Analytics helpers (counters, HLL, realtime) | Unit + mock Redis | 11 | ✅ Pre-existing |
+| `backend/tests/test_server_routes.py` | Health probes, startup retry, exception handler, CORS | Integration + TestClient | 12 | ⏳ New — awaiting CI |
+| `backend/tests/test_analytics_router_endpoints.py` | Analytics endpoint integration via TestClient | Integration + TestClient | 9 | ⏳ New — awaiting CI |
+| `backend/tests/test_analysis_router_full.py` | `/analysis/detailed` + `/analysis/metrics` endpoints | Integration + TestClient | 5 | ⏳ New — awaiting CI |
+| `backend/tests/test_parsers_edge_cases.py` | 8 parsers × edge cases (malformed, missing, boundary) | Unit + parametrize | 32 | ⏳ New — awaiting CI |
 
 ### Phase 2: Under-Tested Backend (62 tests, 12h)
 
