@@ -6,7 +6,6 @@ and admin user creation with validation.
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from psycopg2.extras import Json
 
 from backend.src.api.server import app
 from backend.src.database.connection import get_conn, release_conn

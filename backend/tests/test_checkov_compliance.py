@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 
 import pytest
 
@@ -117,7 +116,7 @@ class TestCheckovCompliance:
                 unexpected.append(f"{cid} ({sev}): {check.get('check_name', '')}")
 
         assert not unexpected, (
-            f"Unexpected CRITICAL/HIGH failures:\n" + "\n".join(unexpected)
+            "Unexpected CRITICAL/HIGH failures:\n" + "\n".join(unexpected)
         )
 
     def test_known_failure_count_stable(self):

@@ -10,12 +10,9 @@ Tests cover:
   3. Anomalies listing with concurrent authenticated requests
 """
 from __future__ import annotations
-import concurrent.futures
 import threading
-import time
 
 import httpx
-import pytest
 
 BASE_URL = "http://localhost:8000"
 CONCURRENT_USERS = 10

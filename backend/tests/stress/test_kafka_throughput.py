@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from backend.kafka.deduplicator import Deduplicator
-from backend.src.ingestion.write_helper import write_batch
 
 
 # Number of messages for throughput measurement

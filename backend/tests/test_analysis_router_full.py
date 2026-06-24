@@ -8,7 +8,6 @@ test_analysis_metrics.py (unit tests for helper functions) by testing the
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
-from psycopg2.extras import Json
 
 from backend.src.database.connection import get_conn, release_conn
 from backend.tests.helpers import reset_test_db
