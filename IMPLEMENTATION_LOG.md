@@ -339,16 +339,16 @@ The SageMaker endpoint was created, tested, and wired into the detection pipelin
 
 **Status:** 🔲 Pending &nbsp;|&nbsp; **Date:** — &nbsp;|&nbsp; **Commander gate:** G4
 
-- [ ] Credential rotation: `.env` removed from git, all passwords rotated
-- [ ] Terraform outputs confirmed: ALB DNS, CloudFront domain, ECR repo URL
-- [ ] Push to `main` → `ci.yml` passes, then `cd.yml` triggers and deploys all services
-- [ ] Schema init one-shot task runs, tables created in RDS
-- [ ] Open CloudFront URL → React app loads, APIs respond
-- [ ] Kafka consumer processes messages (CloudWatch logs)
+- [x] Credential rotation: `.env` removed from git, all passwords rotated
+- [x] Terraform outputs confirmed: ALB DNS, CloudFront domain, ECR repo URL
+- [x] Push to `main` → `ci.yml` passes, then `cd.yml` triggers and deploys all services
+- [x] Schema init one-shot task runs, tables created in RDS
+- [x] Open CloudFront URL → React app loads, APIs respond
+- [x] Kafka consumer processes messages (CloudWatch logs)
 - [x] Anomaly detection: SageMaker endpoint tested — `InvokeEndpoint` returns 8-class probabilities; model is the same 49-feature XGBoost from MLflow run `15f13268`
-- [ ] Redis/Chroma running: check CloudWatch logs for each service
-- [ ] Push trivial change → verify full CI/CD pipeline (ci.yml → cd.yml)
-- [ ] CloudWatch dashboard shows data
+- [x] Redis/Chroma running: check CloudWatch logs for each service
+- [x] Push trivial change → verify full CI/CD pipeline (ci.yml → cd.yml)
+- [x] CloudWatch dashboard shows data
 
 ---
 
