@@ -322,6 +322,28 @@ services:
     volumes:
       - ./frontend:/src
 
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.52.0-jammy
+    profiles:
+      - test
+    working_dir: /workspace
+    command: >
+      sh -c "npm init -y --silent 2>/dev/null &&
+             npm install --silent @playwright/test 2>/dev/null &&
+             npx playwright test --reporter=list"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    volumes:
+      - ./frontend/playwright.config.js:/workspace/playwright.config.js
+      - ./frontend/e2e:/workspace/e2e
+    environment:
+      BASE_URL: http://frontend:80
+
 volumes:
   postgres_data:
   mlflow_artifacts:
