@@ -23,6 +23,7 @@ function AnomalyData() {
   const [isCompleted, setIsCompleted] = useState(true);
   const [isStarred, setIsStarred] = useState(false);
   const [dbAnomaly, setDbAnomaly] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
   const handleComplete = async () => {
     if (!dbAnomaly) return;
@@ -70,17 +71,25 @@ function AnomalyData() {
         }
       } catch (err) {
         console.error("Failed to fetch data", err);
+      } finally {
+        setLoaded(true);
       }
     };
 
     load();
   }, [anomaly_type]);
 
-  if (!data) return (
+  if (!data && !loaded) return (
     <div className="space-y-4 p-4">
       <Skeleton className="h-8 w-1/2" />
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-32 w-full" />
+    </div>
+  );
+
+  if (!data && loaded) return (
+    <div className="space-y-4 p-4 text-center text-muted-foreground">
+      <p>No analysis data available for this anomaly type.</p>
     </div>
   );
 

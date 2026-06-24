@@ -66,7 +66,7 @@ describe("AnomalyListPage", () => {
           { id: 1, title: "Network Timeout", anomaly_type: "A1", severity: "CRITICAL", atm_id: "ATM-GB-0001", detected_at: "2026-06-24T12:00:00Z", is_active: 1, is_starred: 0, score: 10 },
           { id: 2, title: "Cash Low", anomaly_type: "A2", severity: "HIGH", atm_id: "ATM-GB-0002", detected_at: "2026-06-24T11:00:00Z", is_active: 1, is_starred: 0, score: 7 },
         ],
-        entities: ["ATM-GB-0001", "ATM-GB-0002"],
+        entities: [{ atm_id: "ATM-GB-0001" }, { atm_id: "ATM-GB-0002" }],
         total: 2,
       }),
     });
@@ -102,7 +102,7 @@ describe("AnomalyListPage", () => {
         data: [
           { id: 1, title: "Critical Issue", anomaly_type: "A1", severity: "CRITICAL", atm_id: "ATM-GB-0001", detected_at: "2026-06-24T12:00:00Z", is_active: 1, is_starred: 0, score: 10 },
         ],
-        entities: ["ATM-GB-0001"],
+        entities: [{ atm_id: "ATM-GB-0001" }],
         total: 1,
       }),
     });

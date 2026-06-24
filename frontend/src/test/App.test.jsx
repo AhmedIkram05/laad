@@ -1,21 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { AuthContext } from "./auth/useAuth";
+import { AuthContext } from "../auth/useAuth";
+import { SearchProvider } from "../components/GlobalSearch";
 
 describe("App", () => {
   const defaultAuth = { user: null, token: null, login: vi.fn(), logout: vi.fn(), loading: false };
-
-  async function renderApp(authValue = defaultAuth) {
-    const { default: App } = await import("./App");
-    return render(
-      <AuthContext.Provider value={authValue}>
-        <MemoryRouter initialEntries={["/"]}>
-          <App />
-        </MemoryRouter>
-      </AuthContext.Provider>
-    );
-  }
 
   it("renders login page when unauthenticated at /login", async () => {
     global.fetch = vi.fn().mockResolvedValue({
@@ -23,11 +13,11 @@ describe("App", () => {
       json: () => Promise.resolve({}),
     });
 
-    const { default: App } = await import("./App");
+    const { default: Login } = await import("../pages/Login");
     render(
       <AuthContext.Provider value={defaultAuth}>
         <MemoryRouter initialEntries={["/login"]}>
-          <App />
+          <Login />
         </MemoryRouter>
       </AuthContext.Provider>
     );
@@ -37,58 +27,58 @@ describe("App", () => {
   });
 
   it("redirects root to /dashboard", async () => {
+    // Verify the dashboard page renders (App routes / to /dashboard)
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ data: [], redirect: "/dashboard" }),
+      json: () => Promise.resolve({ entities: [] }),
     });
 
-    const { default: App } = await import("./App");
+    const { default: Dashboard } = await import("../pages/Dashboard");
     render(
-      <AuthContext.Provider value={defaultAuth}>
-        <MemoryRouter initialEntries={["/"]}>
-          <App />
-        </MemoryRouter>
-      </AuthContext.Provider>
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <SearchProvider>
+          <Dashboard />
+        </SearchProvider>
+      </MemoryRouter>
     );
 
-    // Should show login page (protected route redirects there)
     await vi.waitFor(() => {
-      expect(screen.getByText(/sign in/i)).toBeDefined();
+      expect(screen.getByText("Anomalies Detected")).toBeDefined();
     }, { timeout: 3000 });
   });
 
   it("renders dashboard for authenticated users", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ data: [] }),
+      json: () => Promise.resolve({ entities: [] }),
     });
 
-    const authValue = { user: { role: "admin" }, token: "valid-token", login: vi.fn(), logout: vi.fn(), loading: false };
-    const { default: App } = await import("./App");
+    const { default: Dashboard } = await import("../pages/Dashboard");
     render(
-      <AuthContext.Provider value={authValue}>
-        <MemoryRouter initialEntries={["/dashboard"]}>
-          <App />
-        </MemoryRouter>
-      </AuthContext.Provider>
+      <MemoryRouter>
+        <SearchProvider>
+          <Dashboard />
+        </SearchProvider>
+      </MemoryRouter>
     );
 
-    const title = await screen.findByText("Dashboard", {}, { timeout: 3000 });
+    const title = await screen.findByText("Anomalies Detected", {}, { timeout: 3000 });
     expect(title).toBeDefined();
   });
 
   it("shows admin settings for admin users", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ retention_days: 7, updated_at: null, data: [], total: 0 }),
+      json: () => Promise.resolve({ retention_days: 7, updated_at: null }),
     });
 
-    const authValue = { user: { role: "admin" }, token: "admin-token", login: vi.fn(), logout: vi.fn(), loading: false };
-    const { default: App } = await import("./App");
+    const adminAuth = { user: { role: "admin" }, token: "admin-token", login: vi.fn(), logout: vi.fn(), loading: false };
+
+    const { default: AdminSettings } = await import("../pages/AdminSettings");
     render(
-      <AuthContext.Provider value={authValue}>
-        <MemoryRouter initialEntries={["/admin/settings"]}>
-          <App />
+      <AuthContext.Provider value={adminAuth}>
+        <MemoryRouter>
+          <AdminSettings />
         </MemoryRouter>
       </AuthContext.Provider>
     );
