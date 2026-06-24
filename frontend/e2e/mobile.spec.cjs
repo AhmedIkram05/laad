@@ -1,8 +1,11 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
+const { loginAsAdmin } = require("./helpers.cjs");
 
 test.describe("Mobile Responsiveness", () => {
-  // No beforeEach login needed — global-setup provides auth via storageState
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdmin(page);
+  });
 
   test("dashboard renders on mobile viewport", async ({ page }) => {
     // Set viewport to iPhone 12/13 size

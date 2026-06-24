@@ -1,12 +1,13 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
+const { loginAsAdmin } = require("./helpers.cjs");
 
 test.describe("Anomalies", () => {
-  // No beforeEach login needed — global-setup provides auth via storageState
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdmin(page);
+  });
 
   test("dashboard loads with anomaly list", async ({ page }) => {
-    await page.goto("/dashboard");
-
     // Dashboard heading should be visible
     await expect(page.locator("h1")).toContainText("Anomalies", { timeout: 10_000 });
 

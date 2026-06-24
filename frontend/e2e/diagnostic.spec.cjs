@@ -1,9 +1,10 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
+const { loginAsAdmin } = require("./helpers.cjs");
 
 test.describe("Diagnostic Assistant", () => {
   test("chat interface loads with example queries", async ({ page }) => {
-    // Start already authenticated (via global-setup storageState)
+    await loginAsAdmin(page);
 
     // Navigate to diagnostic page
     await page.goto("/diagnostic");

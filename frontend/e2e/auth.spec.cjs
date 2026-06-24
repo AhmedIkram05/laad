@@ -1,9 +1,6 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
 
-// Don't use cached auth — test login flow from scratch
-test.use({ storageState: undefined });
-
 test.describe("Authentication", () => {
   test("successful login redirects to dashboard", async ({ page }) => {
     await page.goto("/login");

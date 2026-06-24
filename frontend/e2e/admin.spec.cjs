@@ -1,9 +1,10 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
+const { loginAsAdmin } = require("./helpers.cjs");
 
 test.describe("Admin Settings", () => {
   test("admin settings page loads with retention and user creation sections", async ({ page }) => {
-    // Start already authenticated (via global-setup storageState)
+    await loginAsAdmin(page);
 
     // Navigate to admin settings
     await page.goto("/admin/settings");
