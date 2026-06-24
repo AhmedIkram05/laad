@@ -2,16 +2,11 @@
 const { test, expect } = require("@playwright/test");
 
 test.describe("Anomalies", () => {
-  test.beforeEach(async ({ page }) => {
-    // Log in as admin before each test
-    await page.goto("/login");
-    await page.fill("#username", "admin");
-    await page.fill("#password", "admin");
-    await page.click("button[type=submit]");
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-  });
+  // No beforeEach login needed — global-setup provides auth via storageState
 
   test("dashboard loads with anomaly list", async ({ page }) => {
+    await page.goto("/dashboard");
+
     // Dashboard heading should be visible
     await expect(page.locator("h1")).toContainText("Anomalies", { timeout: 10_000 });
 
@@ -22,7 +17,6 @@ test.describe("Anomalies", () => {
   });
 
   test("can filter anomalies by severity", async ({ page }) => {
-    // Navigate to dashboard if not already there
     await page.goto("/dashboard");
 
     // Wait for the page to load

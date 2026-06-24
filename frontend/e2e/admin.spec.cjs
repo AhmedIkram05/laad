@@ -3,12 +3,7 @@ const { test, expect } = require("@playwright/test");
 
 test.describe("Admin Settings", () => {
   test("admin settings page loads with retention and user creation sections", async ({ page }) => {
-    // Log in as admin
-    await page.goto("/login");
-    await page.fill("#username", "admin");
-    await page.fill("#password", "admin");
-    await page.click("button[type=submit]");
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    // Start already authenticated (via global-setup storageState)
 
     // Navigate to admin settings
     await page.goto("/admin/settings");

@@ -2,14 +2,7 @@
 const { test, expect } = require("@playwright/test");
 
 test.describe("Mobile Responsiveness", () => {
-  test.beforeEach(async ({ page }) => {
-    // Log in as admin
-    await page.goto("/login");
-    await page.fill("#username", "admin");
-    await page.fill("#password", "admin");
-    await page.click("button[type=submit]");
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-  });
+  // No beforeEach login needed — global-setup provides auth via storageState
 
   test("dashboard renders on mobile viewport", async ({ page }) => {
     // Set viewport to iPhone 12/13 size

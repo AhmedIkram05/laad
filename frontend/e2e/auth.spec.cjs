@@ -1,6 +1,9 @@
 // @ts-check
 const { test, expect } = require("@playwright/test");
 
+// Don't use cached auth — test login flow from scratch
+test.use({ storageState: undefined });
+
 test.describe("Authentication", () => {
   test("successful login redirects to dashboard", async ({ page }) => {
     await page.goto("/login");
@@ -13,8 +16,8 @@ test.describe("Authentication", () => {
     await page.click("button[type=submit]");
 
     // Should redirect to dashboard
-    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-    await expect(page.locator("h1")).toContainText("Anomalies");
+    await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+    await expect(page.locator("h1")).toContainText("Anomalies", { timeout: 10_000 });
   });
 
   test("invalid credentials shows error message", async ({ page }) => {

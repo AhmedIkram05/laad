@@ -274,7 +274,11 @@ jobs:
           LAAD_ENV: production
         run: |
           uvicorn backend.src.api.server:app --host 0.0.0.0 --port 8000 &
-          sleep 3
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:8000/health >/dev/null 2>&1 && echo "Backend ready" && break
+            echo "Waiting for backend... ($i)"
+            sleep 1
+          done
 
       - name: Build and start frontend
         working-directory: frontend
@@ -283,12 +287,15 @@ jobs:
           npm run build
           npm install -g serve
           serve -s dist -l 5173 &
-          sleep 3
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:5173 >/dev/null 2>&1 && echo "Frontend ready" && break
+            echo "Waiting for frontend... ($i)"
+            sleep 1
+          done
 
       - name: Install Playwright
         working-directory: frontend
         run: |
-          npm init -y --silent
           npm install @playwright/test
           npx playwright install chromium
 
