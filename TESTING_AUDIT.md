@@ -1,8 +1,8 @@
 # LAAD Testing Coverage Audit
 
-**Current**: 846 tests (655 backend pytest + 181 frontend vitest + 10 Playwright E2E)
+**Current**: 921 tests (655 backend pytest + 181 frontend vitest + 10 Playwright E2E + 75 Terraform assertions)
 **Target**: ~1,015 tests across 6 layers
-**Progress**: ✅ Phase 3 written (+32 frontend), awaiting CI
+**Progress**: ✅ Phase 4 complete (9 per-module Terraform tests + checkov inline skips)
 
 ---
 
@@ -45,19 +45,35 @@
 | `frontend/src/test/Analytics.test.jsx` | Page title, stats section, loading skeletons, fetch error handling | Component + mocked fetch | 4 | ✅ Enhanced |
 | `frontend/src/test/AnomalyData.test.jsx` | Details loading, skeleton, star/complete buttons, empty data handling | Component + mocked fetch | 4 | ✅ Enhanced |
 
-### Phase 4: Terraform Tests (35 tests, 8h)
+### ✅ Phase 4: Terraform Tests — **IMPLEMENTED** (+75 assertions + checkov inline skips across 9 modules)
 
-| File | What | Tests |
-|------|------|-------|
-| `terraform/tests/setup.tf` | Shared test infrastructure | — |
-| `terraform/tests/vpc_test.tftest.hcl` | VPC module output assertions | 3 |
-| `terraform/tests/rds_test.tftest.hcl` | RDS module output assertions | 3 |
-| `terraform/tests/ecs_test.tftest.hcl` | ECS module output assertions | 3 |
-| `terraform/tests/iam_test.tftest.hcl` | IAM module policy assertions | 3 |
-| `terraform/tests/kafka_test.tftest.hcl` | MSK config assertions | 3 |
-| `terraform/tests/ecr_test.tftest.hcl` | ECR repo assertions | 2 |
-| `terraform/tests/frontend_test.tftest.hcl` | CloudFront/S3 assertions | 3 |
-| — | Replace .checkov.baseline with per-finding waivers | 15 rules |
+| Module | Assertions | Runs | Result |
+|--------|-----------|------|--------|
+| VPC | 12 | 3 (plan, apply, overrides) | ✅ |
+| ECR | 7 | 3 | ✅ |
+| Secrets | 10 | 3 | ✅ |
+| Monitoring | 6 | 3 | ✅ |
+| Kafka | 8 | 3 | ✅ |
+| RDS | 8 | 3 | ✅ |
+| IAM | 8 | 3 | ✅ |
+| ECS | 8 | 3 | ✅ |
+| Frontend | 8 | 3 | ✅ |
+| **Total** | **75** | **27 runs** | **✅ All pass** |
+
+**Infrastructure:**
+- 9 wrapper `main.tf` files in `terraform/tests/modules/<name>_test/main.tf`, each re-exposing its module's outputs
+- 9 `.tftest.hcl` files with `mock_provider` blocks, `mock_resource.defaults`, and `mock_data` for `aws_iam_policy_document`
+- `.checkov.baseline` (387 lines) deleted; inline skips added to: `ecs`, `frontend`, `iam`, `kafka`, `rds`, `secrets`, `vpc`, `sagemaker`, `monitoring`
+- Old aggregate `terraform/tests/*.tftest.hcl` and `setup.tf` removed — only isolated wrapper directories remain
+
+**Key patterns & constraints:**
+- **Isolated wrapper directories > aggregate root tests** — each `terraform/tests/modules/<name>_test/` is its own root module. Eliminates cascading failures across 118 resources from 9 modules.
+- **`command = plan` for variable assertions** + **`command = apply` for output assertions** — variables are always known during plan; module outputs only resolve during mock apply (because `mock_resource.defaults` values are ignored during plan phase).
+- **`mock_data "aws_iam_policy_document"` requires raw JSON strings**, not `jsonencode()` — the function produces a string the AWS provider rejects as "not a JSON object".
+- **Mock ARN defaults must match `arn:aws:...` pattern** — AWS provider validates ARN format during apply even with mocked resources.
+- **Mock providers needed for both `hashicorp/aws` and `hashicorp/random`** (RDS uses `random_password`).
+- Each test file has 3 run blocks: `test_*_variables_plan` (variable defaults), `test_*_outputs_apply` (module outputs), `test_*_variable_overrides` (custom variable values).
+- Tests run via `terraform init && terraform test -verbose` from each wrapper directory independently.
 
 ### ✅ Phase 5: E2E + API Contracts — **IMPLEMENTED** (41 tests)
 
@@ -107,5 +123,5 @@
 2. **`test_analytics_router.py`** — 14 integration tests, ~2h. Zero → fully covered.
 3. **`test_parsers_edge_cases.py`** — 24 unit tests, ~1.5h. ~15% → ~70%.
 4. **`test_server_routes.py`** — 8 tests, ~1h. Zero → ~75%.
-5. **Terraform test per module** — 20 tests, ~4h. Zero → comprehensive.
+5. ~~**Terraform test per module** — 75 assertions across 9 modules, ~4h. Zero → comprehensive.~~ ✅ **Done**
 6. ~~**Playwright E2E** — 10 tests, ~4h. Zero → first E2E coverage.~~ ✅ **Done**
