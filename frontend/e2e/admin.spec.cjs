@@ -6,9 +6,8 @@ test.describe("Admin Settings", () => {
   test("admin settings page loads with retention and user creation sections", async ({ page }) => {
     await loginAsAdmin(page);
 
-    // Navigate to admin settings
+    // Navigate to admin settings (full page navigation via goto)
     await page.goto("/admin/settings");
-    await page.waitForURL(/\/admin\/settings/, { timeout: 10_000 });
 
     // Page heading should be visible
     await expect(page.locator("h1")).toContainText("Admin Settings", { timeout: 10_000 });

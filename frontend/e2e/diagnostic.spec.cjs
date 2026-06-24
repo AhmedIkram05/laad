@@ -6,9 +6,8 @@ test.describe("Diagnostic Assistant", () => {
   test("chat interface loads with example queries", async ({ page }) => {
     await loginAsAdmin(page);
 
-    // Navigate to diagnostic page
+    // Navigate to diagnostic page (full page navigation via goto)
     await page.goto("/diagnostic");
-    await page.waitForURL(/\/diagnostic/, { timeout: 10_000 });
 
     // Chat tab should be active by default
     await expect(page.locator("text=Try asking about")).toBeVisible({ timeout: 10_000 });

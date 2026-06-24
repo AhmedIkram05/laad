@@ -12,8 +12,11 @@ test.describe("Authentication", () => {
     // Click sign in button
     await page.click("button[type=submit]");
 
-    // Should redirect to dashboard
-    await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+    // Should redirect to dashboard (SPA pushState navigation)
+    await page.waitForFunction(
+      () => window.location.pathname.startsWith("/dashboard"),
+      { timeout: 30_000 }
+    );
     await expect(page.locator("h1")).toContainText("Anomalies", { timeout: 10_000 });
   });
 
