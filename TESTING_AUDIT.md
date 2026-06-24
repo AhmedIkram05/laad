@@ -1,8 +1,8 @@
 # LAAD Testing Coverage Audit
 
-**Current**: 762 tests (603 backend pytest + 149 frontend vitest + 10 Playwright E2E)
+**Current**: 815 tests (656 backend pytest + 149 frontend vitest + 10 Playwright E2E)
 **Target**: ~1,015 tests across 6 layers
-**Progress**: ⏳ Phase 1 written (+58 new), awaiting CI validation before marking done
+**Progress**: ✅ Phase 2 written (+53 new), awaiting CI validation
 
 ---
 
@@ -14,21 +14,25 @@
 |------|------|------|-------|--------|
 | `backend/tests/test_pubsub_alerts.py` | Redis Pub/Sub alerting | Unit + mock Redis | 7 | ✅ Pre-existing |
 | `backend/tests/test_analytics_counters.py` | Analytics helpers (counters, HLL, realtime) | Unit + mock Redis | 11 | ✅ Pre-existing |
-| `backend/tests/test_server_routes.py` | Health probes, startup retry, exception handler, CORS | Integration + TestClient | 12 | ⏳ New — awaiting CI |
-| `backend/tests/test_analytics_router_endpoints.py` | Analytics endpoint integration via TestClient | Integration + TestClient | 9 | ⏳ New — awaiting CI |
-| `backend/tests/test_analysis_router_full.py` | `/analysis/detailed` + `/analysis/metrics` endpoints | Integration + TestClient | 5 | ⏳ New — awaiting CI |
-| `backend/tests/test_parsers_edge_cases.py` | 8 parsers × edge cases (malformed, missing, boundary) | Unit + parametrize | 32 | ⏳ New — awaiting CI |
+| `backend/tests/test_server_routes.py` | Health probes, startup retry, exception handler, CORS | Integration + TestClient | 12 | ⏳ Written — awaiting CI |
+| `backend/tests/test_analytics_router_endpoints.py` | Analytics endpoint integration via TestClient | Integration + TestClient | 9 | ⏳ Written — awaiting CI |
+| `backend/tests/test_analysis_router_full.py` | `/analysis/detailed` + `/analysis/metrics` endpoints | Integration + TestClient | 5 | ⏳ Written — awaiting CI |
+| `backend/tests/test_parsers_edge_cases.py` | 8 parsers × edge cases (malformed, missing, boundary) | Unit + parametrize | 32 | ⏳ Written — awaiting CI |
 
-### Phase 2: Under-Tested Backend (62 tests, 12h)
+### ✅ Phase 2: Under-Tested Backend — **IMPLEMENTED** (+53 new, +29 pre-existing analysis)
 
-| File | What | Type | Tests |
-|------|------|------|-------|
-| `backend/tests/test_anomalies_router_full.py` | Feedback PATCH, 3 grouping modes, 2 filters, 3 sort modes, cache | Integration + Unit | 18 |
-| `backend/tests/test_admin_router_full.py` | Ingestion-errors CRUD, cleanup/run, users create | Integration | 8 |
-| `backend/tests/test_cleanup_direct.py` | `batched_delete()`, `batched_delete_all()` — no direct tests | Unit + mock conn | 8 |
-| `backend/tests/test_write_helper_retry.py` | Retry/backoff, execute_values vs executemany, transient errors | Unit + mock conn | 6 |
-| `backend/tests/test_analysis_detail.py` | A1–A7 functions, `_build_classifier_description()`, `build_detailed_table()`, `time_window()` | Unit | 16 |
-| `backend/tests/test_continuous_generator.py` | `emit_tick()`, `backfill()` error handling, `main()` | Unit + mock producer | 6 |
+| File | What | Type | Tests | Status |
+|------|------|------|-------|--------|
+| `backend/tests/test_anomalies_router_full.py` | Feedback PATCH, 3 grouping modes, 3 sort modes, 6 filters, cache, pagination, auth | Integration | 20 | ✅ New |
+| `backend/tests/test_admin_router_full.py` | Ingestion-errors CRUD, cleanup triggers, user create + validation | Integration | 10 | ✅ New |
+| `backend/tests/test_cleanup_direct.py` | `batched_delete()`, `batched_delete_all()`, `run_wipe()` — edge cases | Unit + mock conn | 10 | ✅ New |
+| `backend/tests/test_write_helper_retry.py` | Retry/backoff, execute_values vs executemany, transient errors | Unit + mock conn | 6 | ✅ New |
+| `backend/tests/test_continuous_generator.py` | `emit_tick()`, anomaly cooldown, backfill, producer flush | Unit + mock producer | 7 | ✅ New |
+| `backend/tests/test_analysis_logic.py` | A1–A7 functions, `_build_classifier_description()`, `build_detailed_table()`, `time_window()`, `rank_algorithm()` | Unit | 29 | ✅ Pre-existing (comprehensive) |
+| `backend/tests/test_anomalies_endpoints.py` | Basic list/filter/resolve/star/feedback | Integration | 3 | ✅ Pre-existing |
+| `backend/tests/test_admin_retention_endpoints.py` | Retention GET/PUT, admin-only check, wipe | Integration | 2 | ✅ Pre-existing |
+| `backend/tests/test_admin_training_endpoint.py` | ML training route check, method, response model | Unit | 3 | ✅ Pre-existing |
+| `backend/tests/test_cleanup.py` | run_cleanup, defaults, batched_delete batches | Integration | 3 | ✅ Pre-existing |
 
 ### Phase 3: Frontend Coverage (32 tests, 8h)
 
