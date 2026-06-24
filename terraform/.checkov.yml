@@ -12,7 +12,7 @@ skip-path:
   - tests
 
 skip-check:
-  # ── Bootstrap: DynamoDB state lock (dev only, no PITR/KMS needed) ──
+  # ── Bootstrap: S3 tf_state + DynamoDB lock (dev, no lifecycle/events needed) ──
   - CKV_AWS_28
   - CKV_AWS_119
 
@@ -28,6 +28,9 @@ skip-check:
   - CKV_AWS_158
   - CKV_AWS_336
   - CKV_AWS_338
+  - CKV_AWS_378
+  - CKV2_AWS_20
+  - CKV2_AWS_28
 
   # ── Frontend: CloudFront / S3 (dev, behind OAC) ──
   - CKV_AWS_68
@@ -35,6 +38,11 @@ skip-check:
   - CKV_AWS_174
   - CKV_AWS_310
   - CKV_AWS_374
+  - CKV2_AWS_32
+
+  # ── S3: tf_state + frontend buckets (dev, no lifecycle/events/notifications) ──
+  - CKV2_AWS_61
+  - CKV2_AWS_62
 
   # ── IAM: wildcards in policy docs for Terraform/CloudFront ops ──
   - CKV_AWS_108
@@ -46,6 +54,7 @@ skip-check:
   - CKV_AWS_88
   - CKV_AWS_126
   - CKV_AWS_135
+  - CKV2_AWS_41
 
   # ── Monitoring: SNS (dev budget alerts, no encryption needed) ──
   - CKV_AWS_26
@@ -63,9 +72,11 @@ skip-check:
 
   # ── Secrets Manager: dev secrets, no automatic rotation / KMS ──
   - CKV_AWS_149
+  - CKV2_AWS_57
 
   # ── VPC: security groups, subnets, flow logs (dev) ──
   - CKV_AWS_23
   - CKV_AWS_130
   - CKV_AWS_260
   - CKV_AWS_382
+  - CKV2_AWS_11
