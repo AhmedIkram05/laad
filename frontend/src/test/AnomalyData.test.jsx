@@ -102,4 +102,19 @@ describe("AnomalyData", () => {
       expect(screen.getByText("Mark Complete")).toBeDefined();
     }, { timeout: 3000 });
   }, 8000);
+
+  it("handles empty analysis data", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: [] }),
+    });
+
+    await renderAnomalyData("A1");
+
+    await waitFor(() => {
+      // Should render without crashing and show title or empty state
+      const skeleton = document.querySelector(".animate-pulse");
+      expect(skeleton).toBeNull();
+    }, { timeout: 3000 });
+  }, 8000);
 });

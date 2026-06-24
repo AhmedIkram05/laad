@@ -78,4 +78,29 @@ describe("AdminSettings", () => {
     await renderPage();
     expect(await screen.findByText("No ingestion errors found.")).toBeDefined();
   });
+
+  it("has save retention button", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ retention_days: 7, updated_at: null, data: [], total: 0 }),
+    });
+
+    await renderPage();
+    expect(await screen.findByText("Save")).toBeDefined();
+    expect(screen.getByText("Run Cleanup")).toBeDefined();
+  });
+
+  it("has user creation form fields", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ retention_days: 7, updated_at: null, data: [], total: 0 }),
+    });
+
+    await renderPage();
+    expect(await screen.findByText("Username")).toBeDefined();
+    expect(screen.getByText("Password")).toBeDefined();
+    expect(screen.getByText("Confirm Password")).toBeDefined();
+    expect(screen.getByText("Role")).toBeDefined();
+    expect(screen.getByText("Create User")).toBeDefined();
+  });
 });
