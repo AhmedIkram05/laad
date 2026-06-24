@@ -8,6 +8,7 @@ test.describe("Admin Settings", () => {
 
     // Navigate to admin settings (full page navigation via goto)
     await page.goto("/admin/settings");
+    await page.waitForLoadState("networkidle");
 
     // Page heading should be visible
     await expect(page.locator("h1")).toContainText("Admin Settings", { timeout: 10_000 });
