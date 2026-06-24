@@ -1,4 +1,5 @@
 """Admin router — retention config, manual cleanup trigger, and ML retraining."""
+
 from __future__ import annotations
 
 import logging
@@ -33,7 +34,9 @@ class AdminCreateUserRequest(BaseModel):
 def get_retention(conn=Depends(get_db_connection)):
     """Returns the current retention period."""
     with conn.cursor() as cur:
-        cur.execute("SELECT retention_days, updated_at FROM retention_config WHERE id = 1")
+        cur.execute(
+            "SELECT retention_days, updated_at FROM retention_config WHERE id = 1"
+        )
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=500, detail="Retention config not found")
@@ -47,8 +50,7 @@ def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connec
     """
     if request.days not in ALLOWED_RETENTION_DAYS:
         raise HTTPException(
-            status_code=400,
-            detail=f"Allowed values: {ALLOWED_RETENTION_DAYS}"
+            status_code=400, detail=f"Allowed values: {ALLOWED_RETENTION_DAYS}"
         )
     with conn.cursor() as cur:
         cur.execute(
@@ -61,7 +63,9 @@ def update_retention(request: RetentionUpdateRequest, conn=Depends(get_db_connec
 
 
 @router.get("/ingestion-errors", dependencies=[Depends(require_admin)])
-def get_ingestion_errors(limit: int = 100, offset: int = 0, conn=Depends(get_db_connection)):
+def get_ingestion_errors(
+    limit: int = 100, offset: int = 0, conn=Depends(get_db_connection)
+):
     """Admin only. Returns ingestion error records for review."""
     with conn.cursor() as cur:
         cur.execute(
@@ -114,7 +118,11 @@ def trigger_cleanup():
 
 
 @router.post("/users", dependencies=[Depends(require_admin)], status_code=201)
-def admin_create_user(request: AdminCreateUserRequest, conn=Depends(get_db_connection), current_user: dict = Depends(require_admin)):
+def admin_create_user(
+    request: AdminCreateUserRequest,
+    conn=Depends(get_db_connection),
+    current_user: dict = Depends(require_admin),
+):
     """Admin-only endpoint to create persistent users (role may be 'admin' or 'user')."""
     # Ensure password confirmation matches
     if request.password != request.confirm_password:
@@ -124,7 +132,10 @@ def admin_create_user(request: AdminCreateUserRequest, conn=Depends(get_db_conne
 
     try:
         import bcrypt
-        password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+
+        password_hash = bcrypt.hashpw(
+            request.password.encode(), bcrypt.gensalt()
+        ).decode()
     except Exception:
         raise HTTPException(status_code=500, detail="bcrypt unavailable")
 
@@ -139,7 +150,9 @@ def admin_create_user(request: AdminCreateUserRequest, conn=Depends(get_db_conne
     except psycopg2.IntegrityError:
         conn.rollback()
         raise HTTPException(status_code=409, detail="username already exists")
-    logger.info(f"Admin '{current_user.get('sub')}' created user '{request.username}' role={request.role}")
+    logger.info(
+        f"Admin '{current_user.get('sub')}' created user '{request.username}' role={request.role}"
+    )
     return {"id": user_id, "username": request.username, "role": request.role}
 
 
@@ -149,16 +162,20 @@ class TrainingResponse(BaseModel):
     windows_loaded: int | None = None
 
 
-@router.post("/training", dependencies=[Depends(require_admin)], response_model=TrainingResponse)
+@router.post(
+    "/training", dependencies=[Depends(require_admin)], response_model=TrainingResponse
+)
 def trigger_training(background_tasks: BackgroundTasks):
     """Admin only. Triggers ML model retraining in the background.
 
     Trains Isolation Forest + XGBoost on the last 60 minutes of data from
     v_unified_analysis, then saves artifacts to ml/artifacts/.
     """
+
     def _run_training():
         try:
             from backend.src.anomaly_detection.ml.train import train as run_train
+
             run_train()
         except Exception as exc:
             logger.error("Training failed: %s", exc)
@@ -166,5 +183,5 @@ def trigger_training(background_tasks: BackgroundTasks):
     background_tasks.add_task(_run_training)
     return TrainingResponse(
         status="started",
-        message="ML training started in background. Check MLflow at http://localhost:5001 when complete."
+        message="ML training started in background. Check MLflow at http://localhost:5001 when complete.",
     )

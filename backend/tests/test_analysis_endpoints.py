@@ -37,7 +37,17 @@ def test_get_analysis():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (now, "A1", "ATM-1", "HIGH", "TestHigh", '{}', "act", Json(["ATM_APP"]), 1),
+                    (
+                        now,
+                        "A1",
+                        "ATM-1",
+                        "HIGH",
+                        "TestHigh",
+                        "{}",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
                 cur.execute(
                     """
@@ -45,11 +55,23 @@ def test_get_analysis():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (datetime.now(timezone.utc), "A2", "ATM-1", "CRITICAL", "TestCritical", '{}', "act", Json(["ATM_APP"]), 1),
+                    (
+                        datetime.now(timezone.utc),
+                        "A2",
+                        "ATM-1",
+                        "CRITICAL",
+                        "TestCritical",
+                        "{}",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
             conn.commit()
 
-            resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+            resp = client.post(
+                "/auth/login", data={"username": "admin", "password": "admin"}
+            )
             assert resp.status_code == 200, resp.text
             token = resp.json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}

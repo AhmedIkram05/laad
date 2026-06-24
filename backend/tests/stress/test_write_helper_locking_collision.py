@@ -11,17 +11,18 @@ from backend.tests.helpers import reset_test_db
 def test_write_helper_handles_concurrent_writes():
     reset_test_db()
 
-    sql = 'INSERT INTO events (timestamp, source, message, payload) VALUES %s'
+    sql = "INSERT INTO events (timestamp, source, message, payload) VALUES %s"
 
     holder = get_conn()
     writer = get_conn()
 
     try:
+
         def holder_write():
             write_batch(
                 holder,
                 sql,
-                [(datetime.now(timezone.utc), 'ATM_APP', 'holder', Json({}))],
+                [(datetime.now(timezone.utc), "ATM_APP", "holder", Json({}))],
                 retries=10,
                 backoff_base=0.01,
                 backoff_max=0.05,
@@ -33,7 +34,7 @@ def test_write_helper_handles_concurrent_writes():
         write_batch(
             writer,
             sql,
-            [(datetime.now(timezone.utc), 'ATM_APP', 'writer', Json({}))],
+            [(datetime.now(timezone.utc), "ATM_APP", "writer", Json({}))],
             retries=10,
             backoff_base=0.01,
             backoff_max=0.05,
@@ -44,7 +45,7 @@ def test_write_helper_handles_concurrent_writes():
         verifier = get_conn()
         try:
             with verifier.cursor() as cur:
-                cur.execute('SELECT COUNT(*) FROM events')
+                cur.execute("SELECT COUNT(*) FROM events")
                 count = cur.fetchone()[0]
             assert count >= 2
         finally:

@@ -1,4 +1,5 @@
 """Unit tests for Kafka producer."""
+
 from __future__ import annotations
 from unittest.mock import MagicMock, patch
 import sys
@@ -8,7 +9,12 @@ _kafka_mock = MagicMock()
 sys.modules["kafka"] = _kafka_mock
 sys.modules["kafka.errors"] = _kafka_mock.errors
 
-from backend.kafka.producer import ATMProducer, get_producer, TOPIC_EVENTS, TOPIC_METRICS  # noqa: E402
+from backend.kafka.producer import (  # noqa: E402
+    ATMProducer,
+    get_producer,
+    TOPIC_EVENTS,
+    TOPIC_METRICS,
+)
 
 
 class TestATMProducer:
@@ -41,7 +47,14 @@ class TestATMProducer:
             mock_klass.return_value = mock_instance
 
             producer = ATMProducer()
-            producer.send_event({"source": "ATM_APP", "timestamp": "2026-05-12T10:00:00Z", "severity": "INFO", "payload": {}})
+            producer.send_event(
+                {
+                    "source": "ATM_APP",
+                    "timestamp": "2026-05-12T10:00:00Z",
+                    "severity": "INFO",
+                    "payload": {},
+                }
+            )
 
             args = mock_instance.send.call_args[0]
             assert args[0] == TOPIC_EVENTS
@@ -52,14 +65,16 @@ class TestATMProducer:
             mock_klass.return_value = mock_instance
 
             producer = ATMProducer()
-            producer.send_metric({
-                "timestamp": "2026-05-12T10:00:00Z",
-                "source": "PROMETHEUS",
-                "entity_id": "pod-0",
-                "metric_name": "cpu",
-                "metric_value": 0.5,
-                "payload": {},
-            })
+            producer.send_metric(
+                {
+                    "timestamp": "2026-05-12T10:00:00Z",
+                    "source": "PROMETHEUS",
+                    "entity_id": "pod-0",
+                    "metric_name": "cpu",
+                    "metric_value": 0.5,
+                    "payload": {},
+                }
+            )
 
             args = mock_instance.send.call_args[0]
             assert args[0] == TOPIC_METRICS
@@ -71,12 +86,14 @@ class TestATMProducer:
 
             producer = ATMProducer()
             dt = datetime(2026, 5, 12, 10, 0, 0, tzinfo=timezone.utc)
-            producer.send_event({
-                "timestamp": dt,
-                "source": "ATM_APP",
-                "severity": "INFO",
-                "payload": {},
-            })
+            producer.send_event(
+                {
+                    "timestamp": dt,
+                    "source": "ATM_APP",
+                    "severity": "INFO",
+                    "payload": {},
+                }
+            )
 
             msg_value = mock_instance.send.call_args[1]["value"]
             assert "2026-05-12" in msg_value["timestamp"]
@@ -103,17 +120,26 @@ class TestATMProducer:
     def test_error_handling_on_send(self):
         with patch("backend.kafka.producer.KafkaProducer") as mock_klass:
             from kafka.errors import KafkaError
+
             mock_instance = MagicMock()
             mock_instance.send.side_effect = KafkaError("boom")
             mock_klass.return_value = mock_instance
 
             producer = ATMProducer()
-            producer.send_event({"source": "ATM_APP", "timestamp": "2026-05-12T10:00:00Z", "severity": "INFO", "payload": {}})
+            producer.send_event(
+                {
+                    "source": "ATM_APP",
+                    "timestamp": "2026-05-12T10:00:00Z",
+                    "severity": "INFO",
+                    "payload": {},
+                }
+            )
 
 
 class TestGetProducer:
     def test_singleton(self):
         import backend.kafka.producer as mod
+
         old = getattr(mod, "_producer_instance", None)
         mod._producer_instance = None
         try:

@@ -146,8 +146,14 @@ class TestMultiSignalFusion:
 
         estimator = UncertaintyEstimator()
         chunks = [  # noqa: F841
-            RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
-                           timestamp="2026-05-15T10:00:00Z", distance=0.2, confidence_score=0.8)
+            RetrievedChunk(
+                text="log",
+                chunk_id="1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                distance=0.2,
+                confidence_score=0.8,
+            )
         ]
         result = estimator._fuse_signals(retrieval_confidence=0.8)
         assert result.final_confidence == 0.8
@@ -219,10 +225,13 @@ class TestMultiSignalFusion:
         from backend.src.rag.uncertainty import UncertaintyEstimator
 
         estimator = UncertaintyEstimator()
-        result = estimator.estimate(query="test", chunks=[],
-                                     self_consistency_score=0.8,
-                                     verbalized_confidence=0.8,
-                                     grounding_score=0.8)
+        result = estimator.estimate(
+            query="test",
+            chunks=[],
+            self_consistency_score=0.8,
+            verbalized_confidence=0.8,
+            grounding_score=0.8,
+        )
         assert result.final_confidence == 0.0
         assert result.is_uncertain is True
 
@@ -277,8 +286,14 @@ class TestUncertaintyEstimator:
 
         estimator = UncertaintyEstimator()
         chunks = [  # noqa: F841
-            RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
-                           timestamp="2026-05-15T10:00:00Z", distance=0.2, confidence_score=0.8)
+            RetrievedChunk(
+                text="log",
+                chunk_id="1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                distance=0.2,
+                confidence_score=0.8,
+            )
         ]
 
         result = estimator.estimate(
@@ -302,8 +317,14 @@ class TestUncertaintyEstimator:
 
         estimator = UncertaintyEstimator()
         chunks = [
-            RetrievedChunk(text="log", chunk_id="1", atm_id="ATM-GB-0001",
-                           timestamp="2026-05-15T10:00:00Z", distance=0.2, confidence_score=0.8)
+            RetrievedChunk(
+                text="log",
+                chunk_id="1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                distance=0.2,
+                confidence_score=0.8,
+            )
         ]
 
         result = estimator.estimate(query="test", chunks=chunks)

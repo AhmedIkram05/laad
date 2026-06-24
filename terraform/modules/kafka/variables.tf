@@ -21,5 +21,3 @@ variable "kafka_sg_id" {
   description = "Pre-existing Kafka security group ID from the VPC module"
   type        = string
 }
-
-

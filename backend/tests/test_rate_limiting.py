@@ -10,10 +10,12 @@ class TestRateLimiting:
 
     def setup_method(self):
         from backend.src.rag import router as router_module
+
         router_module._query_timestamps.clear()
 
     def teardown_method(self):
         from backend.src.rag import router as router_module
+
         router_module._query_timestamps.clear()
 
     @patch("backend.src.rag.router.get_redis_client")

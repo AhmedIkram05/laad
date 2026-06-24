@@ -75,7 +75,6 @@ class TestRAGSchemas:
             sources=sources,
             uncertainty_score=0.85,
             confidence_level="high",
-
             is_uncertain=False,
             recommendation="Auto-respond",
             model_used="google/gemma-4-26b-a4b-it:free",
@@ -114,7 +113,6 @@ class TestRAGSchemas:
             sources=sources,
             uncertainty_score=0.6,
             confidence_level="medium",
-
             is_uncertain=False,
             recommendation="Verify - moderate confidence",
             model_used="fallback-template",
@@ -158,23 +156,35 @@ class TestRAGRouter:
 
     @pytest.fixture(autouse=True)
     def mock_mlflow(self):
-        with patch.dict("sys.modules", {"mlflow": MagicMock(), "mlflow.sklearn": MagicMock(), "mlflow.xgboost": MagicMock()}):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": MagicMock(),
+                "mlflow.sklearn": MagicMock(),
+                "mlflow.xgboost": MagicMock(),
+            },
+        ):
             yield
 
     @pytest.fixture
     def client(self):
         from backend.src.api.server import app
+
         return TestClient(app)
 
     @patch("backend.src.rag.router.get_retriever")
     @patch("backend.src.rag.router.get_generator")
     @patch("backend.src.rag.router.get_uncertainty_estimator")
     @patch("backend.src.rag.router._get_user_id_from_username")
-    def test_query_returns_404_no_chunks(self, mock_user_id, mock_unc, mock_gen, mock_ret, client):
+    def test_query_returns_404_no_chunks(
+        self, mock_user_id, mock_unc, mock_gen, mock_ret, client
+    ):
         mock_user_id.return_value = 1
         mock_ret.return_value.retrieve.return_value = []
 
-        token_resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
         token = token_resp.json()["access_token"]
 
         resp = client.post(
@@ -190,7 +200,16 @@ class TestRAGRouter:
     @patch("backend.src.rag.router.get_uncertainty_estimator")
     @patch("backend.src.rag.router.get_cached_response")
     @patch("backend.src.rag.router.set_cached_response")
-    def test_query_rate_limiting(self, mock_set_cache, mock_get_cache, mock_unc, mock_gen, mock_ret, mock_user_id, client):
+    def test_query_rate_limiting(
+        self,
+        mock_set_cache,
+        mock_get_cache,
+        mock_unc,
+        mock_gen,
+        mock_ret,
+        mock_user_id,
+        client,
+    ):
         from backend.src.rag.retriever import RetrievedChunk
         from backend.src.rag.generator import GeneratedResponse
         from backend.src.rag.uncertainty import UncertaintyEstimate
@@ -227,7 +246,9 @@ class TestRAGRouter:
             recommendation="Auto-respond",
         )
 
-        token_resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
         token = token_resp.json()["access_token"]
 
         with patch("backend.src.rag.router.get_redis_client", return_value=None):

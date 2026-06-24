@@ -20,7 +20,9 @@ from pathlib import Path
 import boto3
 import xgboost as xgb
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
@@ -40,7 +42,9 @@ def download_s3_file(s3_client, bucket: str, key: str, local_path: str) -> None:
     """Download a file from S3 to a local path."""
     logger.info("Downloading s3://%s/%s ...", bucket, key)
     s3_client.download_file(bucket, key, local_path)
-    logger.info("Downloaded to %s (%d bytes)", local_path, Path(local_path).stat().st_size)
+    logger.info(
+        "Downloaded to %s (%d bytes)", local_path, Path(local_path).stat().st_size
+    )
 
 
 def upload_s3_file(s3_client, bucket: str, key: str, local_path: str) -> None:
@@ -71,7 +75,11 @@ def convert_model_to_sagemaker_format(input_path: str, output_dir: str) -> str:
     # SageMaker expects the file named "xgboost-model", but load_model() auto-detects JSON by content
     xgb_model_path = os.path.join(output_dir, "xgboost-model")
     os.rename(xgb_model_json, xgb_model_path)
-    logger.info("Saved booster as JSON: %s (%d bytes)", xgb_model_path, Path(xgb_model_path).stat().st_size)
+    logger.info(
+        "Saved booster as JSON: %s (%d bytes)",
+        xgb_model_path,
+        Path(xgb_model_path).stat().st_size,
+    )
 
     # Create model.tar.gz with the xgboost-model file
     tar_path = os.path.join(output_dir, "model.tar.gz")
@@ -107,7 +115,9 @@ def main():
         print(f"\n{'=' * 60}")
         print(f"✅ Model uploaded to: {model_data_url}")
         print("Use this terraform command:")
-        print(f"  terraform apply -var='sagemaker_enabled=true' -var='sagemaker_model_data_url={model_data_url}'")
+        print(
+            f"  terraform apply -var='sagemaker_enabled=true' -var='sagemaker_model_data_url={model_data_url}'"
+        )
         print(f"{'=' * 60}")
 
     return 0

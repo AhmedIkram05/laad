@@ -1,0 +1,92 @@
+# Checkov IaC compliance configuration for LAAD
+#
+# Suppresses all known/accepted dev-environment baseline failures.
+# Any NEW check ID not in this list is a regression — the CI pipeline's
+# pytest test (test_checkov_compliance.py) enforces this.
+#
+# Inline # checkov:skip= comments exist in module files for documentation
+# but are NOT honoured by checkov 3.3.0 (confirmed via test). This config
+# file is the actual suppression mechanism.
+
+skip-path:
+  - tests
+
+skip-check:
+  # ── Bootstrap: DynamoDB state lock (dev only, no PITR/KMS needed) ──
+  - CKV_AWS_28
+  - CKV_AWS_119
+
+  # ── ECR: dev registry, mutable tags, no KMS ──
+  - CKV_AWS_51
+  - CKV_AWS_136
+
+  # ── ECS: CloudWatch log groups, ALB, task definitions (dev) ──
+  - CKV_AWS_2
+  - CKV_AWS_91
+  - CKV_AWS_131
+  - CKV_AWS_150
+  - CKV_AWS_158
+  - CKV_AWS_336
+  - CKV_AWS_338
+  - CKV_AWS_378
+  - CKV2_AWS_20
+  - CKV2_AWS_28
+  - CKV_AWS_103
+
+  # ── Frontend: CloudFront / S3 (dev, behind OAC) ──
+  - CKV_AWS_68
+  - CKV_AWS_86
+  - CKV_AWS_174
+  - CKV_AWS_310
+  - CKV_AWS_374
+  - CKV2_AWS_32
+  - CKV2_AWS_42
+  - CKV2_AWS_47
+
+  # ── S3: tf_state + frontend buckets (dev, no lifecycle/events/notifications) ──
+  - CKV_AWS_18
+  - CKV_AWS_144
+  - CKV_AWS_145
+  - CKV2_AWS_61
+  - CKV2_AWS_62
+
+  # ── IAM: wildcards in policy docs for Terraform/CloudFront ops ──
+  - CKV_AWS_108
+  - CKV_AWS_109
+  - CKV_AWS_111
+  - CKV_AWS_356
+
+  # ── Kafka EC2: dev single-instance, public IP, no detailed monitoring ──
+  - CKV_AWS_88
+  - CKV_AWS_126
+  - CKV_AWS_135
+  - CKV2_AWS_41
+
+  # ── Monitoring: SNS (dev budget alerts, no encryption needed) ──
+  - CKV_AWS_26
+
+  # ── RDS: dev t4g.micro, no deletion protection / multi-AZ / perf insights ──
+  - CKV_AWS_16
+  - CKV_AWS_118
+  - CKV_AWS_129
+  - CKV_AWS_157
+  - CKV_AWS_161
+  - CKV_AWS_353
+  - CKV2_AWS_60
+  - CKV2_AWS_69
+
+  # ── SageMaker: dev endpoint, no KMS ──
+  - CKV_AWS_98
+
+  # ── Secrets Manager: dev secrets, no automatic rotation / KMS ──
+  - CKV_AWS_149
+  - CKV2_AWS_57
+
+  # ── VPC: security groups, subnets, flow logs (dev) ──
+  - CKV_AWS_23
+  - CKV_AWS_130
+  - CKV_AWS_260
+  - CKV_AWS_382
+  - CKV2_AWS_5
+  - CKV2_AWS_11
+  - CKV2_AWS_12

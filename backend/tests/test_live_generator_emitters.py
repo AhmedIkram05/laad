@@ -3,6 +3,7 @@
 All emitters now accept (producer, timestamp) instead of (cursor, timestamp).
 Tests mock the Kafka producer to verify correct topic routing and field structure.
 """
+
 from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock, patch
@@ -140,10 +141,17 @@ class TestBaselineEmittersList:
             try:
                 emitter(mock, t)
             except TypeError as exc:
-                pytest.fail(f"{emitter.__name__} does not accept (producer, timestamp): {exc}")
+                pytest.fail(
+                    f"{emitter.__name__} does not accept (producer, timestamp): {exc}"
+                )
 
     def test_no_psycopg2_import_in_emitters(self):
         import backend.generator.emitters as em
+
         assert not hasattr(em, "psycopg2"), "emitters.py must not import psycopg2"
-        assert not hasattr(em, "insert_event"), "emitters.py must not have insert_event function"
-        assert not hasattr(em, "insert_metric"), "emitters.py must not have insert_metric function"
+        assert not hasattr(em, "insert_event"), (
+            "emitters.py must not have insert_event function"
+        )
+        assert not hasattr(em, "insert_metric"), (
+            "emitters.py must not have insert_metric function"
+        )

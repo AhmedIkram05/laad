@@ -24,7 +24,7 @@ function SideNavbar() {
 
   return (
     <div className="navbarContainer">
-    
+
       {/* Main Buttons */}
       <div className="buttonContainer">
         <button className={`button ${active("/dashboard") ? "active" : ""}`} onClick={() => navigate("/dashboard")}>

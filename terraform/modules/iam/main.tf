@@ -160,6 +160,8 @@ resource "aws_iam_role_policy" "github_actions_s3" {
 
 # --- GitHub Actions: CloudFront inline policy ---
 
+# checkov:skip=CKV_AWS_111:IAM policy document uses resources = ["*"] intentionally for CloudFront operations
+# checkov:skip=CKV_AWS_356:IAM policy document does not use wildcard actions but wildcard resource is acceptable for CloudFront
 data "aws_iam_policy_document" "github_actions_cloudfront" {
   statement {
     effect = "Allow"
@@ -181,6 +183,10 @@ resource "aws_iam_role_policy" "github_actions_cloudfront" {
 # --- GitHub Actions: Terraform read-only (state refresh) ---
 # Broad read-only access so Terraform can refresh state for all managed resources.
 
+# checkov:skip=CKV_AWS_108:IAM policy document should not use wildcard in action list — intentional for Terraform read access
+# checkov:skip=CKV_AWS_109:IAM policy document should not use wildcard in resource — intentional across managed services
+# checkov:skip=CKV_AWS_111:IAM policy document uses resources = ["*"] intentionally for Terraform state refresh
+# checkov:skip=CKV_AWS_356:IAM policy uses wildcard resources — required for Terraform to manage all resources in the stack
 data "aws_iam_policy_document" "github_actions_terraform_readonly" {
   statement {
     effect = "Allow"

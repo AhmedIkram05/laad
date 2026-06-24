@@ -26,7 +26,13 @@ from backend.src.rag.retriever import get_retriever
 from backend.src.rag.generator import get_generator
 from backend.src.rag.uncertainty import get_uncertainty_estimator
 from backend.src.rag.cache import get_cached_response, set_cached_response
-from backend.src.rag.utils import sanitize_query, extract_atm_id_from_query, detect_query_intent, classify_query_type, QueryType
+from backend.src.rag.utils import (
+    sanitize_query,
+    extract_atm_id_from_query,
+    detect_query_intent,
+    classify_query_type,
+    QueryType,
+)
 from backend.src.auth.auth_router import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -78,7 +84,6 @@ def _check_rate_limit_in_memory(user_key: str) -> None:
     _query_timestamps[user_key].append(now)
 
 
-
 @router.post("/query", response_model=RAGQueryResponse)
 async def query(
     request: RAGQueryRequest,
@@ -114,16 +119,24 @@ async def query(
         anomaly_type = _extract_anomaly_type_from_query(request.query)
 
         query_intent = detect_query_intent(request.query)
-        error_only = query_intent.error_only if request.error_only is None else request.error_only
-        most_recent_first = query_intent.most_recent_first if request.most_recent_first is None else request.most_recent_first
+        error_only = (
+            query_intent.error_only
+            if request.error_only is None
+            else request.error_only
+        )
+        most_recent_first = (
+            query_intent.most_recent_first
+            if request.most_recent_first is None
+            else request.most_recent_first
+        )
 
         # Only use cache for default retrieval settings to avoid cross‑filter contamination
         use_cache = (
-            request.top_k in (None, 0, config.retrieval_top_k) and
-            request.error_only in (None, config.error_only) and
-            request.most_recent_first in (None, config.most_recent_first) and
-            not request.atm_id and
-            not anomaly_type
+            request.top_k in (None, 0, config.retrieval_top_k)
+            and request.error_only in (None, config.error_only)
+            and request.most_recent_first in (None, config.most_recent_first)
+            and not request.atm_id
+            and not anomaly_type
         )
         cached = get_cached_response(sanitized_query) if use_cache else None
         if cached:
@@ -142,7 +155,6 @@ async def query(
                 ],
                 uncertainty_score=cached.get("uncertainty_score", 0.5),
                 confidence_level=cached.get("confidence_level", "medium"),
-
                 is_uncertain=cached.get("is_uncertain", False),
                 recommendation=cached.get("recommendation", "Review recommended"),
                 model_used="cache",
@@ -224,12 +236,16 @@ async def query(
             uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
             confidence_level=uncertainty.confidence_level if uncertainty else "medium",
             is_uncertain=uncertainty.is_uncertain if uncertainty else False,
-            recommendation=uncertainty.recommendation if uncertainty else "Review recommended",
+            recommendation=uncertainty.recommendation
+            if uncertainty
+            else "Review recommended",
             model_used=response.model,
             self_consistency_score=response.self_consistency_score,
             verbalized_confidence=response.verbalized_confidence,
             grounding_score=response.grounding_score,
-            generation_variance=uncertainty.generation_variance if uncertainty else None,
+            generation_variance=uncertainty.generation_variance
+            if uncertainty
+            else None,
             cross_encoder_used=response.cross_encoder_used,
             was_revised=response.was_revised,
             critique_text=response.critique_text if response.critique_text else None,
@@ -249,9 +265,13 @@ async def query(
                 for c in response.sources
             ],
             "uncertainty_score": uncertainty.final_confidence if uncertainty else 0.5,
-            "confidence_level": uncertainty.confidence_level if uncertainty else "medium",
+            "confidence_level": uncertainty.confidence_level
+            if uncertainty
+            else "medium",
             "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
-            "recommendation": uncertainty.recommendation if uncertainty else "Review recommended",
+            "recommendation": uncertainty.recommendation
+            if uncertainty
+            else "Review recommended",
             "model_used": response.model,
             "self_consistency_score": response.self_consistency_score,
             "verbalized_confidence": response.verbalized_confidence,
@@ -340,7 +360,9 @@ async def get_history(
                 "query_text": row["query_text"],
                 "answer_text": row["answer_text"],
                 "uncertainty_score": row["uncertainty_score"],
-                "created_at": row["created_at"].isoformat() if row["created_at"] else "",
+                "created_at": row["created_at"].isoformat()
+                if row["created_at"]
+                else "",
             }
             for row in rows
         ]
@@ -425,10 +447,16 @@ async def get_anomaly_stats(
             )
             by_severity = {row["severity"]: row["count"] for row in cur.fetchall()}
 
-            cur.execute(f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1", params)
+            cur.execute(
+                f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1",
+                params,
+            )
             active = cur.fetchone()["active"]
 
-            cur.execute(f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0", params)
+            cur.execute(
+                f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0",
+                params,
+            )
             resolved = cur.fetchone()["resolved"]
 
         return AnomalyStatsResponse(
@@ -552,7 +580,8 @@ def _get_query_by_id(query_id: int, user_id: Optional[int]) -> Optional[dict]:
 def _extract_anomaly_type_from_query(query: str) -> Optional[str]:
     """Extract anomaly type (A1-A7) from query text if mentioned."""
     import re
-    match = re.search(r'\b(A[1-7])\b', query, re.IGNORECASE)
+
+    match = re.search(r"\b(A[1-7])\b", query, re.IGNORECASE)
     if match:
         return match.group(1).upper()
     anomaly_keywords = {
@@ -616,10 +645,16 @@ async def _handle_stats_query(
             )
             by_severity = {row["severity"]: row["count"] for row in cur.fetchall()}
 
-            cur.execute(f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1", params)
+            cur.execute(
+                f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1",
+                params,
+            )
             active = cur.fetchone()["active"]
 
-            cur.execute(f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0", params)
+            cur.execute(
+                f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0",
+                params,
+            )
             resolved = cur.fetchone()["resolved"]
 
         answer_lines = [

@@ -49,3 +49,6 @@ skills-lock.json
 backend/coverage.xml
 frontend/coverage
 
+# Playwright
+frontend/playwright-report/
+frontend/test-results/

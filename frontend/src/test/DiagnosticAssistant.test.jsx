@@ -109,4 +109,93 @@ describe("DiagnosticAssistant", () => {
     fireEvent.click(newChatBtn);
     expect(handleNewChat).toHaveBeenCalled();
   });
+
+  it("shows example queries when no messages yet", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+
+    await renderDiagnostic({
+      messages: mockMessages,
+      input: "",
+      setInput: vi.fn(),
+      loading: false,
+      activeTab: "chat",
+      setActiveTab: vi.fn(),
+      submitQuery: vi.fn(),
+      handleNewChat: vi.fn(),
+      setMessages: vi.fn(),
+    });
+
+    expect(screen.getByText("Try asking about")).toBeDefined();
+    expect(screen.getByText("What does anomaly type A1 mean?")).toBeDefined();
+  });
+
+  it("has submit button and input field", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+
+    await renderDiagnostic({
+      messages: mockMessages,
+      input: "",
+      setInput: vi.fn(),
+      loading: false,
+      activeTab: "chat",
+      setActiveTab: vi.fn(),
+      submitQuery: vi.fn(),
+      handleNewChat: vi.fn(),
+      setMessages: vi.fn(),
+    });
+
+    expect(screen.getByPlaceholderText(/Ask about ATM errors/i)).toBeDefined();
+    expect(screen.getByText("Send")).toBeDefined();
+  });
+
+  it("shows typing indicator when loading", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+
+    await renderDiagnostic({
+      messages: mockMessages,
+      input: "",
+      setInput: vi.fn(),
+      loading: true,
+      activeTab: "chat",
+      setActiveTab: vi.fn(),
+      submitQuery: vi.fn(),
+      handleNewChat: vi.fn(),
+      setMessages: vi.fn(),
+    });
+
+    // Typing indicator dots should be present when loading
+    const dots = document.querySelectorAll(".animate-bounce");
+    expect(dots.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows empty history state in history tab", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: [], total: 0 }),
+    });
+
+    await renderDiagnostic({
+      messages: mockMessages,
+      input: "",
+      setInput: vi.fn(),
+      loading: false,
+      activeTab: "history",
+      setActiveTab: vi.fn(),
+      submitQuery: vi.fn(),
+      handleNewChat: vi.fn(),
+      setMessages: vi.fn(),
+    });
+
+    const emptyMsg = await screen.findByText(/No query history yet/i, {}, { timeout: 3000 });
+    expect(emptyMsg).toBeDefined();
+  });
 });

@@ -43,6 +43,8 @@ def set_cached_response(query: str, response: dict) -> None:
             return
         key = f"rag:response:{get_query_hash(query)}"
         client.setex(key, config.cache_ttl, json.dumps(response))
-        logger.info(f"Cached response for query hash {get_query_hash(query)} (TTL={config.cache_ttl}s)")
+        logger.info(
+            f"Cached response for query hash {get_query_hash(query)} (TTL={config.cache_ttl}s)"
+        )
     except Exception as e:
         logger.warning(f"Redis cache set failed: {e}")

@@ -1,6 +1,6 @@
 """Tests for admin ML retraining endpoint."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 
 class TestTrainingEndpoint:

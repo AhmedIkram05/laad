@@ -5,6 +5,7 @@ throttle to one message per invocation to simulate real-time generation
 over 90 and 120 ticks respectively. A1, A2, A4, A5, A7 produce their
 full signal cascade in a single call (matches real-world burst behavior).
 """
+
 from __future__ import annotations
 import random
 from uuid import uuid4
@@ -25,7 +26,11 @@ def _pick_entity(server_prob: float = 0.0) -> str:
 def _get_progressive_state(key: str) -> dict:
     """Returns the active progressive anomaly state for a key."""
     if key not in _anomaly_state:
-        _anomaly_state[key] = {"atm": random.choice(ATMS), "corr_id": str(uuid4()), "produced": 0}
+        _anomaly_state[key] = {
+            "atm": random.choice(ATMS),
+            "corr_id": str(uuid4()),
+            "produced": 0,
+        }
     return _anomaly_state[key]
 
 
@@ -44,41 +49,73 @@ def inject_a1(producer, t: datetime) -> str | None:
     corr_id = "corr-0030-nnet-disc-0001"
     loc = ATM_LOCATIONS[atm]
 
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "ATM_APP", "atm_id": atm,
-        "event_type": "NETWORK_DISCONNECT", "severity": "ERROR",
-        "message": "Network connection lost",
-        "payload": {"_anomaly_tag": "A1", "location_code": loc, "error_code": "ERR-0040"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "ATM_APP",
+            "atm_id": atm,
+            "event_type": "NETWORK_DISCONNECT",
+            "severity": "ERROR",
+            "message": "Network connection lost",
+            "payload": {
+                "_anomaly_tag": "A1",
+                "location_code": loc,
+                "error_code": "ERR-0040",
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=5)).isoformat(), "source": "ATM_APP",
-        "atm_id": atm, "event_type": "TIMEOUT", "severity": "ERROR",
-        "message": "Request timed out",
-        "payload": {"_anomaly_tag": "A1", "error_code": "ERR-0040", "response_time_ms": 30000},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(seconds=5)).isoformat(),
+            "source": "ATM_APP",
+            "atm_id": atm,
+            "event_type": "TIMEOUT",
+            "severity": "ERROR",
+            "message": "Request timed out",
+            "payload": {
+                "_anomaly_tag": "A1",
+                "error_code": "ERR-0040",
+                "response_time_ms": 30000,
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=10)).isoformat(), "source": "KAFKA",
-        "atm_id": atm, "event_type": "STATUS", "severity": "INFO",
-        "message": "ATM Offline",
-        "payload": {"_anomaly_tag": "A1", "atm_status": "Offline", "transaction_failure_reason": "HOST_UNAVAILABLE"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(seconds=10)).isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "STATUS",
+            "severity": "INFO",
+            "message": "ATM Offline",
+            "payload": {
+                "_anomaly_tag": "A1",
+                "atm_status": "Offline",
+                "transaction_failure_reason": "HOST_UNAVAILABLE",
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=15)).isoformat(), "source": "TERMINAL_HANDLER",
-        "atm_id": atm, "event_type": "NETWORK_TIMEOUT", "severity": "FATAL",
-        "message": "Connection timed out",
-        "payload": {"_anomaly_tag": "A1"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(seconds=15)).isoformat(),
+            "source": "TERMINAL_HANDLER",
+            "atm_id": atm,
+            "event_type": "NETWORK_TIMEOUT",
+            "severity": "FATAL",
+            "message": "Connection timed out",
+            "payload": {"_anomaly_tag": "A1"},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
     return atm
 
 
@@ -95,54 +132,79 @@ def inject_a2(producer, t: datetime) -> str | None:
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
 
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "HARDWARE", "atm_id": atm,
-        "event_type": "CASSETTE_LOW", "severity": "WARNING",
-        "message": "Cash low in cassette 1",
-        "payload": {"_anomaly_tag": "A2", "cassette_id": 1},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "HARDWARE", "atm_id": atm,
-        "event_type": "CASSETTE_LOW", "severity": "WARNING",
-        "message": "Cash low in cassette 2",
-        "payload": {"_anomaly_tag": "A2", "cassette_id": 2},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "HARDWARE",
+            "atm_id": atm,
+            "event_type": "CASSETTE_LOW",
+            "severity": "WARNING",
+            "message": "Cash low in cassette 1",
+            "payload": {"_anomaly_tag": "A2", "cassette_id": 1},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "HARDWARE",
+            "atm_id": atm,
+            "event_type": "CASSETTE_LOW",
+            "severity": "WARNING",
+            "message": "Cash low in cassette 2",
+            "payload": {"_anomaly_tag": "A2", "cassette_id": 2},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=5)).isoformat(), "source": "HARDWARE",
-        "atm_id": atm, "event_type": "CASSETTE_EMPTY", "severity": "CRITICAL",
-        "message": "Cash empty in cassette 1",
-        "payload": {"_anomaly_tag": "A2", "cassette_id": 1},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=5)).isoformat(), "source": "HARDWARE",
-        "atm_id": atm, "event_type": "CASSETTE_EMPTY", "severity": "CRITICAL",
-        "message": "Cash empty in cassette 2",
-        "payload": {"_anomaly_tag": "A2", "cassette_id": 2},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(minutes=5)).isoformat(),
+            "source": "HARDWARE",
+            "atm_id": atm,
+            "event_type": "CASSETTE_EMPTY",
+            "severity": "CRITICAL",
+            "message": "Cash empty in cassette 1",
+            "payload": {"_anomaly_tag": "A2", "cassette_id": 1},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(minutes=5)).isoformat(),
+            "source": "HARDWARE",
+            "atm_id": atm,
+            "event_type": "CASSETTE_EMPTY",
+            "severity": "CRITICAL",
+            "message": "Cash empty in cassette 2",
+            "payload": {"_anomaly_tag": "A2", "cassette_id": 2},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=8)).isoformat(), "source": "KAFKA",
-        "atm_id": atm, "event_type": "STATUS", "severity": "INFO",
-        "message": "ATM Out of Service",
-        "payload": {
-            "_anomaly_tag": "A2",
-            "atm_status": "Out of Service",
-            "transaction_failure_reason": "CASH_DISPENSE_ERROR",
-            "transaction_rate_tps": 0.0,
-            "transaction_success_rate": 0.0,
-        },
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(minutes=8)).isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "STATUS",
+            "severity": "INFO",
+            "message": "ATM Out of Service",
+            "payload": {
+                "_anomaly_tag": "A2",
+                "atm_status": "Out of Service",
+                "transaction_failure_reason": "CASH_DISPENSE_ERROR",
+                "transaction_rate_tps": 0.0,
+                "transaction_success_rate": 0.0,
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
     return atm
 
 
@@ -172,52 +234,73 @@ def inject_a3(producer, t: datetime) -> str | None:
     for i in range(90):
         tick_t = t - timedelta(minutes=90 - i)
         jvm_mem = jvm_start + (i * jvm_step)
-        producer.send_metric({
-            "timestamp": tick_t.isoformat(), "source": "PROMETHEUS",
-            "entity_id": atm, "metric_name": "jvm_memory_used_bytes",
-            "metric_value": jvm_mem,
-            "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
-            "correlation_id": corr_id,
-            "message_id": str(uuid4()),
-        })
+        producer.send_metric(
+            {
+                "timestamp": tick_t.isoformat(),
+                "source": "PROMETHEUS",
+                "entity_id": atm,
+                "metric_name": "jvm_memory_used_bytes",
+                "metric_value": jvm_mem,
+                "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            }
+        )
 
         gc_pause = gc_start + (i * gc_step)
-        producer.send_metric({
-            "timestamp": tick_t.isoformat(), "source": "PROMETHEUS",
-            "entity_id": atm, "metric_name": "jvm_gc_pause_seconds_sum",
-            "metric_value": gc_pause,
-            "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
-            "correlation_id": corr_id,
-            "message_id": str(uuid4()),
-        })
+        producer.send_metric(
+            {
+                "timestamp": tick_t.isoformat(),
+                "source": "PROMETHEUS",
+                "entity_id": atm,
+                "metric_name": "jvm_gc_pause_seconds_sum",
+                "metric_value": gc_pause,
+                "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            }
+        )
 
         cpu_usage = 0.94
-        producer.send_metric({
-            "timestamp": tick_t.isoformat(), "source": "PROMETHEUS",
-            "entity_id": atm, "metric_name": "process_cpu_usage",
-            "metric_value": cpu_usage,
+        producer.send_metric(
+            {
+                "timestamp": tick_t.isoformat(),
+                "source": "PROMETHEUS",
+                "entity_id": atm,
+                "metric_name": "process_cpu_usage",
+                "metric_value": cpu_usage,
+                "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            }
+        )
+
+        producer.send_metric(
+            {
+                "timestamp": tick_t.isoformat(),
+                "source": "CLOUD",
+                "entity_id": atm,
+                "metric_name": "container/cpu/usage_time",
+                "metric_value": 94.0,
+                "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            }
+        )
+
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "TERMINAL_HANDLER",
+            "atm_id": atm,
+            "event_type": "OutOfMemoryError",
+            "severity": "FATAL",
+            "message": "Java heap space",
             "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
             "correlation_id": corr_id,
             "message_id": str(uuid4()),
-        })
-
-        producer.send_metric({
-            "timestamp": tick_t.isoformat(), "source": "CLOUD",
-            "entity_id": atm, "metric_name": "container/cpu/usage_time",
-            "metric_value": 94.0,
-            "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
-            "correlation_id": corr_id,
-            "message_id": str(uuid4()),
-        })
-
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "TERMINAL_HANDLER",
-        "atm_id": atm, "event_type": "OutOfMemoryError", "severity": "FATAL",
-        "message": "Java heap space",
-        "payload": {"_anomaly_tag": "A3", "pod_name": pod_name},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+        }
+    )
     return atm
 
 
@@ -234,68 +317,113 @@ def inject_a4(producer, t: datetime) -> str | None:
     corr_id = str(uuid4())
     pod_name = f"terminal-handler-{atm.lower()}"
 
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "TERMINAL_HANDLER", "atm_id": atm,
-        "event_type": "STARTUP", "severity": "INFO",
-        "message": "Pod starting",
-        "payload": {"_anomaly_tag": "A4", "pod_name": pod_name, "container_id": "container-abc123"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "TERMINAL_HANDLER",
+            "atm_id": atm,
+            "event_type": "STARTUP",
+            "severity": "INFO",
+            "message": "Pod starting",
+            "payload": {
+                "_anomaly_tag": "A4",
+                "pod_name": pod_name,
+                "container_id": "container-abc123",
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_metric({
-        "timestamp": (t + timedelta(minutes=2)).isoformat(), "source": "CLOUD",
-        "entity_id": atm, "metric_name": "container/restart_count",
-        "metric_value": 1,
-        "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_metric(
+        {
+            "timestamp": (t + timedelta(minutes=2)).isoformat(),
+            "source": "CLOUD",
+            "entity_id": atm,
+            "metric_name": "container/restart_count",
+            "metric_value": 1,
+            "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=2, seconds=30)).isoformat(), "source": "TERMINAL_HANDLER",
-        "atm_id": atm, "event_type": "OutOfMemoryError", "severity": "FATAL",
-        "message": "Java heap space",
-        "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(minutes=2, seconds=30)).isoformat(),
+            "source": "TERMINAL_HANDLER",
+            "atm_id": atm,
+            "event_type": "OutOfMemoryError",
+            "severity": "FATAL",
+            "message": "Java heap space",
+            "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=3)).isoformat(), "source": "TERMINAL_HANDLER", "atm_id": atm,
-        "event_type": "STARTUP", "severity": "INFO",
-        "message": "Pod restarting",
-        "payload": {"_anomaly_tag": "A4", "pod_name": pod_name, "container_id": "container-def456"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(minutes=3)).isoformat(),
+            "source": "TERMINAL_HANDLER",
+            "atm_id": atm,
+            "event_type": "STARTUP",
+            "severity": "INFO",
+            "message": "Pod restarting",
+            "payload": {
+                "_anomaly_tag": "A4",
+                "pod_name": pod_name,
+                "container_id": "container-def456",
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_metric({
-        "timestamp": (t + timedelta(minutes=4)).isoformat(), "source": "CLOUD",
-        "entity_id": atm, "metric_name": "container/restart_count",
-        "metric_value": 2,
-        "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_metric(
+        {
+            "timestamp": (t + timedelta(minutes=4)).isoformat(),
+            "source": "CLOUD",
+            "entity_id": atm,
+            "metric_name": "container/restart_count",
+            "metric_value": 2,
+            "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=4)).isoformat(), "source": "TERMINAL_HANDLER",
-        "atm_id": atm, "event_type": "OutOfMemoryError", "severity": "FATAL",
-        "message": "Java heap space",
-        "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(minutes=4)).isoformat(),
+            "source": "TERMINAL_HANDLER",
+            "atm_id": atm,
+            "event_type": "OutOfMemoryError",
+            "severity": "FATAL",
+            "message": "Java heap space",
+            "payload": {"_anomaly_tag": "A4", "pod_name": pod_name},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(minutes=4, seconds=30)).isoformat(), "source": "TERMINAL_HANDLER", "atm_id": atm,
-        "event_type": "STARTUP", "severity": "INFO",
-        "message": "Pod restarting",
-        "payload": {"_anomaly_tag": "A4", "pod_name": pod_name, "container_id": "container-ghi789"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(minutes=4, seconds=30)).isoformat(),
+            "source": "TERMINAL_HANDLER",
+            "atm_id": atm,
+            "event_type": "STARTUP",
+            "severity": "INFO",
+            "message": "Pod restarting",
+            "payload": {
+                "_anomaly_tag": "A4",
+                "pod_name": pod_name,
+                "container_id": "container-ghi789",
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
     return atm
 
 
@@ -313,65 +441,94 @@ def inject_a5(producer, t: datetime) -> str | None:
     atm = random.choice(ATMS)
     corr_ids = ["corr-0010-xxyy-aabb-1234", "corr-0011-xyzw-ccdd-5678"]
 
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "KAFKA", "atm_id": atm,
-        "event_type": "METRIC", "severity": "INFO",
-        "message": "Latency update",
-        "payload": {
-            "_anomaly_tag": "A5",
-            "response_time_ms": 3200,
-            "transaction_success_rate": 100,
-            "failure_count": 0,
-        },
-        "correlation_id": corr_ids[0],
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "METRIC",
+            "severity": "INFO",
+            "message": "Latency update",
+            "payload": {
+                "_anomaly_tag": "A5",
+                "response_time_ms": 3200,
+                "transaction_success_rate": 100,
+                "failure_count": 0,
+            },
+            "correlation_id": corr_ids[0],
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=10)).isoformat(), "source": "KAFKA", "atm_id": atm,
-        "event_type": "METRIC", "severity": "INFO",
-        "message": "Latency update",
-        "payload": {
-            "_anomaly_tag": "A5",
-            "response_time_ms": 4500,
-            "transaction_success_rate": 72,
-            "failure_count": 8,
-        },
-        "correlation_id": corr_ids[0],
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(seconds=10)).isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "METRIC",
+            "severity": "INFO",
+            "message": "Latency update",
+            "payload": {
+                "_anomaly_tag": "A5",
+                "response_time_ms": 4500,
+                "transaction_success_rate": 72,
+                "failure_count": 8,
+            },
+            "correlation_id": corr_ids[0],
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=20)).isoformat(), "source": "KAFKA", "atm_id": atm,
-        "event_type": "METRIC", "severity": "INFO",
-        "message": "Latency update",
-        "payload": {
-            "_anomaly_tag": "A5",
-            "response_time_ms": 30000,
-            "transaction_success_rate": 50,
-            "failure_count": 14,
-        },
-        "correlation_id": corr_ids[1],
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(seconds=20)).isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "METRIC",
+            "severity": "INFO",
+            "message": "Latency update",
+            "payload": {
+                "_anomaly_tag": "A5",
+                "response_time_ms": 30000,
+                "transaction_success_rate": 50,
+                "failure_count": 14,
+            },
+            "correlation_id": corr_ids[1],
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=25)).isoformat(), "source": "ATM_APP", "atm_id": atm,
-        "event_type": "TIMEOUT", "severity": "ERROR",
-        "message": "Request timed out",
-        "payload": {"_anomaly_tag": "A5", "error_code": "ERR-0012"},
-        "correlation_id": corr_ids[1],
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(seconds=25)).isoformat(),
+            "source": "ATM_APP",
+            "atm_id": atm,
+            "event_type": "TIMEOUT",
+            "severity": "ERROR",
+            "message": "Request timed out",
+            "payload": {"_anomaly_tag": "A5", "error_code": "ERR-0012"},
+            "correlation_id": corr_ids[1],
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": (t + timedelta(seconds=30)).isoformat(), "source": "KAFKA", "atm_id": atm,
-        "event_type": "STATUS", "severity": "WARNING",
-        "message": "Success rate drop detected",
-        "payload": {"_anomaly_tag": "A5", "transaction_success_rate": 50, "failure_count": 14},
-        "correlation_id": corr_ids[1],
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t + timedelta(seconds=30)).isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "STATUS",
+            "severity": "WARNING",
+            "message": "Success rate drop detected",
+            "payload": {
+                "_anomaly_tag": "A5",
+                "transaction_success_rate": 50,
+                "failure_count": 14,
+            },
+            "correlation_id": corr_ids[1],
+            "message_id": str(uuid4()),
+        }
+    )
     return atm
 
 
@@ -400,47 +557,64 @@ def inject_a6(producer, t: datetime) -> str | None:
     for i in range(120):
         tick_t = t - timedelta(minutes=120 - i)
         mem_val = mem_start + (i * mem_step)
-        producer.send_metric({
-            "timestamp": tick_t.isoformat(), "source": "OS",
-            "entity_id": atm, "metric_name": "memory_usage_percent",
-            "metric_value": mem_val,
-            "payload": {"_anomaly_tag": "A6", "location_code": loc},
-            "correlation_id": corr_id,
-            "message_id": str(uuid4()),
-        })
+        producer.send_metric(
+            {
+                "timestamp": tick_t.isoformat(),
+                "source": "OS",
+                "entity_id": atm,
+                "metric_name": "memory_usage_percent",
+                "metric_value": mem_val,
+                "payload": {"_anomaly_tag": "A6", "location_code": loc},
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            }
+        )
 
         net_err_val = net_err_start + (i * net_err_step)
-        producer.send_metric({
-            "timestamp": tick_t.isoformat(), "source": "OS",
-            "entity_id": atm, "metric_name": "network_errors",
-            "metric_value": net_err_val,
-            "payload": {"_anomaly_tag": "A6"},
-            "correlation_id": corr_id,
-            "message_id": str(uuid4()),
-        })
+        producer.send_metric(
+            {
+                "timestamp": tick_t.isoformat(),
+                "source": "OS",
+                "entity_id": atm,
+                "metric_name": "network_errors",
+                "metric_value": net_err_val,
+                "payload": {"_anomaly_tag": "A6"},
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            }
+        )
 
         cpu_val = 20 + (i * 0.596)
-        producer.send_metric({
-            "timestamp": tick_t.isoformat(), "source": "OS",
-            "entity_id": atm, "metric_name": "cpu_usage_percent",
-            "metric_value": cpu_val,
-            "payload": {"_anomaly_tag": "A6"},
+        producer.send_metric(
+            {
+                "timestamp": tick_t.isoformat(),
+                "source": "OS",
+                "entity_id": atm,
+                "metric_name": "cpu_usage_percent",
+                "metric_value": cpu_val,
+                "payload": {"_anomaly_tag": "A6"},
+                "correlation_id": corr_id,
+                "message_id": str(uuid4()),
+            }
+        )
+
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "ATM_APP",
+            "atm_id": atm,
+            "event_type": "TIMEOUT",
+            "severity": "ERROR",
+            "message": "OS resource timeout - ThreadAbortException",
+            "payload": {
+                "_anomaly_tag": "A6",
+                "error_code": "ERR-MEM",
+                "error_detail": "ThreadAbortException: Thread was being aborted due to memory pressure",
+            },
             "correlation_id": corr_id,
             "message_id": str(uuid4()),
-        })
-
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "ATM_APP",
-        "atm_id": atm, "event_type": "TIMEOUT", "severity": "ERROR",
-        "message": "OS resource timeout - ThreadAbortException",
-        "payload": {
-            "_anomaly_tag": "A6",
-            "error_code": "ERR-MEM",
-            "error_detail": "ThreadAbortException: Thread was being aborted due to memory pressure",
-        },
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+        }
+    )
     return atm
 
 
@@ -456,42 +630,56 @@ def inject_a7(producer, t: datetime) -> str | None:
     atm = random.choice(ATMS)
     corr_id = str(uuid4())
 
-    producer.send_event({
-        "timestamp": (t - timedelta(minutes=5)).isoformat(), "source": "KAFKA", "atm_id": atm,
-        "event_type": "METRIC", "severity": "INFO",
-        "message": "Kafka metrics",
-        "payload": {
-            "_anomaly_tag": "A7_OUT_OF_ORDER",
-            "offset": 4050,
-            "atm_status": "Online",
-            "transaction_rate_tps": 15.5,
-        },
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": (t - timedelta(minutes=5)).isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "METRIC",
+            "severity": "INFO",
+            "message": "Kafka metrics",
+            "payload": {
+                "_anomaly_tag": "A7_OUT_OF_ORDER",
+                "offset": 4050,
+                "atm_status": "Online",
+                "transaction_rate_tps": 15.5,
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_event({
-        "timestamp": t.isoformat(), "source": "KAFKA", "atm_id": atm,
-        "event_type": "METRIC", "severity": "INFO",
-        "message": "Kafka metrics - out of order",
-        "payload": {
-            "_anomaly_tag": "A7_OUT_OF_ORDER",
-            "offset": 4051,
-            "atm_status": None,
-            "transaction_rate_tps": None,
-        },
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_event(
+        {
+            "timestamp": t.isoformat(),
+            "source": "KAFKA",
+            "atm_id": atm,
+            "event_type": "METRIC",
+            "severity": "INFO",
+            "message": "Kafka metrics - out of order",
+            "payload": {
+                "_anomaly_tag": "A7_OUT_OF_ORDER",
+                "offset": 4051,
+                "atm_status": None,
+                "transaction_rate_tps": None,
+            },
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
 
-    producer.send_metric({
-        "timestamp": t.isoformat(), "source": "PROMETHEUS",
-        "entity_id": atm, "metric_name": "jvm_memory_used_bytes",
-        "metric_value": "890iembre",
-        "payload": {"_anomaly_tag": "A7_MALFORMED"},
-        "correlation_id": corr_id,
-        "message_id": str(uuid4()),
-    })
+    producer.send_metric(
+        {
+            "timestamp": t.isoformat(),
+            "source": "PROMETHEUS",
+            "entity_id": atm,
+            "metric_name": "jvm_memory_used_bytes",
+            "metric_value": "890iembre",
+            "payload": {"_anomaly_tag": "A7_MALFORMED"},
+            "correlation_id": corr_id,
+            "message_id": str(uuid4()),
+        }
+    )
     return atm
 
 

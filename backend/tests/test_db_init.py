@@ -1,4 +1,5 @@
 """Tests for backend.src.database.init_db."""
+
 from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
@@ -9,6 +10,7 @@ import pytest
 class TestReadSchema:
     def test_read_schema_returns_contents(self):
         from backend.src.database.init_db import _read_schema
+
         content = _read_schema()
         assert content is not None
         assert len(content) > 0
@@ -18,6 +20,7 @@ class TestReadSchema:
 class TestSeedAtms:
     def test_seed_atms_executes_insert(self):
         from backend.src.database.init_db import seed_atms
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
@@ -35,6 +38,7 @@ class TestSeedAtms:
 
     def test_seed_atms_no_log_when_zero_affected(self):
         from backend.src.database.init_db import seed_atms
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
@@ -49,6 +53,7 @@ class TestSeedAtms:
 class TestSeedDefaultAdmin:
     def test_seed_default_admin_inserts(self):
         from backend.src.database.init_db import seed_default_admin
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
@@ -63,6 +68,7 @@ class TestSeedDefaultAdmin:
 
     def test_seed_default_admin_skips_when_exists(self):
         from backend.src.database.init_db import seed_default_admin
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
@@ -77,6 +83,7 @@ class TestSeedDefaultAdmin:
 class TestSeedRetentionConfig:
     def test_seed_retention_config(self):
         from backend.src.database.init_db import seed_retention_config
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
@@ -92,15 +99,26 @@ class TestSeedRetentionConfig:
 class TestInitDb:
     def test_init_db_success(self):
         from backend.src.database.init_db import init_db
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_conn.cursor.return_value.__enter__.side_effect = [mock_cursor, mock_cursor, mock_cursor]
+        mock_conn.cursor.return_value.__enter__.side_effect = [
+            mock_cursor,
+            mock_cursor,
+            mock_cursor,
+        ]
 
-        with patch("backend.src.database.init_db.get_conn", return_value=mock_conn), \
-             patch("backend.src.database.init_db.release_conn"):
+        with (
+            patch("backend.src.database.init_db.get_conn", return_value=mock_conn),
+            patch("backend.src.database.init_db.release_conn"),
+        ):
             with patch("backend.src.database.init_db.seed_atms") as mock_seed_atms:  # noqa: F841
-                with patch("backend.src.database.init_db.seed_default_admin") as mock_seed_admin:  # noqa: F841
-                    with patch("backend.src.database.init_db.seed_retention_config") as mock_seed_ret:  # noqa: F841
+                with patch(
+                    "backend.src.database.init_db.seed_default_admin"
+                ) as mock_seed_admin:  # noqa: F841
+                    with patch(
+                        "backend.src.database.init_db.seed_retention_config"
+                    ) as mock_seed_ret:  # noqa: F841
                         result = init_db(force=False)
 
         assert result is True
@@ -108,17 +126,22 @@ class TestInitDb:
 
     def test_init_db_force_drops_tables(self):
         from backend.src.database.init_db import init_db
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
         # Override LAAD_ENV via environ so the production guard doesn't block force=True
         with patch.dict(os.environ, {"LAAD_ENV": "test"}, clear=False):
-            with patch("backend.src.database.init_db.get_conn", return_value=mock_conn), \
-                 patch("backend.src.database.init_db.release_conn"):
+            with (
+                patch("backend.src.database.init_db.get_conn", return_value=mock_conn),
+                patch("backend.src.database.init_db.release_conn"),
+            ):
                 with patch("backend.src.database.init_db.seed_atms"):
                     with patch("backend.src.database.init_db.seed_default_admin"):
-                        with patch("backend.src.database.init_db.seed_retention_config"):
+                        with patch(
+                            "backend.src.database.init_db.seed_retention_config"
+                        ):
                             result = init_db(force=True)
 
         assert result is True
@@ -128,12 +151,15 @@ class TestInitDb:
 
     def test_init_db_raises_on_failure(self):
         from backend.src.database.init_db import init_db
+
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_cursor.execute.side_effect = Exception("DB error")
 
-        with patch("backend.src.database.init_db.get_conn", return_value=mock_conn), \
-             patch("backend.src.database.init_db.release_conn"):
+        with (
+            patch("backend.src.database.init_db.get_conn", return_value=mock_conn),
+            patch("backend.src.database.init_db.release_conn"),
+        ):
             with pytest.raises(Exception, match="DB error"):
                 init_db()

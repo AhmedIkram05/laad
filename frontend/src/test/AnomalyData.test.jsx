@@ -102,4 +102,25 @@ describe("AnomalyData", () => {
       expect(screen.getByText("Mark Complete")).toBeDefined();
     }, { timeout: 3000 });
   }, 8000);
+
+  it("handles empty analysis data", async () => {
+    global.fetch = vi.fn().mockImplementation((url) => {
+      if (url.includes("/api/anomalies")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: [] }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: [] }),
+      });
+    });
+
+    await renderAnomalyData("A1");
+
+    await waitFor(() => {
+      expect(screen.getByText("No analysis data available for this anomaly type.")).toBeDefined();
+    }, { timeout: 3000 });
+  }, 8000);
 });

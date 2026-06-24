@@ -15,10 +15,10 @@ def test_admin_endpoint_forbidden_for_non_admin():
     conn = get_conn()
 
     with conn.cursor() as cur:
-        pw_hash = bcrypt.hashpw(b'userpass', bcrypt.gensalt()).decode()
+        pw_hash = bcrypt.hashpw(b"userpass", bcrypt.gensalt()).decode()
         cur.execute(
-            'INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)',
-            ('normaluser', pw_hash, 'user'),
+            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)",
+            ("normaluser", pw_hash, "user"),
         )
     conn.commit()
 
@@ -32,19 +32,23 @@ def test_admin_endpoint_forbidden_for_non_admin():
 
     try:
         with TestClient(app) as client:
-            r = client.post('/auth/login', data={'username': 'normaluser', 'password': 'userpass'})
+            r = client.post(
+                "/auth/login", data={"username": "normaluser", "password": "userpass"}
+            )
             assert r.status_code == 200, r.text
-            token = r.json()['access_token']
-            headers = {'Authorization': f'Bearer {token}'}
+            token = r.json()["access_token"]
+            headers = {"Authorization": f"Bearer {token}"}
 
-            r2 = client.get('/admin/retention', headers=headers)
+            r2 = client.get("/admin/retention", headers=headers)
             assert r2.status_code == 403
-            assert 'Admin access required' in r2.json().get('detail', '')
+            assert "Admin access required" in r2.json().get("detail", "")
 
-            r3 = client.post('/auth/login', data={'username': 'admin', 'password': 'admin'})
+            r3 = client.post(
+                "/auth/login", data={"username": "admin", "password": "admin"}
+            )
             assert r3.status_code == 200, r3.text
-            admin_headers = {'Authorization': f"Bearer {r3.json()['access_token']}"}
-            r4 = client.get('/admin/retention', headers=admin_headers)
+            admin_headers = {"Authorization": f"Bearer {r3.json()['access_token']}"}
+            r4 = client.get("/admin/retention", headers=admin_headers)
             assert r4.status_code == 200
     finally:
         app.dependency_overrides.clear()
@@ -65,16 +69,20 @@ def test_expired_token_returns_401():
 
     try:
         payload = {
-            'sub': 'admin',
-            'role': 'admin',
-            'exp': datetime.now(timezone.utc) - timedelta(minutes=5),
+            "sub": "admin",
+            "role": "admin",
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=5),
         }
-        token = jwt.encode(payload, auth_router.SECRET_KEY, algorithm=auth_router.ALGORITHM)
+        token = jwt.encode(
+            payload, auth_router.SECRET_KEY, algorithm=auth_router.ALGORITHM
+        )
 
         with TestClient(app) as client:
-            r = client.get('/admin/retention', headers={'Authorization': f'Bearer {token}'})
+            r = client.get(
+                "/admin/retention", headers={"Authorization": f"Bearer {token}"}
+            )
             assert r.status_code == 401
-            assert 'Session expired' in r.json().get('detail', '')
+            assert "Session expired" in r.json().get("detail", "")
     finally:
         app.dependency_overrides.clear()
         release_conn(conn)

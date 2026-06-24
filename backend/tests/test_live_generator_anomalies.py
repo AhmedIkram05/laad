@@ -4,14 +4,22 @@ All injectors now accept (producer, timestamp) instead of (cursor, timestamp).
 Anomaly tag preservation is verified for A1-A7. A3 and A6 use state-based
 progressive emission — one message per call, tracked across calls.
 """
+
 from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock
 from datetime import datetime, timezone
 
 from backend.generator.anomaly_injectors import (
-    inject_a1, inject_a2, inject_a3, inject_a4, inject_a5, inject_a6, inject_a7,
-    _pick_entity, ANOMALY_REGISTRY,
+    inject_a1,
+    inject_a2,
+    inject_a3,
+    inject_a4,
+    inject_a5,
+    inject_a6,
+    inject_a7,
+    _pick_entity,
+    ANOMALY_REGISTRY,
 )
 from backend.generator.config import ATMS, SERVERS
 
@@ -24,6 +32,7 @@ def _mock_producer():
 def reset_anomaly_state(monkeypatch):
     """Clears progressive injector state between tests."""
     from backend.generator import anomaly_injectors as ai
+
     monkeypatch.setattr(ai, "_anomaly_state", {})
 
 
@@ -133,9 +142,16 @@ class TestInjectA3:
 
     def test_no_psycopg2_import(self):
         import backend.generator.anomaly_injectors as ai
-        assert not hasattr(ai, "psycopg2"), "anomaly_injectors.py must not import psycopg2"
-        assert not hasattr(ai, "insert_event"), "anomaly_injectors.py must not have insert_event function"
-        assert not hasattr(ai, "insert_metric"), "anomaly_injectors.py must not have insert_metric function"
+
+        assert not hasattr(ai, "psycopg2"), (
+            "anomaly_injectors.py must not import psycopg2"
+        )
+        assert not hasattr(ai, "insert_event"), (
+            "anomaly_injectors.py must not have insert_event function"
+        )
+        assert not hasattr(ai, "insert_metric"), (
+            "anomaly_injectors.py must not have insert_metric function"
+        )
 
 
 class TestInjectA4:
@@ -285,7 +301,9 @@ class TestPickEntity:
             entity = _pick_entity(server_prob=0.4)
             if entity in SERVERS:
                 count_server += 1
-        assert 0.25 <= count_server / trials <= 0.55, f"server ratio {count_server/trials} outside expected range"
+        assert 0.25 <= count_server / trials <= 0.55, (
+            f"server ratio {count_server / trials} outside expected range"
+        )
 
     def test_default_probability_is_zero(self):
         for _ in range(100):
@@ -296,6 +314,7 @@ class TestPickEntity:
 class TestServerAwareInjectors:
     def test_a3_can_return_server_id(self):
         from unittest.mock import MagicMock
+
         mock = MagicMock()
         t = datetime.now(timezone.utc)
         results = set()
@@ -304,10 +323,13 @@ class TestServerAwareInjectors:
         has_server = any(r in SERVERS for r in results)
         has_atm = any(r in ATMS for r in results)
         assert has_atm, "A3 should sometimes target ATMs"
-        assert has_server, "A3 should sometimes target servers (40% prob over 50 trials)"
+        assert has_server, (
+            "A3 should sometimes target servers (40% prob over 50 trials)"
+        )
 
     def test_a4_can_return_server_id(self):
         from unittest.mock import MagicMock
+
         mock = MagicMock()
         t = datetime.now(timezone.utc)
         results = set()
@@ -316,10 +338,13 @@ class TestServerAwareInjectors:
         has_server = any(r in SERVERS for r in results)
         has_atm = any(r in ATMS for r in results)
         assert has_atm, "A4 should sometimes target ATMs"
-        assert has_server, "A4 should sometimes target servers (40% prob over 50 trials)"
+        assert has_server, (
+            "A4 should sometimes target servers (40% prob over 50 trials)"
+        )
 
     def test_a6_can_return_server_id(self):
         from unittest.mock import MagicMock
+
         mock = MagicMock()
         t = datetime.now(timezone.utc)
         results = set()
@@ -328,10 +353,13 @@ class TestServerAwareInjectors:
         has_server = any(r in SERVERS for r in results)
         has_atm = any(r in ATMS for r in results)
         assert has_atm, "A6 should sometimes target ATMs"
-        assert has_server, "A6 should sometimes target servers (40% prob over 50 trials)"
+        assert has_server, (
+            "A6 should sometimes target servers (40% prob over 50 trials)"
+        )
 
     def test_a1_only_targets_atms(self):
         from unittest.mock import MagicMock
+
         mock = MagicMock()
         t = datetime.now(timezone.utc)
         for _ in range(100):
@@ -340,6 +368,7 @@ class TestServerAwareInjectors:
 
     def test_a2_only_targets_atms(self):
         from unittest.mock import MagicMock
+
         mock = MagicMock()
         t = datetime.now(timezone.utc)
         for _ in range(100):
@@ -348,6 +377,7 @@ class TestServerAwareInjectors:
 
     def test_a5_only_targets_atms(self):
         from unittest.mock import MagicMock
+
         mock = MagicMock()
         t = datetime.now(timezone.utc)
         for _ in range(100):
@@ -356,6 +386,7 @@ class TestServerAwareInjectors:
 
     def test_a7_only_targets_atms(self):
         from unittest.mock import MagicMock
+
         mock = MagicMock()
         t = datetime.now(timezone.utc)
         for _ in range(100):

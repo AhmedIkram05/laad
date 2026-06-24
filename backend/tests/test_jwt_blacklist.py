@@ -19,6 +19,7 @@ class TestJWTBlacklist:
         mock_get_client.return_value = mock_client
 
         import backend.src.auth.auth_router as auth_router
+
         valid_token = auth_router.create_access_token("testuser", "user")
 
         with pytest.raises(HTTPException) as exc_info:
@@ -37,6 +38,7 @@ class TestJWTBlacklist:
         mock_get_client.return_value = mock_client
 
         import backend.src.auth.auth_router as auth_router
+
         valid_token = auth_router.create_access_token("testuser", "user")
 
         result = get_current_user(valid_token)
@@ -52,6 +54,7 @@ class TestJWTBlacklist:
         mock_get_client.return_value = None
 
         import backend.src.auth.auth_router as auth_router
+
         valid_token = auth_router.create_access_token("testuser", "user")
 
         result = get_current_user(valid_token)
@@ -130,6 +133,7 @@ class TestJWTBlacklist:
         mock_get_client.return_value = mock_client
 
         import backend.src.auth.auth_router as auth_router
+
         valid_token = auth_router.create_access_token("logoutuser", "user")
 
         _blacklist_token(valid_token, datetime.now(timezone.utc) + timedelta(hours=8))

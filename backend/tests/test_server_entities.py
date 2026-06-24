@@ -6,6 +6,7 @@ Verifies:
   - entity_type filter on /api/anomalies works for atm and server
   - Frontend entity label helpers work correctly
 """
+
 from __future__ import annotations
 
 import pytest
@@ -15,10 +16,13 @@ from psycopg2.extras import RealDictCursor
 class TestDatabaseSeed:
     def test_server_records_exist(self, db_cleanup):
         from backend.src.database.connection import get_conn, release_conn
+
         conn = get_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT atm_id, os_version, location_code FROM atms WHERE atm_id LIKE 'ATM-SERVER-%' ORDER BY atm_id")
+                cur.execute(
+                    "SELECT atm_id, os_version, location_code FROM atms WHERE atm_id LIKE 'ATM-SERVER-%' ORDER BY atm_id"
+                )
                 rows = cur.fetchall()
             assert len(rows) == 3, f"Expected 3 server records, got {len(rows)}"
             ids = [r["atm_id"] for r in rows]
@@ -30,10 +34,13 @@ class TestDatabaseSeed:
 
     def test_server_os_version(self, db_cleanup):
         from backend.src.database.connection import get_conn, release_conn
+
         conn = get_conn()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT DISTINCT os_version FROM atms WHERE atm_id LIKE 'ATM-SERVER-%'")
+                cur.execute(
+                    "SELECT DISTINCT os_version FROM atms WHERE atm_id LIKE 'ATM-SERVER-%'"
+                )
                 rows = cur.fetchall()
             assert len(rows) == 1
             assert rows[0][0] == "Windows-Server-2019"
@@ -42,12 +49,15 @@ class TestDatabaseSeed:
 
     def test_total_entities_count(self, db_cleanup):
         from backend.src.database.connection import get_conn, release_conn
+
         conn = get_conn()
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) FROM atms")
                 count = cur.fetchone()[0]
-            assert count == 13, f"Expected 13 entities (10 ATMs + 3 servers), got {count}"
+            assert count == 13, (
+                f"Expected 13 entities (10 ATMs + 3 servers), got {count}"
+            )
         finally:
             release_conn(conn)
 
@@ -57,16 +67,19 @@ class TestEntitiesEndpoint:
     def setup(self, monkeypatch):
         import backend.src.analytics.analytics_router as ar
         from backend.src.database.connection import get_conn, release_conn
+
         def get_db_conn_override():
             conn = get_conn()
             try:
                 yield conn
             finally:
                 release_conn(conn)
+
         monkeypatch.setattr(ar, "get_conn", get_conn)
 
     def test_entities_endpoint_returns_thirteen_entities(self):
         from backend.src.analytics.analytics_router import list_entities
+
         result = list_entities()
         entities = result.get("entities", [])
         assert len(entities) == 13, f"Expected 13, got {len(entities)}"
@@ -76,6 +89,7 @@ class TestEntitiesEndpoint:
 
     def test_entities_include_os_and_location(self):
         from backend.src.analytics.analytics_router import list_entities
+
         result = list_entities()
         server = next(e for e in result["entities"] if e["atm_id"] == "ATM-SERVER-001")
         assert server["os_version"] == "Windows-Server-2019"
@@ -85,6 +99,7 @@ class TestEntitiesEndpoint:
 class TestAnomalyEntityTypeFilter:
     def test_entity_type_atm_filter(self):
         from backend.src.database.connection import get_conn, release_conn
+
         conn = get_conn()
         try:
             with conn.cursor() as cur:
@@ -97,9 +112,7 @@ class TestAnomalyEntityTypeFilter:
             conn.commit()
 
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT atm_id FROM anomalies WHERE atm_id LIKE 'ATM-GB-%'"
-                )
+                cur.execute("SELECT atm_id FROM anomalies WHERE atm_id LIKE 'ATM-GB-%'")
                 atm_rows = cur.fetchall()
                 atm_ids = {r["atm_id"] for r in atm_rows}
                 assert "ATM-GB-0001" in atm_ids
@@ -117,6 +130,7 @@ class TestAnomalyEntityTypeFilter:
 
     def test_entity_type_atm_empty_when_no_matches(self):
         from backend.src.database.connection import get_conn, release_conn
+
         conn = get_conn()
         try:
             with conn.cursor() as cur:
@@ -128,11 +142,11 @@ class TestAnomalyEntityTypeFilter:
             conn.commit()
 
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT atm_id FROM anomalies WHERE atm_id LIKE 'ATM-GB-%'"
-                )
+                cur.execute("SELECT atm_id FROM anomalies WHERE atm_id LIKE 'ATM-GB-%'")
                 rows = cur.fetchall()
-            assert len(rows) == 0, "ATM filter should return no rows when only server anomalies exist"
+            assert len(rows) == 0, (
+                "ATM filter should return no rows when only server anomalies exist"
+            )
         finally:
             release_conn(conn)
 

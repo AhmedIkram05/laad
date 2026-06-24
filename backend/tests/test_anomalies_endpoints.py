@@ -42,7 +42,17 @@ def test_list_and_filters_and_get_and_feedback_and_resolve():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (now, "A1", "ATM-1", "HIGH", "TestHigh", "explain", "act", Json(["ATM_APP"]), 1),
+                    (
+                        now,
+                        "A1",
+                        "ATM-1",
+                        "HIGH",
+                        "TestHigh",
+                        "explain",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
                 cur.execute(
                     """
@@ -50,11 +60,23 @@ def test_list_and_filters_and_get_and_feedback_and_resolve():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (datetime.now(timezone.utc), "A2", "ATM-1", "CRITICAL", "TestCritical", "explain", "act", Json(["ATM_APP"]), 1),
+                    (
+                        datetime.now(timezone.utc),
+                        "A2",
+                        "ATM-1",
+                        "CRITICAL",
+                        "TestCritical",
+                        "explain",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
             conn.commit()
 
-            resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+            resp = client.post(
+                "/auth/login", data={"username": "admin", "password": "admin"}
+            )
             assert resp.status_code == 200, resp.text
             token = resp.json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
@@ -65,7 +87,9 @@ def test_list_and_filters_and_get_and_feedback_and_resolve():
             assert body["total"] == 2
             assert len(body["data"]) == 2
 
-            r2 = client.get("/anomalies", params={"severity": "critical"}, headers=headers)
+            r2 = client.get(
+                "/anomalies", params={"severity": "critical"}, headers=headers
+            )
             assert r2.status_code == 200
             assert r2.json()["total"] == 1
 
@@ -89,8 +113,14 @@ def test_group_by_atm_returns_grouped_rows():
     try:
         with TestClient(app) as client:
             with conn.cursor() as cur:
-                cur.execute("INSERT INTO atms (atm_id, os_version, location_code) VALUES (%s, %s, %s)", ("ATM-A", "v1", "LOC-A"))
-                cur.execute("INSERT INTO atms (atm_id, os_version, location_code) VALUES (%s, %s, %s)", ("ATM-B", "v1", "LOC-B"))
+                cur.execute(
+                    "INSERT INTO atms (atm_id, os_version, location_code) VALUES (%s, %s, %s)",
+                    ("ATM-A", "v1", "LOC-A"),
+                )
+                cur.execute(
+                    "INSERT INTO atms (atm_id, os_version, location_code) VALUES (%s, %s, %s)",
+                    ("ATM-B", "v1", "LOC-B"),
+                )
 
                 t1 = datetime.now(timezone.utc)
                 t2 = datetime.now(timezone.utc) + timedelta(seconds=1)
@@ -101,7 +131,17 @@ def test_group_by_atm_returns_grouped_rows():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (t1, "A1", "ATM-A", "HIGH", "A", "explain", "act", Json(["ATM_APP"]), 1),
+                    (
+                        t1,
+                        "A1",
+                        "ATM-A",
+                        "HIGH",
+                        "A",
+                        "explain",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
                 cur.execute(
                     """
@@ -109,7 +149,17 @@ def test_group_by_atm_returns_grouped_rows():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (t2, "A2", "ATM-A", "CRITICAL", "B", "explain", "act", Json(["ATM_APP"]), 1),
+                    (
+                        t2,
+                        "A2",
+                        "ATM-A",
+                        "CRITICAL",
+                        "B",
+                        "explain",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
                 cur.execute(
                     """
@@ -117,16 +167,32 @@ def test_group_by_atm_returns_grouped_rows():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (t1, "A3", "ATM-B", "LOW", "C", "explain", "act", Json(["ATM_APP"]), 1),
+                    (
+                        t1,
+                        "A3",
+                        "ATM-B",
+                        "LOW",
+                        "C",
+                        "explain",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
             conn.commit()
 
-            resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+            resp = client.post(
+                "/auth/login", data={"username": "admin", "password": "admin"}
+            )
             assert resp.status_code == 200, resp.text
             token = resp.json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}
 
-            r = client.get("/anomalies", params={"group_by": "atm", "is_active": 1}, headers=headers)
+            r = client.get(
+                "/anomalies",
+                params={"group_by": "atm", "is_active": 1},
+                headers=headers,
+            )
             assert r.status_code == 200
             body = r.json()
             assert body["total"] == 2
@@ -156,11 +222,23 @@ def test_star_toggle():
                     (detected_at, anomaly_type, atm_id, severity, title, explanation, recommended_action, sources_involved, is_active)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (datetime.now(timezone.utc), "A1", "ATM-STAR", "HIGH", "StarTest", "explain", "act", Json(["ATM_APP"]), 1),
+                    (
+                        datetime.now(timezone.utc),
+                        "A1",
+                        "ATM-STAR",
+                        "HIGH",
+                        "StarTest",
+                        "explain",
+                        "act",
+                        Json(["ATM_APP"]),
+                        1,
+                    ),
                 )
             conn.commit()
 
-            resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+            resp = client.post(
+                "/auth/login", data={"username": "admin", "password": "admin"}
+            )
             assert resp.status_code == 200, resp.text
             token = resp.json()["access_token"]
             headers = {"Authorization": f"Bearer {token}"}

@@ -1,62 +1,122 @@
-import pytest
+"""Tests for write_helper batch writing with retry/backoff.
+
+Verifies execute_values vs executemany selection,
+transient error retry logic, exponential backoff,
+and non-transient error propagation.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
 import psycopg2
+import pytest
 
 from backend.src.ingestion.write_helper import write_batch
 
 
-class _DummyCursor:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-class _DummyConn:
-    def __init__(self):
-        self.committed = False
-        self.rollback_calls = 0
-
-    def cursor(self):
-        return _DummyCursor()
-
-    def commit(self):
-        self.committed = True
-
-    def rollback(self):
-        self.rollback_calls += 1
+@pytest.fixture
+def mock_conn():
+    conn = MagicMock(spec=psycopg2.extensions.connection)
+    conn.encoding = "UTF8"
+    cursor = MagicMock()
+    # psycopg2.extras.execute_values calls cur.mogrify() then cur.execute()
+    cursor.mogrify.return_value = b"('x')"
+    conn.cursor.return_value = cursor
+    conn.cursor.return_value.__enter__.return_value = cursor
+    # execute_values also accesses cur.connection.encoding for the SQL encode
+    cursor.connection = conn
+    return conn
 
 
-def test_write_batch_retries_and_succeeds(monkeypatch):
-    dummy = _DummyConn()
-    state = {'failures_before_success': 2, 'calls': 0, 'rows': None}
+class TestWriteBatch:
+    def test_uses_execute_values_for_insert(self, mock_conn):
+        """INSERT with %s placeholder triggers execute_values."""
+        sql = "INSERT INTO events (source, message) VALUES %s"
+        rows = [("ATM_APP", "test")]
 
-    def fake_execute_values(_cur, _sql, rows, template=None):
-        state['calls'] += 1
-        if state['failures_before_success'] > 0:
-            state['failures_before_success'] -= 1
-            raise psycopg2.OperationalError('could not obtain lock on relation')
-        state['rows'] = list(rows)
+        with patch("psycopg2.extras.execute_values") as mock_ev:
+            write_batch(mock_conn, sql, rows)
 
-    monkeypatch.setattr('backend.src.ingestion.write_helper.psycopg2.extras.execute_values', fake_execute_values)
-    monkeypatch.setattr('backend.src.ingestion.write_helper.time.sleep', lambda _s: None)
+        mock_ev.assert_called_once()
+        assert mock_conn.commit.called
 
-    write_batch(dummy, 'INSERT INTO foo (a) VALUES %s', [(1,), (2,)], retries=5, backoff_base=0.01, backoff_max=0.1)
+    def test_uses_executemany_for_non_insert(self, mock_conn):
+        """Non-INSERT SQL uses executemany."""
+        sql = "UPDATE events SET message = %s WHERE id = %s"
+        rows = [("updated", 1)]
 
-    assert dummy.committed is True
-    assert state['rows'] == [(1,), (2,)]
-    assert state['calls'] == 3
-    assert dummy.rollback_calls >= 2
+        with patch("psycopg2.extras.execute_values") as mock_ev:
+            write_batch(mock_conn, sql, rows)
 
+        mock_ev.assert_not_called()
+        assert mock_conn.cursor.return_value.__enter__.return_value.executemany.called
 
-def test_write_batch_exhausts_retries_and_raises(monkeypatch):
-    dummy = _DummyConn()
+    def test_retries_on_transient_deadlock(self, mock_conn):
+        """Transient OperationalError (deadlock) triggers retry."""
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.execute.side_effect = [
+            psycopg2.OperationalError("deadlock detected"),
+            None,
+        ]
 
-    def always_fail(*_args, **_kwargs):
-        raise psycopg2.OperationalError('could not obtain lock on relation')
+        write_batch(mock_conn, "INSERT INTO t (a) VALUES %s", [("x",)])
 
-    monkeypatch.setattr('backend.src.ingestion.write_helper.psycopg2.extras.execute_values', always_fail)
-    monkeypatch.setattr('backend.src.ingestion.write_helper.time.sleep', lambda _s: None)
+        # retry happened
+        assert cursor.execute.call_count == 2
+        assert mock_conn.rollback.called
+        assert mock_conn.commit.called
 
-    with pytest.raises(psycopg2.OperationalError):
-        write_batch(dummy, 'INSERT INTO foo (a) VALUES %s', [(1,)], retries=2, backoff_base=0.01, backoff_max=0.05)
+    def test_raises_after_max_retries(self, mock_conn):
+        """After max retries exhausted, exception is re-raised."""
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.execute.side_effect = psycopg2.OperationalError("deadlock detected")
+
+        with pytest.raises(psycopg2.OperationalError):
+            write_batch(mock_conn, "INSERT INTO t (a) VALUES %s", [("x",)], retries=2)
+
+        assert cursor.execute.call_count == 3  # initial + 2 retries
+
+    def test_raises_on_non_transient_error_without_retry(self, mock_conn):
+        """Non-transient OperationalError does NOT retry."""
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.execute.side_effect = psycopg2.OperationalError("permission denied")
+
+        with pytest.raises(psycopg2.OperationalError):
+            write_batch(mock_conn, "INSERT INTO t (a) VALUES %s", [("x",)])
+
+        # Only 1 attempt — no retry
+        assert cursor.execute.call_count == 1
+
+    def test_exponential_backoff_timing(self, mock_conn):
+        """Backoff times follow exponential pattern with max cap."""
+        import time
+
+        cursor = mock_conn.cursor.return_value.__enter__.return_value
+        cursor.execute.side_effect = psycopg2.OperationalError(
+            "could not serialize access"
+        )
+
+        original_sleep = time.sleep
+        slept_times = []
+
+        def track_sleep(seconds):
+            slept_times.append(seconds)
+            return original_sleep(seconds / 1000)  # Don't actually wait
+
+        with patch("time.sleep", side_effect=track_sleep):
+            with pytest.raises(psycopg2.OperationalError):
+                write_batch(
+                    mock_conn,
+                    "INSERT INTO t (a) VALUES %s",
+                    [("x",)],
+                    retries=3,
+                    backoff_base=0.1,
+                    backoff_max=2.0,
+                )
+
+        # Expected backoffs: 0.1, 0.2, 0.4 (capped at 2.0)
+        assert len(slept_times) == 3
+        assert abs(slept_times[0] - 0.1) < 0.01
+        assert abs(slept_times[1] - 0.2) < 0.01
+        assert abs(slept_times[2] - 0.4) < 0.01

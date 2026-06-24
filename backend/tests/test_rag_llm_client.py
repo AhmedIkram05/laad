@@ -1,4 +1,5 @@
 """Tests for backend.src.rag.llm_client."""
+
 from __future__ import annotations
 
 import time
@@ -11,11 +12,13 @@ import requests
 class TestRateLimiter:
     def test_not_rate_limited_initially(self):
         from backend.src.rag.llm_client import RateLimiter
+
         rl = RateLimiter(max_requests=5, window_seconds=60)
         assert rl.is_rate_limited() is False
 
     def test_rate_limited_after_max_requests(self):
         from backend.src.rag.llm_client import RateLimiter
+
         rl = RateLimiter(max_requests=3, window_seconds=60)
         for _ in range(3):
             rl.is_rate_limited()
@@ -23,17 +26,20 @@ class TestRateLimiter:
 
     def test_wait_time_returns_zero_when_not_limited(self):
         from backend.src.rag.llm_client import RateLimiter
+
         rl = RateLimiter(max_requests=5, window_seconds=60)
         assert rl.wait_time() == 0.0
 
     def test_wait_time_positive_when_limited(self):
         from backend.src.rag.llm_client import RateLimiter
+
         rl = RateLimiter(max_requests=1, window_seconds=60)
         rl.is_rate_limited()
         assert rl.wait_time() > 0
 
     def test_expired_requests_removed(self):
         from backend.src.rag.llm_client import RateLimiter
+
         rl = RateLimiter(max_requests=5, window_seconds=60)
         now = time.time()
         rl._requests["global"] = [now - 120, now - 90, now - 30]
@@ -48,6 +54,7 @@ class TestLLMClient:
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
+
             client = LLMClient()
             assert len(client.providers) == 0
 
@@ -63,6 +70,7 @@ class TestLLMClient:
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
+
             client = LLMClient()
             assert len(client.providers) > 0
             # First provider should be Ollama
@@ -74,6 +82,7 @@ class TestLLMClient:
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
+
             client = LLMClient()
             with pytest.raises(RuntimeError, match="No LLM providers configured"):
                 client.generate("test prompt")
@@ -90,6 +99,7 @@ class TestCallProvider:
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
+
             client = LLMClient()
 
             mock_response = MagicMock()
@@ -101,9 +111,17 @@ class TestCallProvider:
 
             with patch("requests.post", return_value=mock_response):
                 result = client._call_provider(
-                    {"name": "ollama", "model": "model", "base_url": "http://localhost:11434",
-                     "api_key": "key", "api_type": "ollama"},
-                    "test prompt", None, 0.7, 100,
+                    {
+                        "name": "ollama",
+                        "model": "model",
+                        "base_url": "http://localhost:11434",
+                        "api_key": "key",
+                        "api_type": "ollama",
+                    },
+                    "test prompt",
+                    None,
+                    0.7,
+                    100,
                 )
                 assert result is not None
                 assert result.text == "Hello"
@@ -118,19 +136,30 @@ class TestCallProvider:
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
+
             client = LLMClient()
 
             mock_response = MagicMock()
             mock_response.status_code = 500
             mock_response.text = "Internal Server Error"
-            mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
+            mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+                response=mock_response
+            )
 
             with patch("requests.post", return_value=mock_response):
                 with pytest.raises(requests.exceptions.HTTPError):
                     client._call_provider(
-                        {"name": "ollama", "model": "model", "base_url": "http://localhost:11434",
-                         "api_key": "key", "api_type": "ollama"},
-                        "test", None, 0.7, 100,
+                        {
+                            "name": "ollama",
+                            "model": "model",
+                            "base_url": "http://localhost:11434",
+                            "api_key": "key",
+                            "api_type": "ollama",
+                        },
+                        "test",
+                        None,
+                        0.7,
+                        100,
                     )
 
 
@@ -139,6 +168,7 @@ class TestGetLLMClient:
         with patch("backend.src.rag.llm_client.LLMClient") as mock_cls:
             from backend.src.rag.llm_client import get_llm_client  # noqa: E402
             import backend.src.rag.llm_client as _llm_mod
+
             _llm_mod._llm_client = None
             client = get_llm_client()
             assert client is not None

@@ -107,7 +107,9 @@ class TestAnalyticsCounters:
                 f"stats:anomaly:type:{current_hour}",
             ],
         }.get(pattern, [])
-        mock_client.get.side_effect = lambda key: "42" if key.endswith(current_hour) else "10"
+        mock_client.get.side_effect = lambda key: (
+            "42" if key.endswith(current_hour) else "10"
+        )
         mock_client.zrange.return_value = [("A1", 5.0)]
         mock_client.pfcount.return_value = 10
         mock_get_client.return_value = mock_client

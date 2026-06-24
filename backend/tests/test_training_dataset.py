@@ -1,4 +1,5 @@
 """Tests for backend.generator.training_dataset."""
+
 from __future__ import annotations
 
 import json
@@ -12,10 +13,13 @@ class TestGenerateBaseline:
     def test_generate_baseline_returns_rows(self):
         from backend.generator.training_dataset import generate_baseline
         import datetime
+
         t = datetime.datetime(2026, 3, 5, 9, 0, 0)
         import random
+
         rng = random.Random(42)
         from backend.generator.config import ATMS
+
         atm = ATMS[0]
 
         rows = generate_baseline(t, atm, rng)
@@ -31,6 +35,7 @@ class TestAnomalyInjectors:
         import datetime
         import random
         from backend.generator.config import ATMS
+
         self.t = datetime.datetime(2026, 3, 5, 9, 0, 0)
         self.rng = random.Random(42)
         self.atm = ATMS[0]
@@ -39,6 +44,7 @@ class TestAnomalyInjectors:
 
     def test_inject_a1(self, setup):
         from backend.generator.training_dataset import inject_a1
+
         rows = []
         inject_a1(rows, self.t, self.atm, self.corr_id)
         assert len(rows) == 4
@@ -47,6 +53,7 @@ class TestAnomalyInjectors:
 
     def test_inject_a2(self, setup):
         from backend.generator.training_dataset import inject_a2
+
         rows = []
         inject_a2(rows, self.t, self.atm, self.corr_id)
         assert len(rows) == 5
@@ -56,6 +63,7 @@ class TestAnomalyInjectors:
 
     def test_inject_a3(self, setup):
         from backend.generator.training_dataset import inject_a3
+
         rows = []
         inject_a3(rows, self.t, self.atm, self.corr_id)
         assert len(rows) > 0
@@ -65,6 +73,7 @@ class TestAnomalyInjectors:
 
     def test_inject_a4(self, setup):
         from backend.generator.training_dataset import inject_a4
+
         rows = []
         inject_a4(rows, self.t, self.atm, self.corr_id)
         assert len(rows) > 0
@@ -73,17 +82,23 @@ class TestAnomalyInjectors:
 
     def test_inject_a5(self, setup):
         from backend.generator.training_dataset import inject_a5
+
         rows = []
         inject_a5(rows, self.t, self.atm, self.corr_id)
         assert len(rows) > 0
         # A5 creates Kafka METRIC events with response_time_ms in payload
-        kafka_events = [r for r in rows if r.get("source") == "KAFKA" and r.get("event_type") == "METRIC"]
+        kafka_events = [
+            r
+            for r in rows
+            if r.get("source") == "KAFKA" and r.get("event_type") == "METRIC"
+        ]
         assert len(kafka_events) > 0
         payloads = [json.loads(r["raw_payload"]) for r in kafka_events]
         assert any("response_time_ms" in p for p in payloads)
 
     def test_inject_a6(self, setup):
         from backend.generator.training_dataset import inject_a6
+
         rows = []
         inject_a6(rows, self.t, self.atm, self.corr_id)
         assert len(rows) > 0
@@ -92,6 +107,7 @@ class TestAnomalyInjectors:
 
     def test_inject_a7(self, setup):
         from backend.generator.training_dataset import inject_a7
+
         rows = []
         inject_a7(rows, self.t, self.atm)
         assert len(rows) > 0
@@ -100,6 +116,7 @@ class TestAnomalyInjectors:
 class TestGenerate:
     def test_generate_creates_file(self):
         from backend.generator.training_dataset import generate
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             output_path = Path(f.name)
 

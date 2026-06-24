@@ -8,7 +8,9 @@ from backend.src.database.connection import get_conn, release_conn
 from backend.tests.helpers import reset_test_db
 
 
-def _insert_sample_rows(retention_days: int = 1, old_count: int = 3, new_count: int = 2):
+def _insert_sample_rows(
+    retention_days: int = 1, old_count: int = 3, new_count: int = 2
+):
     conn = get_conn()
     try:
         now = datetime.now(timezone.utc)
@@ -64,14 +66,17 @@ def _insert_sample_rows(retention_days: int = 1, old_count: int = 3, new_count: 
         release_conn(conn)
 
 
-@pytest.mark.parametrize('retention_days', [1])
+@pytest.mark.parametrize("retention_days", [1])
 def test_run_cleanup_deletes_old_rows(retention_days):
     reset_test_db()
 
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute('UPDATE retention_config SET retention_days = %s WHERE id = 1', (retention_days,))
+            cur.execute(
+                "UPDATE retention_config SET retention_days = %s WHERE id = 1",
+                (retention_days,),
+            )
         conn.commit()
     finally:
         release_conn(conn)
@@ -80,15 +85,15 @@ def test_run_cleanup_deletes_old_rows(retention_days):
 
     result = cleanup_mod.run_cleanup()
 
-    assert result['retention_days'] == retention_days
+    assert result["retention_days"] == retention_days
     for table, _, _ in cleanup_mod.TABLE_CONFIG:
-        assert table in result['deleted']
-        assert result['deleted'][table] >= 1
+        assert table in result["deleted"]
+        assert result["deleted"][table] >= 1
 
     conn2 = get_conn()
     try:
         with conn2.cursor() as cur:
-            cur.execute('SELECT COUNT(*) FROM events')
+            cur.execute("SELECT COUNT(*) FROM events")
             rows = cur.fetchone()[0]
         assert rows == 2
     finally:
@@ -101,7 +106,7 @@ def test_run_cleanup_defaults_to_7_when_no_config():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute('DELETE FROM retention_config WHERE id = 1')
+            cur.execute("DELETE FROM retention_config WHERE id = 1")
             old_ts = datetime.now(timezone.utc) - timedelta(days=31)
             cur.execute(
                 "INSERT INTO events (timestamp, source, message, payload) VALUES (%s, 'ATM_APP', 'old', %s)",
@@ -112,7 +117,7 @@ def test_run_cleanup_defaults_to_7_when_no_config():
         release_conn(conn)
 
     result = cleanup_mod.run_cleanup()
-    assert result['retention_days'] == 7
+    assert result["retention_days"] == 7
 
 
 def test_batched_delete_commits_between_batches(monkeypatch):
@@ -121,19 +126,19 @@ def test_batched_delete_commits_between_batches(monkeypatch):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute('UPDATE retention_config SET retention_days = 1 WHERE id = 1')
+            cur.execute("UPDATE retention_config SET retention_days = 1 WHERE id = 1")
 
             old_ts = datetime.now(timezone.utc) - timedelta(days=2)
             for i in range(7):
                 cur.execute(
                     "INSERT INTO events (timestamp, source, message, payload) VALUES (%s, 'ATM_APP', %s, %s)",
-                    (old_ts, f'old {i}', Json({})),
+                    (old_ts, f"old {i}", Json({})),
                 )
         conn.commit()
     finally:
         release_conn(conn)
 
-    monkeypatch.setattr(cleanup_mod, 'BATCH_SIZE', 2)
+    monkeypatch.setattr(cleanup_mod, "BATCH_SIZE", 2)
 
     result = cleanup_mod.run_cleanup()
-    assert result['deleted']['events'] == 7
+    assert result["deleted"]["events"] == 7

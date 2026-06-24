@@ -25,6 +25,7 @@ Configuration (env vars):
 Usage:
     python -m backend.src.anomaly_detection.ml.ml_detector
 """
+
 from __future__ import annotations
 
 import json
@@ -46,19 +47,24 @@ from backend.src.analytics.analytics_router import increment_anomaly_counter
 
 log = logging.getLogger(__name__)
 
-ARTIFACT_DIR              = Path(__file__).parent / "artifacts"
-WINDOW_SECONDS            = int(os.getenv("ML_WINDOW_SECONDS", "600"))
-CONFIDENCE_THRESHOLD      = 0.70
+ARTIFACT_DIR = Path(__file__).parent / "artifacts"
+WINDOW_SECONDS = int(os.getenv("ML_WINDOW_SECONDS", "600"))
+CONFIDENCE_THRESHOLD = 0.70
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.75"))
-WARMUP_SKIP_CYCLES        = int(os.getenv("ML_WARMUP_CYCLES", "20"))
-MLFLOW_TRACKING_URI       = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
-MLFLOW_EXPERIMENT         = "atm-anomaly-detection"
-ZSCORE_WINDOW_SIZE        = 20
-ZSCORE_THRESHOLD          = 3.0
+WARMUP_SKIP_CYCLES = int(os.getenv("ML_WARMUP_CYCLES", "20"))
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+MLFLOW_EXPERIMENT = "atm-anomaly-detection"
+ZSCORE_WINDOW_SIZE = 20
+ZSCORE_THRESHOLD = 3.0
 
 SEVERITY_MAP = {
-    "A1": "CRITICAL", "A2": "CRITICAL", "A3": "MAJOR",
-    "A4": "MAJOR",    "A5": "MAJOR",    "A6": "MAJOR", "A7": "HIGH",
+    "A1": "CRITICAL",
+    "A2": "CRITICAL",
+    "A3": "MAJOR",
+    "A4": "MAJOR",
+    "A5": "MAJOR",
+    "A6": "MAJOR",
+    "A7": "HIGH",
     "UNKNOWN": "HIGH",
 }
 TITLE_MAP = {
@@ -171,32 +177,35 @@ class RollingBaseline:
 
     def compute_baseline_features(self, features: np.ndarray) -> np.ndarray:
         z_scores = self.compute_z_scores(features)
-        return np.array([
-            float(np.max(np.abs(z_scores))),
-            float(np.mean(np.abs(z_scores))),
-            float(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD)),
-            float(np.max(z_scores)),
-            float(np.min(z_scores)),
-            float(np.mean(z_scores[z_scores > 0])) if np.any(z_scores > 0) else 0.0,
-            float(np.mean(z_scores[z_scores < 0])) if np.any(z_scores < 0) else 0.0,
-            int(np.any(np.abs(z_scores) > 5.0)),
-            int(np.any(np.abs(z_scores) > 4.0)),
-            int(np.any(np.abs(z_scores) > 3.0)),
-            float(np.std(z_scores)),
-            int(np.sum(np.abs(z_scores) > 2.0)),
-            int(np.any(np.abs(z_scores) > 3.0)),
-        ], dtype=np.float32)
+        return np.array(
+            [
+                float(np.max(np.abs(z_scores))),
+                float(np.mean(np.abs(z_scores))),
+                float(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD)),
+                float(np.max(z_scores)),
+                float(np.min(z_scores)),
+                float(np.mean(z_scores[z_scores > 0])) if np.any(z_scores > 0) else 0.0,
+                float(np.mean(z_scores[z_scores < 0])) if np.any(z_scores < 0) else 0.0,
+                int(np.any(np.abs(z_scores) > 5.0)),
+                int(np.any(np.abs(z_scores) > 4.0)),
+                int(np.any(np.abs(z_scores) > 3.0)),
+                float(np.std(z_scores)),
+                int(np.sum(np.abs(z_scores) > 2.0)),
+                int(np.any(np.abs(z_scores) > 3.0)),
+            ],
+            dtype=np.float32,
+        )
 
 
 class MLAnomalyDetector:
     def __init__(self):
-        self._iso:                 object | None = None
-        self._clf:                 object | None = None
-        self._le:                  object | None = None
-        self._scaler:              object | None = None
-        self._if_feature_indices:  list[int] | None = None
+        self._iso: object | None = None
+        self._clf: object | None = None
+        self._le: object | None = None
+        self._scaler: object | None = None
+        self._if_feature_indices: list[int] | None = None
         self._if_unknown_threshold: float = UNKNOWN_ANOMALY_THRESHOLD
-        self._loaded  = self._load_models()
+        self._loaded = self._load_models()
         if not self._loaded:
             self._download_models_from_s3()
             self._loaded = self._load_models()  # Retry after S3 download
@@ -214,10 +223,17 @@ class MLAnomalyDetector:
         self._warmup_cycles = 0
 
         import subprocess
+
         git_sha = os.getenv("GIT_COMMIT_SHA", "").strip()[:8]
         if not git_sha:
             try:
-                git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()[:8]
+                git_sha = (
+                    subprocess.check_output(
+                        ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
+                    )
+                    .decode()
+                    .strip()[:8]
+                )
             except Exception:
                 git_sha = "unknown"
 
@@ -229,21 +245,24 @@ class MLAnomalyDetector:
             self._mlflow_available = True
             log.info(
                 "MLAnomalyDetector initialized: models_loaded=%s, git_sha=%s, mlflow_uri=%s",
-                self._loaded, git_sha, MLFLOW_TRACKING_URI
+                self._loaded,
+                git_sha,
+                MLFLOW_TRACKING_URI,
             )
         except Exception as e:
             log.warning(
                 "MLflow unavailable (detection layers will still run): %s. "
                 "MLflow URI=%s",
-                e, MLFLOW_TRACKING_URI
+                e,
+                MLFLOW_TRACKING_URI,
             )
 
     def _load_models(self) -> bool:
         """Attempt to load model artifacts. Returns True on success."""
         try:
-            self._iso  = joblib.load(ARTIFACT_DIR / "isolation_forest.joblib")
-            self._clf  = joblib.load(ARTIFACT_DIR / "xgb_classifier.joblib")
-            self._le   = joblib.load(ARTIFACT_DIR / "label_encoder.joblib")
+            self._iso = joblib.load(ARTIFACT_DIR / "isolation_forest.joblib")
+            self._clf = joblib.load(ARTIFACT_DIR / "xgb_classifier.joblib")
+            self._le = joblib.load(ARTIFACT_DIR / "label_encoder.joblib")
             self._scaler = joblib.load(ARTIFACT_DIR / "scaler.joblib")
 
             indices_path = ARTIFACT_DIR / "if_feature_indices.json"
@@ -255,13 +274,17 @@ class MLAnomalyDetector:
             if threshold_path.exists():
                 with open(threshold_path) as f:
                     data = json.load(f)
-                    self._if_unknown_threshold = float(data.get("threshold", UNKNOWN_ANOMALY_THRESHOLD))
+                    self._if_unknown_threshold = float(
+                        data.get("threshold", UNKNOWN_ANOMALY_THRESHOLD)
+                    )
 
             self._loaded = True
-            log.info("ML models loaded from %s (indices=%s, threshold=%.4f)",
-                      ARTIFACT_DIR,
-                      "yes" if self._if_feature_indices else "no",
-                      self._if_unknown_threshold)
+            log.info(
+                "ML models loaded from %s (indices=%s, threshold=%.4f)",
+                ARTIFACT_DIR,
+                "yes" if self._if_feature_indices else "no",
+                self._if_unknown_threshold,
+            )
             return True
         except FileNotFoundError:
             log.warning("Model artifacts not found at %s", ARTIFACT_DIR)
@@ -280,14 +303,20 @@ class MLAnomalyDetector:
             return
 
         required_files = [
-            "xgb_classifier.joblib", "isolation_forest.joblib",
-            "label_encoder.joblib", "scaler.joblib",
-            "if_feature_indices.json", "if_unknown_threshold.json",
+            "xgb_classifier.joblib",
+            "isolation_forest.joblib",
+            "label_encoder.joblib",
+            "scaler.joblib",
+            "if_feature_indices.json",
+            "if_unknown_threshold.json",
         ]
 
         # Avoid redundant downloads
         if all((ARTIFACT_DIR / f).exists() for f in required_files):
-            log.info("Models already present locally at %s — skipping S3 download", ARTIFACT_DIR)
+            log.info(
+                "Models already present locally at %s — skipping S3 download",
+                ARTIFACT_DIR,
+            )
             return
 
         try:
@@ -307,9 +336,16 @@ class MLAnomalyDetector:
                 s3.download_file(bucket, key, str(local_path))
                 log.info("Downloaded %s from s3://%s/%s", filename, bucket, key)
 
-            log.info("S3 model download complete — all %d files downloaded", len(required_files))
+            log.info(
+                "S3 model download complete — all %d files downloaded",
+                len(required_files),
+            )
         except Exception as e:
-            log.warning("Failed to download models from S3 (%s): %s — using local artifacts", s3_path, e)
+            log.warning(
+                "Failed to download models from S3 (%s): %s — using local artifacts",
+                s3_path,
+                e,
+            )
 
     def _sagemaker_predict(self, features: np.ndarray) -> dict | None:
         """Invoke a SageMaker endpoint for inference.
@@ -366,7 +402,7 @@ class MLAnomalyDetector:
                         p = {}
                 pod = p.get("pod_name") or p.get("entity_id")
                 if pod and "atm" in str(pod).lower():
-                    match = re.search(r'(ATM-[A-Z]{2}-\d{4})', str(pod), re.IGNORECASE)
+                    match = re.search(r"(ATM-[A-Z]{2}-\d{4})", str(pod), re.IGNORECASE)
                     if match:
                         return match.group(1).upper()
 
@@ -398,7 +434,7 @@ class MLAnomalyDetector:
                 WHERE timestamp >= %s
                 ORDER BY timestamp ASC
                 """,
-                (window_start,)
+                (window_start,),
             )
             rows = [dict(r) for r in cur.fetchall()]
 
@@ -417,7 +453,7 @@ class MLAnomalyDetector:
                     WHERE timestamp >= %s
                     ORDER BY timestamp ASC
                     """,
-                    (fallback_start,)
+                    (fallback_start,),
                 )
                 rows = [dict(r) for r in cur.fetchall()]
                 window_start = fallback_start
@@ -434,17 +470,18 @@ class MLAnomalyDetector:
         a single anomaly incident without accumulating stale entries.
         """
         from datetime import timedelta
+
         window_start = datetime.now(timezone.utc) - timedelta(minutes=10)
         with get_cursor() as cur:
             if atm_id is None:
                 cur.execute(
                     "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id IS NULL AND is_active = 1 AND detected_at >= %s",
-                    (anomaly_type, window_start)
+                    (anomaly_type, window_start),
                 )
             else:
                 cur.execute(
                     "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id = %s AND is_active = 1 AND detected_at >= %s",
-                    (anomaly_type, atm_id, window_start)
+                    (anomaly_type, atm_id, window_start),
                 )
             return cur.fetchone() is not None
 
@@ -478,12 +515,14 @@ class MLAnomalyDetector:
         severity = SEVERITY_MAP.get(anomaly_type, "HIGH")
         sources = sources_involved or SOURCES_MAP.get(anomaly_type, [])
         action = recommended_action or RECOMMENDED_ACTIONS_MAP.get(anomaly_type)
-        exp_json = json.dumps({
-            "confidence": confidence,
-            "source": source,
-            "window_seconds": WINDOW_SECONDS,
-            **(explanation or {}),
-        })
+        exp_json = json.dumps(
+            {
+                "confidence": confidence,
+                "source": source,
+                "window_seconds": WINDOW_SECONDS,
+                **(explanation or {}),
+            }
+        )
 
         with get_cursor(commit=True) as cur:
             cur.execute(
@@ -505,26 +544,33 @@ class MLAnomalyDetector:
                     action,
                     json.dumps(sources),
                     correlation_id,
-                )
+                ),
             )
         log.info(
             "Saved anomaly %s (atm=%s, confidence=%.2f, source=%s)",
-            anomaly_type, atm_id, confidence, source
+            anomaly_type,
+            atm_id,
+            confidence,
+            source,
         )
 
-        self._last_saved_anomalies.append({
-            "anomaly_type": anomaly_type,
-            "atm_id": atm_id,
-            "model_confidence_score": confidence,
-            "severity": severity,
-            "title": title,
-            "explanation": json.loads(exp_json) if isinstance(exp_json, str) else exp_json,
-            "recommended_action": action,
-            "sources_involved": sources,
-            "correlation_id": correlation_id,
-            "source": source,
-            "detected_at": datetime.now(timezone.utc).isoformat(),
-        })
+        self._last_saved_anomalies.append(
+            {
+                "anomaly_type": anomaly_type,
+                "atm_id": atm_id,
+                "model_confidence_score": confidence,
+                "severity": severity,
+                "title": title,
+                "explanation": json.loads(exp_json)
+                if isinstance(exp_json, str)
+                else exp_json,
+                "recommended_action": action,
+                "sources_involved": sources,
+                "correlation_id": correlation_id,
+                "source": source,
+                "detected_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
         hour_bucket = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
         increment_anomaly_counter(anomaly_type, hour_bucket)
@@ -576,8 +622,11 @@ class MLAnomalyDetector:
 
         in_warmup = self._warmup_cycles <= WARMUP_SKIP_CYCLES
         if in_warmup:
-            log.info("Warmup cycle %d/%d — skipping UNKNOWN savings (typed anomalies still active).",
-                     self._warmup_cycles, WARMUP_SKIP_CYCLES)
+            log.info(
+                "Warmup cycle %d/%d — skipping UNKNOWN savings (typed anomalies still active).",
+                self._warmup_cycles,
+                WARMUP_SKIP_CYCLES,
+            )
 
         saved = 0
         heur_anomalies: list = []
@@ -639,7 +688,13 @@ class MLAnomalyDetector:
                 pred_idx = int(np.argmax(proba))
                 confidence = float(proba[pred_idx])
                 label = self._le.inverse_transform([pred_idx])[0]
-                log.info("ML[%s]: IF score=%.3f, XGB=%s (conf=%.2f)", entity_id, if_score, label, confidence)
+                log.info(
+                    "ML[%s]: IF score=%.3f, XGB=%s (conf=%.2f)",
+                    entity_id,
+                    if_score,
+                    label,
+                    confidence,
+                )
 
                 if label != "NORMAL" and confidence >= CONFIDENCE_THRESHOLD:
                     if not self._is_active(label, entity_id):
@@ -652,10 +707,23 @@ class MLAnomalyDetector:
                         )
                         saved += 1
                         ml_ensemble_detections.add((label, entity_id))
-                        log.info("ML Ensemble detected: %s (atm=%s, conf=%.2f)", label, entity_id, confidence)
+                        log.info(
+                            "ML Ensemble detected: %s (atm=%s, conf=%.2f)",
+                            label,
+                            entity_id,
+                            confidence,
+                        )
 
-                elif not in_warmup and label == "NORMAL" and if_score <= self._if_unknown_threshold:
-                    unknown_confidence = min(abs(if_score) / abs(self._if_unknown_threshold), 1.0) if self._if_unknown_threshold != 0 else 0.5
+                elif (
+                    not in_warmup
+                    and label == "NORMAL"
+                    and if_score <= self._if_unknown_threshold
+                ):
+                    unknown_confidence = (
+                        min(abs(if_score) / abs(self._if_unknown_threshold), 1.0)
+                        if self._if_unknown_threshold != 0
+                        else 0.5
+                    )
                     if not self._is_active("UNKNOWN", entity_id):
                         self._save_anomaly(
                             anomaly_type="UNKNOWN",
@@ -670,9 +738,17 @@ class MLAnomalyDetector:
                         )
                         saved += 1
                         ml_ensemble_detections.add(("UNKNOWN", entity_id))
-                        log.warning("ML Ensemble detected: UNKNOWN (atm=%s, if_score=%.3f)", entity_id, if_score)
+                        log.warning(
+                            "ML Ensemble detected: UNKNOWN (atm=%s, if_score=%.3f)",
+                            entity_id,
+                            if_score,
+                        )
 
-            log.info("ML: %d entity groups classified, %d anomalies saved", len(atm_groups), saved)
+            log.info(
+                "ML: %d entity groups classified, %d anomalies saved",
+                len(atm_groups),
+                saved,
+            )
 
         # ─────────────────────────────────────────────────────────────────────────
         # SageMaker cross-check: invoke the SageMaker endpoint for verification
@@ -682,8 +758,12 @@ class MLAnomalyDetector:
         sm_result = self._sagemaker_predict(global_features)
         if sm_result is not None:
             raw = sm_result.get("raw_prediction", "").strip()
-            log.info("SageMaker cross-check: %s | global rows=%d, local detections=%d",
-                     raw, len(rows), len(ml_ensemble_detections))
+            log.info(
+                "SageMaker cross-check: %s | global rows=%d, local detections=%d",
+                raw,
+                len(rows),
+                len(ml_ensemble_detections),
+            )
 
         # ─────────────────────────────────────────────────────────────────────────
         # Layer 2: ZSCORE DETECTION (Novel patterns — always runs)
@@ -695,7 +775,9 @@ class MLAnomalyDetector:
             n_deviating = int(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD))
             if not in_warmup and max_z > ZSCORE_THRESHOLD:
                 base_confidence = min(max_z / 5.0, 1.0)
-                attributed_atm = None  # Z-score is global — can't identify the culprit entity
+                attributed_atm = (
+                    None  # Z-score is global — can't identify the culprit entity
+                )
                 if not self._is_active("UNKNOWN", attributed_atm):
                     self._save_anomaly(
                         anomaly_type="UNKNOWN",
@@ -712,7 +794,9 @@ class MLAnomalyDetector:
                     saved += 1
                     log.warning(
                         "Z-score detected: UNKNOWN (max_z=%.2f, n_deviating=%d, atm=%s)",
-                        max_z, n_deviating, attributed_atm
+                        max_z,
+                        n_deviating,
+                        attributed_atm,
                     )
 
         # ─────────────────────────────────────────────────────────────────────────
@@ -733,9 +817,11 @@ class MLAnomalyDetector:
             self._save_anomaly(
                 anomaly_type=atype,
                 atm_id=a_atm,
-                confidence=0.95 if atype in {"A1","A2"} else 0.85,
+                confidence=0.95 if atype in {"A1", "A2"} else 0.85,
                 source="HEURISTIC",
-                explanation=json.loads(a.get("explanation", "{}")) if isinstance(a.get("explanation"), str) else (a.get("explanation") or {}),
+                explanation=json.loads(a.get("explanation", "{}"))
+                if isinstance(a.get("explanation"), str)
+                else (a.get("explanation") or {}),
                 sources_involved=a.get("sources_involved"),
                 recommended_action=a.get("recommended_action"),
                 correlation_id=a.get("correlation_id"),
@@ -751,13 +837,17 @@ class MLAnomalyDetector:
                     run_name=f"inference_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
                     nested=True,
                 ):
-                    mlflow.log_metric("ml_ensemble_anomalies", len(ml_ensemble_detections))
+                    mlflow.log_metric(
+                        "ml_ensemble_anomalies", len(ml_ensemble_detections)
+                    )
                     mlflow.log_metric("heuristic_anomalies", len(heur_anomalies))
                     mlflow.log_metric("anomalies_saved", saved)
         except Exception as e:
             log.debug("MLflow logging skipped (not critical): %s", e)
 
-        log.info("Inference cycle complete: %d rows, %d anomalies saved", len(rows), saved)
+        log.info(
+            "Inference cycle complete: %d rows, %d anomalies saved", len(rows), saved
+        )
         return saved
 
     def _get_recent_anomalies(self, n: int) -> list[dict]:

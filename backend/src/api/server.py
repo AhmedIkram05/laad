@@ -3,6 +3,7 @@
 Run with:
     uvicorn backend.src.api.server:app --reload --port 8000
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,7 +48,12 @@ def _ensure_db_initialized() -> None:
             logger.info("Database initialised and seeded successfully")
             return
         except Exception as e:
-            logger.error("Database initialisation failed (attempt %d/%d): %s", attempt, max_retries, e)
+            logger.error(
+                "Database initialisation failed (attempt %d/%d): %s",
+                attempt,
+                max_retries,
+                e,
+            )
             if attempt < max_retries:
                 time.sleep(2)
             else:
@@ -66,7 +72,9 @@ async def lifespan(app: FastAPI):
     else:
         _check_and_retrain_on_startup()
 
-    scheduler.add_job(run_cleanup, "interval", hours=1, id="cleanup", misfire_grace_time=60)
+    scheduler.add_job(
+        run_cleanup, "interval", hours=1, id="cleanup", misfire_grace_time=60
+    )
     scheduler.start()
     logger.info("Schedulers started: cleanup (1h)")
     yield
@@ -81,18 +89,22 @@ def _check_and_retrain_on_startup() -> None:
         logger.info("No model artifacts found — training on startup")
         _do_retrain()
         return
-    
+
     # Try to load models to see if they're valid (handles scikit-learn version skew)
     try:
         import joblib
+
         joblib.load(model_file)
         joblib.load(ARTIFACT_DIR / "isolation_forest.joblib")
         joblib.load(ARTIFACT_DIR / "label_encoder.joblib")
         logger.info("Model artifacts are valid — using existing models")
         return
     except Exception as e:
-        logger.warning("Model artifacts exist but are corrupted or incompatible: %s — retraining", e)
-    
+        logger.warning(
+            "Model artifacts exist but are corrupted or incompatible: %s — retraining",
+            e,
+        )
+
     logger.info("No valid model artifacts found — training on startup")
     _do_retrain()
 
@@ -102,6 +114,7 @@ def _do_retrain() -> None:
     try:
         import importlib
         from backend.src.anomaly_detection.ml import train
+
         importlib.reload(train)
         train.train()
         logger.info("Startup retrain complete")

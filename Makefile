@@ -10,9 +10,11 @@ help:
 	@echo "  make clean       		Stop all containers and remove ALL volumes"
 	@echo "  make logs         		Follow all service logs"
 	@echo "  make train        		Generate training data + retrain ML models (XGBoost & IF)"
-	@echo "  make test         		Run ALL tests (backend + frontend) in Docker"
+	@echo "  make test         		Run ALL tests (backend + frontend + E2E) in Docker"
 	@echo "  make test-backend 		Run backend tests only"
 	@echo "  make test-frontend 		Run frontend tests only"
+	@echo "  make test-e2e     		Run Playwright E2E tests (starts full stack)"
+	@echo "  make test-e2e-quick		Run Playwright E2E tests (existing stack)"
 	@echo ""
 	@echo "Services:"
 	@echo "  Frontend UI:       		http://localhost:5173"
@@ -109,7 +111,7 @@ train:
 
 # ── Run Tests ──────────────────────────────────────────────────────────────
 
-test: test-backend test-frontend
+test: test-backend test-frontend test-e2e
 
 test-backend:
 	@echo "==> Stopping any leftover test containers..."
@@ -131,3 +133,29 @@ test-frontend:
 	docker compose run --rm frontend-test
 	@echo ""
 	@echo "✓ Frontend tests complete!"
+
+test-e2e:
+	@echo "==> Starting full stack for E2E tests..."
+	docker compose up -d postgres kafka kafka-init chromadb redis ollama backend frontend
+	@echo "==> Waiting for services to be healthy..."
+	@sleep 15
+	docker compose run --rm --build playwright
+	@echo "==> Stopping E2E test stack..."
+	-docker compose stop playwright 2>/dev/null; true
+	-docker compose rm -f playwright 2>/dev/null; true
+	@echo ""
+	@echo "✓ E2E tests complete!"
+
+test-e2e-quick:
+	@echo "==> Running E2E tests against existing stack (assumes services are up)..."
+	docker compose run --rm playwright
+	@echo ""
+	@echo "✓ E2E tests complete!"
+
+# ── IaC Compliance ─────────────────────────────────────────────────────────
+
+checkov:
+	@echo "==> Running checkov IaC compliance checks..."
+	python3 scripts/checkov-compliance.py
+	@echo ""
+	@echo "✓ checkov compliance checks complete!"

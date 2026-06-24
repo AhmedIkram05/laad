@@ -61,11 +61,15 @@ def test_missing_and_malformed_token(client_and_conn):
 
 def test_register_success(client_and_conn):
     client, conn = client_and_conn
-    resp = client.post("/auth/register", json={"username": "newuser", "password": "secret123"})
+    resp = client.post(
+        "/auth/register", json={"username": "newuser", "password": "secret123"}
+    )
     assert resp.status_code == 201, resp.text
 
     with conn.cursor() as cur:
-        cur.execute("SELECT username, role FROM users WHERE username = %s", ("newuser",))
+        cur.execute(
+            "SELECT username, role FROM users WHERE username = %s", ("newuser",)
+        )
         row = cur.fetchone()
 
     assert row is not None
@@ -75,7 +79,9 @@ def test_register_success(client_and_conn):
 
 def test_register_duplicate_username(client_and_conn):
     client, _ = client_and_conn
-    resp = client.post("/auth/register", json={"username": "admin", "password": "whatever"})
+    resp = client.post(
+        "/auth/register", json={"username": "admin", "password": "whatever"}
+    )
     assert resp.status_code == 409
 
 
@@ -98,7 +104,12 @@ def test_admin_create_user_endpoint(client_and_conn):
 
     r = client.post(
         "/admin/users",
-        json={"username": "created_admin", "password": "adminpass", "confirm_password": "adminpass", "role": "admin"},
+        json={
+            "username": "created_admin",
+            "password": "adminpass",
+            "confirm_password": "adminpass",
+            "role": "admin",
+        },
         headers=headers,
     )
     assert r.status_code == 201, r.text
@@ -107,14 +118,21 @@ def test_admin_create_user_endpoint(client_and_conn):
     assert data["role"] == "admin"
 
     client.post("/auth/register", json={"username": "plainuser", "password": "pass123"})
-    resp2 = client.post("/auth/login", data={"username": "plainuser", "password": "pass123"})
+    resp2 = client.post(
+        "/auth/login", data={"username": "plainuser", "password": "pass123"}
+    )
     assert resp2.status_code == 200
     user_token = resp2.json()["access_token"]
     headers_user = {"Authorization": f"Bearer {user_token}"}
 
     forbidden = client.post(
         "/admin/users",
-        json={"username": "nope", "password": "x", "confirm_password": "x", "role": "user"},
+        json={
+            "username": "nope",
+            "password": "x",
+            "confirm_password": "x",
+            "role": "user",
+        },
         headers=headers_user,
     )
     assert forbidden.status_code == 403

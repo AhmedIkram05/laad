@@ -15,10 +15,10 @@ from backend.src.rag.config import config
 logger = logging.getLogger(__name__)
 
 FREE_MODEL_CHAIN = [
-    "deepseek/deepseek-v3-0327:free",   # Latest DeepSeek V3
+    "deepseek/deepseek-v3-0327:free",  # Latest DeepSeek V3
     "meta-llama/llama-4-maverick:free",  # Llama 4 Maverick
-    "qwen/qwen3-235b-a22b:free",         # Qwen 3 (largest)
-    "deepseek/deepseek-r1:free",         # DeepSeek R1 (reasoning)
+    "qwen/qwen3-235b-a22b:free",  # Qwen 3 (largest)
+    "deepseek/deepseek-r1:free",  # DeepSeek R1 (reasoning)
 ]
 
 RATE_LIMIT_WINDOW = 60
@@ -32,7 +32,11 @@ RETRY_DELAY = 2.0
 class RateLimiter:
     """Simple in-memory token bucket rate limiter."""
 
-    def __init__(self, max_requests: int = RATE_LIMIT_MAX_REQUESTS, window_seconds: int = RATE_LIMIT_WINDOW):
+    def __init__(
+        self,
+        max_requests: int = RATE_LIMIT_MAX_REQUESTS,
+        window_seconds: int = RATE_LIMIT_WINDOW,
+    ):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
@@ -59,6 +63,7 @@ _rate_limiter = RateLimiter()
 @dataclass
 class LLMResponse:
     """Response from LLM with metadata."""
+
     text: str
     raw_response: dict
     model: str
@@ -82,40 +87,50 @@ class LLMClient:
         providers = []
 
         if config.ollama_api_key:
-            providers.append({
-                "name": "ollama",
-                "model": config.ollama_model,
-                "api_key": config.ollama_api_key,
-                "base_url": config.ollama_base_url,
-            })
+            providers.append(
+                {
+                    "name": "ollama",
+                    "model": config.ollama_model,
+                    "api_key": config.ollama_api_key,
+                    "base_url": config.ollama_base_url,
+                }
+            )
             for fallback_model in config.ollama_fallback_models:
                 if fallback_model.strip():
-                    providers.append({
-                        "name": "ollama",
-                        "model": fallback_model.strip(),
-                        "api_key": config.ollama_api_key,
-                        "base_url": config.ollama_base_url,
-                    })
+                    providers.append(
+                        {
+                            "name": "ollama",
+                            "model": fallback_model.strip(),
+                            "api_key": config.ollama_api_key,
+                            "base_url": config.ollama_base_url,
+                        }
+                    )
 
         if config.openrouter_api_key:
             primary = config.primary_model
             if primary.startswith("openrouter/"):
                 primary = primary.replace("openrouter/", "")
-            providers.append({
-                "name": "openrouter",
-                "model": primary,
-                "api_key": config.openrouter_api_key,
-                "base_url": "https://openrouter.ai/api/v1",
-            })
+            providers.append(
+                {
+                    "name": "openrouter",
+                    "model": primary,
+                    "api_key": config.openrouter_api_key,
+                    "base_url": "https://openrouter.ai/api/v1",
+                }
+            )
 
         fallback = config.fallback_model
         if fallback.startswith("openrouter/"):
             fallback = fallback.replace("openrouter/", "")
 
         if not providers:
-            logger.warning("No LLM providers available - RAG will return error messages")
+            logger.warning(
+                "No LLM providers available - RAG will return error messages"
+            )
 
-        logger.info(f"Initialized {len(providers) if providers else 0} LLM providers: {[p['name'] for p in providers] if providers else []}")
+        logger.info(
+            f"Initialized {len(providers) if providers else 0} LLM providers: {[p['name'] for p in providers] if providers else []}"
+        )
         return providers
 
     def generate(
@@ -127,11 +142,15 @@ class LLMClient:
     ) -> LLMResponse:
         """Generate response with automatic fallback to next provider on failure."""
         if not self.providers:
-                raise RuntimeError("No LLM providers configured. Set at least one of OLLAMA_API_KEY or OPENROUTER_API_KEY environment variables.")
+            raise RuntimeError(
+                "No LLM providers configured. Set at least one of OLLAMA_API_KEY or OPENROUTER_API_KEY environment variables."
+            )
 
         if _rate_limiter.is_rate_limited():
             wait = _rate_limiter.wait_time()
-            raise RuntimeError(f"Rate limit exceeded. Please wait {wait:.0f}s before retrying.")
+            raise RuntimeError(
+                f"Rate limit exceeded. Please wait {wait:.0f}s before retrying."
+            )
 
         last_error = None
 
@@ -146,11 +165,17 @@ class LLMClient:
                         temperature=temperature,
                         max_tokens=max_tokens,
                     )
-                    logger.info(f"Successfully generated response using {provider['name']} (attempt {attempt+1})")
+                    logger.info(
+                        f"Successfully generated response using {provider['name']} (attempt {attempt + 1})"
+                    )
                     return response
                 except requests.exceptions.Timeout:
-                    logger.warning(f"Provider {provider['name']} timed out (attempt {attempt+1}/{MAX_RETRIES+1})")
-                    last_error = RuntimeError(f"Request timed out after {REQUEST_TIMEOUT}s")
+                    logger.warning(
+                        f"Provider {provider['name']} timed out (attempt {attempt + 1}/{MAX_RETRIES + 1})"
+                    )
+                    last_error = RuntimeError(
+                        f"Request timed out after {REQUEST_TIMEOUT}s"
+                    )
                 except requests.exceptions.HTTPError as e:
                     if e.response is not None and e.response.status_code == 429:
                         retry_after = 5
@@ -161,10 +186,14 @@ class LLMClient:
                                 pass
                         rate_limit_retries += 1
                         if rate_limit_retries > MAX_RATE_LIMIT_RETRIES:
-                            logger.warning(f"Provider {provider['name']} rate limit retries exhausted")
+                            logger.warning(
+                                f"Provider {provider['name']} rate limit retries exhausted"
+                            )
                             last_error = e
                             break
-                        logger.warning(f"Provider {provider['name']} rate limited, waiting {retry_after+1}s (retry {rate_limit_retries}/{MAX_RATE_LIMIT_RETRIES})")
+                        logger.warning(
+                            f"Provider {provider['name']} rate limited, waiting {retry_after + 1}s (retry {rate_limit_retries}/{MAX_RATE_LIMIT_RETRIES})"
+                        )
                         last_error = e
                         time.sleep(retry_after + 1)
                         continue
@@ -193,9 +222,13 @@ class LLMClient:
         provider_name = provider["name"]
 
         if provider_name == "ollama":
-            return self._call_ollama(provider, prompt, system_prompt, temperature, max_tokens)
+            return self._call_ollama(
+                provider, prompt, system_prompt, temperature, max_tokens
+            )
         elif provider_name == "openrouter":
-            return self._call_openrouter(provider, prompt, system_prompt, temperature, max_tokens)
+            return self._call_openrouter(
+                provider, prompt, system_prompt, temperature, max_tokens
+            )
         else:
             raise ValueError(f"Unknown provider: {provider_name}")
 
@@ -228,7 +261,9 @@ class LLMClient:
             "stream": False,
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+        response = requests.post(
+            url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT
+        )
         response.raise_for_status()
 
         data = response.json()
@@ -283,11 +318,15 @@ class LLMClient:
         }
 
         # Use model fallback chain for automatic switching on rate limit
-        if provider["name"] == "openrouter" and "openrouter" in provider.get("base_url", ""):
+        if provider["name"] == "openrouter" and "openrouter" in provider.get(
+            "base_url", ""
+        ):
             payload["models"] = FREE_MODEL_CHAIN
             logger.info(f"Using OpenRouter model fallback chain: {FREE_MODEL_CHAIN}")
 
-        response = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+        response = requests.post(
+            url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT
+        )
         response.raise_for_status()
 
         data = response.json()

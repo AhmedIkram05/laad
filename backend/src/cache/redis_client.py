@@ -85,7 +85,9 @@ def get_redis_client() -> Optional[redis.Redis]:
 
         _redis_client = redis.Redis(connection_pool=_redis_connection_pool)
         _redis_client.ping()
-        logger.info(f"Connected to Redis at {config['host']}:{config['port']} (db={config['db']})")
+        logger.info(
+            f"Connected to Redis at {config['host']}:{config['port']} (db={config['db']})"
+        )
         return _redis_client
 
     except Exception as e:

@@ -21,6 +21,7 @@ Usage:
     # or
     syncer.start(interval=60)  # Run continuously
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,7 +65,7 @@ class AnomalySyncer:
             query += " AND id NOT IN %s"
             params.append(tuple(self._synced_ids))
         query += " ORDER BY detected_at DESC LIMIT 100"
-        
+
         try:
             with get_cursor(commit=True) as cur:
                 cur.execute(query, tuple(params))
@@ -92,7 +93,7 @@ class AnomalySyncer:
             f"ATM: {anomaly['atm_id']}",
             f"Detected: {anomaly['detected_at'].isoformat() if anomaly.get('detected_at') else 'N/A'}",
         ]
-        
+
         explanation = anomaly.get("explanation")
         if explanation:
             if isinstance(explanation, str):
@@ -100,18 +101,18 @@ class AnomalySyncer:
             elif isinstance(explanation, dict):
                 details = ", ".join(f"{k}={v}" for k, v in explanation.items() if v)
                 parts.append(f"Details: {details[:500]}")
-        
+
         return " | ".join(parts)
 
     def sync_once(self) -> dict:
         """Run a single sync cycle. Returns summary of synced anomalies."""
         if not self._chroma_buffer or not self._chroma_buffer._ready:
             return {"synced": 0, "status": "chroma_unavailable"}
-        
+
         anomalies = self._get_unsynced_anomalies()
         if not anomalies:
             return {"synced": 0, "status": "no_new_anomalies"}
-        
+
         synced_count = 0
         for anomaly in anomalies:
             try:
@@ -123,7 +124,7 @@ class AnomalySyncer:
                 )
                 severity = anomaly.get("severity", "INFO")
                 anomaly_type = anomaly["anomaly_type"]
-                
+
                 self._chroma_buffer.add_event(
                     atm_id=anomaly["atm_id"],
                     text=text,
@@ -131,26 +132,27 @@ class AnomalySyncer:
                     severity=severity,
                     anomaly_tag=anomaly_type,
                 )
-                
+
                 self._synced_ids.add(anomaly["id"])
                 synced_count += 1
-                
+
             except Exception as e:
                 log.warning("Failed to sync anomaly %d: %s", anomaly["id"], e)
-        
+
         if synced_count > 0:
             self._chroma_buffer.flush_all()
             log.info("Synced %d anomalies to ChromaDB", synced_count)
-        
+
         return {"synced": synced_count, "status": "success"}
 
     def run(self, interval: int = 60) -> None:
         """Run the syncer continuously.
-        
+
         Args:
             interval: Seconds between sync cycles (default: 60)
         """
         import time
+
         log.info("Starting anomaly syncer (interval=%ds)", interval)
         while True:
             try:
@@ -169,7 +171,10 @@ def run_syncer(interval: int = 60) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="Sync anomalies to ChromaDB")
-    parser.add_argument("--interval", type=int, default=60, help="Sync interval in seconds")
+    parser.add_argument(
+        "--interval", type=int, default=60, help="Sync interval in seconds"
+    )
     args = parser.parse_args()
     run_syncer(args.interval)

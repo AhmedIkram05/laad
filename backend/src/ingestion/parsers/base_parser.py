@@ -4,6 +4,7 @@ Provides a resilient BaseParser class that catches parsing errors and
 records bad inputs to the `ingestion_errors` table. Designed to be
 subclassed for source-specific parsers.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -36,7 +37,7 @@ class BaseParser(ABC):
     def parse_line(self, line: str) -> Optional[Dict[str, Any]]:
         """Parse a single input line and return a mapping or raise on error."""
 
-    def process_line(self, line: str, source: str = 'UNKNOWN') -> bool:
+    def process_line(self, line: str, source: str = "UNKNOWN") -> bool:
         """Safely process a single line.
 
         Returns True if parsing succeeded (even if parse_line returns None),
@@ -61,52 +62,64 @@ class BaseParser(ABC):
         """
         self._buffer.clear()
 
-    def _upsert_atm_reference(self, atm_id: str, os_version: str = None, location_code: str = None):
+    def _upsert_atm_reference(
+        self, atm_id: str, os_version: str = None, location_code: str = None
+    ):
         """Buffer ATM reference data discovered dynamically in the logging streams."""
-        cached = self._atm_ref_cache.setdefault(atm_id, {'os_version': None, 'location_code': None})
-        
+        cached = self._atm_ref_cache.setdefault(
+            atm_id, {"os_version": None, "location_code": None}
+        )
+
         needs_update = False
-        if os_version and cached['os_version'] != os_version:
-            cached['os_version'] = os_version
+        if os_version and cached["os_version"] != os_version:
+            cached["os_version"] = os_version
             needs_update = True
-        if location_code and cached['location_code'] != location_code:
-            cached['location_code'] = location_code
+        if location_code and cached["location_code"] != location_code:
+            cached["location_code"] = location_code
             needs_update = True
-            
+
         if needs_update:
-                self.ref_buffer.append((atm_id, os_version, location_code))
-                if len(self.ref_buffer) >= self.batch_size:
-                    conn = None
-                    try:
-                        from backend.src.database.connection import get_conn, release_conn
-                        conn = get_conn()
-                        self._flush_ref_buffer(conn)
-                    finally:
-                        if conn:
-                            try:
-                                release_conn(conn)
-                            except Exception:
-                                pass
+            self.ref_buffer.append((atm_id, os_version, location_code))
+            if len(self.ref_buffer) >= self.batch_size:
+                conn = None
+                try:
+                    from backend.src.database.connection import get_conn, release_conn
+
+                    conn = get_conn()
+                    self._flush_ref_buffer(conn)
+                finally:
+                    if conn:
+                        try:
+                            release_conn(conn)
+                        except Exception:
+                            pass
 
     def _flush_ref_buffer(self, conn) -> None:
         if not self.ref_buffer:
             return
-        sql = '''
+        sql = """
             INSERT INTO atms (atm_id, os_version, location_code)
             VALUES %s
             ON CONFLICT (atm_id) DO UPDATE SET
                 os_version = COALESCE(EXCLUDED.os_version, atms.os_version),
                 location_code = COALESCE(EXCLUDED.location_code, atms.location_code)
-        '''
+        """
         try:
             from backend.src.ingestion.write_helper import write_batch
+
             write_batch(conn, sql, self.ref_buffer)
         except Exception:
-            logger.exception('Failed to flush dynamic ATM reference updates')
+            logger.exception("Failed to flush dynamic ATM reference updates")
         self.ref_buffer.clear()
 
     @classmethod
-    def validate_sample(cls, file_path: str, db_path: Optional[str] = None, sample_lines: int = 10, max_fail_ratio: float = 0.3) -> bool:
+    def validate_sample(
+        cls,
+        file_path: str,
+        db_path: Optional[str] = None,
+        sample_lines: int = 10,
+        max_fail_ratio: float = 0.3,
+    ) -> bool:
         """
         Class-level sample validator that uses the parser's own `parse_line` logic.
 
@@ -144,7 +157,9 @@ class BaseParser(ABC):
         fail_ratio = fails / total
         return fail_ratio <= max_fail_ratio
 
-    def insert_ingestion_error(self, error_detail: str, raw_input: str, source: str = 'UNKNOWN') -> None:
+    def insert_ingestion_error(
+        self, error_detail: str, raw_input: str, source: str = "UNKNOWN"
+    ) -> None:
         """Write a row to `ingestion_errors` table, best-effort.
 
         This never raises; failures are logged only.
@@ -188,28 +203,35 @@ class EventDataParser(BaseParser):
                 "INSERT INTO events (timestamp, source, atm_id, correlation_id, transaction_id,"
                 " event_type, severity, message, payload) VALUES %s"
             )
-            params = [(
-                row.get('timestamp'),
-                row.get('source'),
-                row.get('atm_id'),
-                row.get('correlation_id'),
-                row.get('transaction_id'),
-                row.get('event_type'),
-                row.get('severity'),
-                row.get('message'),
-                row.get('payload'),
-            ) for row in self._buffer]
+            params = [
+                (
+                    row.get("timestamp"),
+                    row.get("source"),
+                    row.get("atm_id"),
+                    row.get("correlation_id"),
+                    row.get("transaction_id"),
+                    row.get("event_type"),
+                    row.get("severity"),
+                    row.get("message"),
+                    row.get("payload"),
+                )
+                for row in self._buffer
+            ]
             write_batch(conn, sql, params)
         except Exception:
             logger.exception("Failed to flush EventDataParser buffer")
             # On failure, write ingestion_errors for visibility
             for row in self._buffer:
                 try:
-                    self.insert_ingestion_error('flush_failed', str(row), source=row.get('source', 'ATM_APP'))
+                    self.insert_ingestion_error(
+                        "flush_failed", str(row), source=row.get("source", "ATM_APP")
+                    )
                 except Exception:
-                    logger.exception("Failed to write ingestion error during flush failure")
+                    logger.exception(
+                        "Failed to write ingestion error during flush failure"
+                    )
         finally:
-            if 'conn' in locals() and conn:
+            if "conn" in locals() and conn:
                 self._flush_ref_buffer(conn)
                 try:
                     release_conn(conn)
@@ -237,24 +259,33 @@ class MetricDataParser(BaseParser):
                 "INSERT INTO metrics (timestamp, source, entity_id, metric_name, metric_value, payload)"
                 " VALUES %s"
             )
-            params = [(
-                row.get('timestamp'),
-                row.get('source'),
-                row.get('entity_id'),
-                row.get('metric_name'),
-                row.get('metric_value'),
-                row.get('payload'),
-            ) for row in self._buffer]
+            params = [
+                (
+                    row.get("timestamp"),
+                    row.get("source"),
+                    row.get("entity_id"),
+                    row.get("metric_name"),
+                    row.get("metric_value"),
+                    row.get("payload"),
+                )
+                for row in self._buffer
+            ]
             write_batch(conn, sql, params)
         except Exception:
             logger.exception("Failed to flush MetricDataParser buffer")
             for row in self._buffer:
                 try:
-                    self.insert_ingestion_error('metrics_flush_failed', str(row), source=row.get('source', 'METRIC'))
+                    self.insert_ingestion_error(
+                        "metrics_flush_failed",
+                        str(row),
+                        source=row.get("source", "METRIC"),
+                    )
                 except Exception:
-                    logger.exception("Failed to write ingestion error during metrics flush failure")
+                    logger.exception(
+                        "Failed to write ingestion error during metrics flush failure"
+                    )
         finally:
-            if 'conn' in locals() and conn:
+            if "conn" in locals() and conn:
                 self._flush_ref_buffer(conn)
                 try:
                     release_conn(conn)

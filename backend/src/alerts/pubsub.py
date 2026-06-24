@@ -47,7 +47,9 @@ def publish_anomaly(anomaly_data: Dict[str, Any]) -> bool:
         if atm_id:
             client.zincrby(ATM_RANK_KEY, 1, atm_id)
 
-        logger.debug(f"Published anomaly to Redis Pub/Sub: {anomaly_data.get('anomaly_type')}")
+        logger.debug(
+            f"Published anomaly to Redis Pub/Sub: {anomaly_data.get('anomaly_type')}"
+        )
         return True
 
     except Exception as e:

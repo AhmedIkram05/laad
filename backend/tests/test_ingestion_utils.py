@@ -1,4 +1,5 @@
 """Tests for backend.src.ingestion.utils.parse_to_utc_iso."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -47,12 +48,16 @@ class TestParseToUtcIso:
     def test_dateutil_available(self, monkeypatch):
         """When dateutil is available it should be preferred."""
         from unittest.mock import MagicMock
+
         mock_parser = MagicMock()
-        mock_parser.parse.return_value = datetime(2026, 3, 5, 9, 15, 0, tzinfo=timezone.utc)
+        mock_parser.parse.return_value = datetime(
+            2026, 3, 5, 9, 15, 0, tzinfo=timezone.utc
+        )
         mock_tz = MagicMock()
         mock_tz.UTC = timezone.utc
 
         import backend.src.ingestion.utils as utils
+
         monkeypatch.setattr(utils, "_dateutil_parser", mock_parser)
         monkeypatch.setattr(utils, "_dateutil_tz", mock_tz)
 
@@ -63,16 +68,16 @@ class TestParseToUtcIso:
     def test_dateutil_parses_naive_and_adds_utc(self, monkeypatch):
         """When dateutil returns a naive datetime, UTC should be added."""
         from unittest.mock import MagicMock
+
         mock_parser = MagicMock()
         mock_parser.parse.return_value = datetime(2026, 3, 5, 9, 15, 0)
         mock_tz = MagicMock()
         mock_tz.UTC = timezone.utc
 
         import backend.src.ingestion.utils as utils
+
         monkeypatch.setattr(utils, "_dateutil_parser", mock_parser)
         monkeypatch.setattr(utils, "_dateutil_tz", mock_tz)
 
         result = parse_to_utc_iso("2026-03-05T09:15:00")
         assert result is not None
-
-

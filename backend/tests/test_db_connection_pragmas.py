@@ -18,7 +18,7 @@ def test_get_conn_allows_cross_thread_write_via_pool():
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO events (timestamp, source, message, payload) VALUES (%s, 'TEST', %s, %s)",
-                    (datetime.now(timezone.utc), 't1', Json({})),
+                    (datetime.now(timezone.utc), "t1", Json({})),
                 )
             conn.commit()
             errors.put(None)
@@ -38,7 +38,7 @@ def test_get_conn_allows_cross_thread_write_via_pool():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute('SELECT COUNT(*) FROM events')
+            cur.execute("SELECT COUNT(*) FROM events")
             rows = cur.fetchone()[0]
         assert rows >= 1
     finally:

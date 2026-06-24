@@ -1,4 +1,5 @@
 """Unit tests for event handler."""
+
 from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
@@ -10,13 +11,15 @@ class MockChromaBuffer:
         self.events_added = []
 
     def add_event(self, atm_id, text, timestamp, severity=None, anomaly_tag=None):
-        self.events_added.append({
-            "atm_id": atm_id,
-            "text": text,
-            "timestamp": timestamp,
-            "severity": severity,
-            "anomaly_tag": anomaly_tag,
-        })
+        self.events_added.append(
+            {
+                "atm_id": atm_id,
+                "text": text,
+                "timestamp": timestamp,
+                "severity": severity,
+                "anomaly_tag": anomaly_tag,
+            }
+        )
 
 
 class TestHandleEvent:

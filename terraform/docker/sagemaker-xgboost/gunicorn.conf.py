@@ -1,4 +1,5 @@
 """Gunicorn configuration for SageMaker XGBoost serving container."""
+
 import multiprocessing
 import os
 

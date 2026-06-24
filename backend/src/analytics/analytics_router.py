@@ -21,7 +21,9 @@ UNIQUE_ATMS_KEY = "stats:unique:atms"
 def get_events_timeline(
     hours: int = Query(24, ge=0, le=168),
     bucket_minutes: int = Query(60, ge=5, le=1440),
-    sources: Optional[str] = Query(None, description="Comma-separated sources: ATM_APP,HARDWARE,TERMINAL_HANDLER")
+    sources: Optional[str] = Query(
+        None, description="Comma-separated sources: ATM_APP,HARDWARE,TERMINAL_HANDLER"
+    ),
 ):
     """
     Returns time-bucketed event counts per source with anomaly markers.
@@ -29,12 +31,18 @@ def get_events_timeline(
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cutoff_time = datetime(2000, 1, 1, tzinfo=timezone.utc) if hours == 0 else datetime.now(timezone.utc) - timedelta(hours=hours)
+            cutoff_time = (
+                datetime(2000, 1, 1, tzinfo=timezone.utc)
+                if hours == 0
+                else datetime.now(timezone.utc) - timedelta(hours=hours)
+            )
             bucket_seconds = bucket_minutes * 60
 
             source_list = []
             if sources:
-                source_list = [s.strip().upper() for s in sources.split(",") if s.strip()]
+                source_list = [
+                    s.strip().upper() for s in sources.split(",") if s.strip()
+                ]
 
             if source_list:
                 placeholders = ",".join(["%s"] * len(source_list))
@@ -47,7 +55,7 @@ def get_events_timeline(
 
             events_query = f"""
                 WITH time_buckets AS (
-                    SELECT 
+                    SELECT
                         to_timestamp(
                             (EXTRACT(EPOCH FROM timestamp)::int / %s) * %s
                         ) as bucket_start,
@@ -55,7 +63,7 @@ def get_events_timeline(
                     FROM events
                     WHERE timestamp >= %s {source_filter}
                 )
-                SELECT 
+                SELECT
                     bucket_start,
                     source,
                     COUNT(*) as count
@@ -68,7 +76,7 @@ def get_events_timeline(
 
             anomaly_params = [bucket_seconds, bucket_seconds, cutoff_time]
             anomalies_query = """
-                SELECT 
+                SELECT
                     to_timestamp(
                         (EXTRACT(EPOCH FROM detected_at)::int / %s) * %s
                     ) as bucket_start,
@@ -82,26 +90,37 @@ def get_events_timeline(
 
             buckets = {}
             for row in event_rows:
-                bucket_start = row['bucket_start']
-                source = row['source']
-                count = row['count']
-                key = bucket_start.isoformat() if isinstance(bucket_start, datetime) else str(bucket_start)
+                bucket_start = row["bucket_start"]
+                source = row["source"]
+                count = row["count"]
+                key = (
+                    bucket_start.isoformat()
+                    if isinstance(bucket_start, datetime)
+                    else str(bucket_start)
+                )
                 if key not in buckets:
-                    buckets[key] = {"bucket_start": key, "sources": {}, "anomaly_markers": []}
+                    buckets[key] = {
+                        "bucket_start": key,
+                        "sources": {},
+                        "anomaly_markers": [],
+                    }
                 buckets[key]["sources"][source] = count
 
             anomaly_markers_by_bucket = {}
             for row in anomaly_rows:
-                bucket_start = row['bucket_start']
-                anomaly_type = row['anomaly_type']
-                severity = row['severity']
-                key = bucket_start.isoformat() if isinstance(bucket_start, datetime) else str(bucket_start)
+                bucket_start = row["bucket_start"]
+                anomaly_type = row["anomaly_type"]
+                severity = row["severity"]
+                key = (
+                    bucket_start.isoformat()
+                    if isinstance(bucket_start, datetime)
+                    else str(bucket_start)
+                )
                 if key not in anomaly_markers_by_bucket:
                     anomaly_markers_by_bucket[key] = []
-                anomaly_markers_by_bucket[key].append({
-                    "type": anomaly_type,
-                    "severity": severity
-                })
+                anomaly_markers_by_bucket[key].append(
+                    {"type": anomaly_type, "severity": severity}
+                )
 
             for key in buckets:
                 if key in anomaly_markers_by_bucket:
@@ -112,8 +131,9 @@ def get_events_timeline(
                 "parameters": {
                     "hours": hours,
                     "bucket_minutes": bucket_minutes,
-                    "sources": source_list or ["ATM_APP", "HARDWARE", "TERMINAL_HANDLER"]
-                }
+                    "sources": source_list
+                    or ["ATM_APP", "HARDWARE", "TERMINAL_HANDLER"],
+                },
             }
 
     except Exception as e:
@@ -127,7 +147,9 @@ def get_events_timeline(
 def get_metrics_timeline(
     hours: int = Query(24, ge=0, le=168),
     bucket_minutes: int = Query(60, ge=5, le=1440),
-    sources: Optional[str] = Query(None, description="Comma-separated sources: KAFKA,PROMETHEUS,OS,CLOUD")
+    sources: Optional[str] = Query(
+        None, description="Comma-separated sources: KAFKA,PROMETHEUS,OS,CLOUD"
+    ),
 ):
     """
     Returns time-bucketed metric averages per source with anomaly markers.
@@ -135,12 +157,18 @@ def get_metrics_timeline(
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cutoff_time = datetime(2000, 1, 1, tzinfo=timezone.utc) if hours == 0 else datetime.now(timezone.utc) - timedelta(hours=hours)
+            cutoff_time = (
+                datetime(2000, 1, 1, tzinfo=timezone.utc)
+                if hours == 0
+                else datetime.now(timezone.utc) - timedelta(hours=hours)
+            )
             bucket_seconds = bucket_minutes * 60
 
             source_list = []
             if sources:
-                source_list = [s.strip().upper() for s in sources.split(",") if s.strip()]
+                source_list = [
+                    s.strip().upper() for s in sources.split(",") if s.strip()
+                ]
 
             if source_list:
                 placeholders = ",".join(["%s"] * len(source_list))
@@ -153,7 +181,7 @@ def get_metrics_timeline(
 
             metrics_query = f"""
                 WITH time_buckets AS (
-                    SELECT 
+                    SELECT
                         to_timestamp(
                             (EXTRACT(EPOCH FROM timestamp)::int / %s) * %s
                         ) as bucket_start,
@@ -164,7 +192,7 @@ def get_metrics_timeline(
                     WHERE timestamp >= %s {source_filter}
                     GROUP BY bucket_start, source, metric_name
                 )
-                SELECT 
+                SELECT
                     bucket_start,
                     source,
                     metric_name,
@@ -177,7 +205,7 @@ def get_metrics_timeline(
 
             anomaly_params = [bucket_seconds, bucket_seconds, cutoff_time]
             anomalies_query = """
-                SELECT 
+                SELECT
                     to_timestamp(
                         (EXTRACT(EPOCH FROM detected_at)::int / %s) * %s
                     ) as bucket_start,
@@ -191,29 +219,42 @@ def get_metrics_timeline(
 
             buckets = {}
             for row in metric_rows:
-                bucket_start = row['bucket_start']
-                source = row['source']
-                metric_name = row['metric_name']
-                avg_value = float(row['avg_value']) if row['avg_value'] is not None else 0.0
-                key = bucket_start.isoformat() if isinstance(bucket_start, datetime) else str(bucket_start)
+                bucket_start = row["bucket_start"]
+                source = row["source"]
+                metric_name = row["metric_name"]
+                avg_value = (
+                    float(row["avg_value"]) if row["avg_value"] is not None else 0.0
+                )
+                key = (
+                    bucket_start.isoformat()
+                    if isinstance(bucket_start, datetime)
+                    else str(bucket_start)
+                )
                 if key not in buckets:
-                    buckets[key] = {"bucket_start": key, "metrics": {}, "anomaly_markers": []}
+                    buckets[key] = {
+                        "bucket_start": key,
+                        "metrics": {},
+                        "anomaly_markers": [],
+                    }
                 if source not in buckets[key]["metrics"]:
                     buckets[key]["metrics"][source] = {}
                 buckets[key]["metrics"][source][metric_name] = round(avg_value, 2)
 
             anomaly_markers_by_bucket = {}
             for row in anomaly_rows:
-                bucket_start = row['bucket_start']
-                anomaly_type = row['anomaly_type']
-                severity = row['severity']
-                key = bucket_start.isoformat() if isinstance(bucket_start, datetime) else str(bucket_start)
+                bucket_start = row["bucket_start"]
+                anomaly_type = row["anomaly_type"]
+                severity = row["severity"]
+                key = (
+                    bucket_start.isoformat()
+                    if isinstance(bucket_start, datetime)
+                    else str(bucket_start)
+                )
                 if key not in anomaly_markers_by_bucket:
                     anomaly_markers_by_bucket[key] = []
-                anomaly_markers_by_bucket[key].append({
-                    "type": anomaly_type,
-                    "severity": severity
-                })
+                anomaly_markers_by_bucket[key].append(
+                    {"type": anomaly_type, "severity": severity}
+                )
 
             for key in buckets:
                 if key in anomaly_markers_by_bucket:
@@ -224,8 +265,8 @@ def get_metrics_timeline(
                 "parameters": {
                     "hours": hours,
                     "bucket_minutes": bucket_minutes,
-                    "sources": source_list or ["KAFKA", "PROMETHEUS", "OS", "CLOUD"]
-                }
+                    "sources": source_list or ["KAFKA", "PROMETHEUS", "OS", "CLOUD"],
+                },
             }
 
     except Exception as e:
@@ -244,14 +285,12 @@ def get_available_metrics():
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT DISTINCT metric_name 
-                FROM metrics 
+                SELECT DISTINCT metric_name
+                FROM metrics
                 ORDER BY metric_name
             """)
             rows = cur.fetchall()
-            return {
-                "metrics": [row['metric_name'] for row in rows]
-            }
+            return {"metrics": [row["metric_name"] for row in rows]}
     except Exception as e:
         logger.error("Metrics list endpoint failed: %s", e, exc_info=True)
         return {"metrics": [], "error": str(e)}
@@ -339,19 +378,25 @@ def get_realtime_stats(
                     # Filter by hour bucket from key: stats:events:{source}:{hour}
                     if len(parts) > 1:
                         try:
-                            key_hour = datetime.strptime(parts[1], "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+                            key_hour = datetime.strptime(
+                                parts[1], "%Y-%m-%dT%H"
+                            ).replace(tzinfo=timezone.utc)
                             if cutoff_time and key_hour < cutoff_time:
                                 continue
                         except ValueError:
                             continue
-                    events_by_source[source] = events_by_source.get(source, 0) + int(value)
+                    events_by_source[source] = events_by_source.get(source, 0) + int(
+                        value
+                    )
 
             anomaly_keys = client.keys(f"{ANOMALY_COUNTER_PREFIX}type:*")
             for key in anomaly_keys:
                 # Filter by hour bucket from key: stats:anomaly:type:{hour}
                 hour_str = key.replace(f"{ANOMALY_COUNTER_PREFIX}type:", "")
                 try:
-                    key_hour = datetime.strptime(hour_str, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+                    key_hour = datetime.strptime(hour_str, "%Y-%m-%dT%H").replace(
+                        tzinfo=timezone.utc
+                    )
                     if cutoff_time and key_hour < cutoff_time:
                         continue
                 except ValueError:
@@ -364,7 +409,11 @@ def get_realtime_stats(
 
     # DB fallback: all-time query or when Redis returned nothing
     if all_time or not events_by_source:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours) if not all_time else None
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=hours)
+            if not all_time
+            else None
+        )
         conn = get_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -378,7 +427,9 @@ def get_realtime_stats(
                         "SELECT source, COUNT(*) as cnt FROM events GROUP BY source",
                     )
                 for row in cur.fetchall():
-                    events_by_source[row["source"]] = events_by_source.get(row["source"], 0) + row["cnt"]
+                    events_by_source[row["source"]] = (
+                        events_by_source.get(row["source"], 0) + row["cnt"]
+                    )
 
                 # Also count metric sources (increment_event_counter is called from both event and metric handlers)
                 if cutoff is not None:
@@ -391,7 +442,9 @@ def get_realtime_stats(
                         "SELECT source, COUNT(*) as cnt FROM metrics GROUP BY source",
                     )
                 for row in cur.fetchall():
-                    events_by_source[row["source"]] = events_by_source.get(row["source"], 0) + row["cnt"]
+                    events_by_source[row["source"]] = (
+                        events_by_source.get(row["source"], 0) + row["cnt"]
+                    )
 
                 if cutoff is not None:
                     cur.execute(
@@ -436,7 +489,9 @@ def list_entities():
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT atm_id, os_version, location_code FROM atms ORDER BY atm_id")
+            cur.execute(
+                "SELECT atm_id, os_version, location_code FROM atms ORDER BY atm_id"
+            )
             rows = cur.fetchall()
         return {"entities": [dict(r) for r in rows]}
     except Exception as e:

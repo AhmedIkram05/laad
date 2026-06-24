@@ -1,6 +1,8 @@
 # LAAD ECR Repository
 # Stores api, consumer, and generator Docker images
 
+# checkov:skip=CKV_AWS_136:KMS encryption not required for dev ECR repository
+# checkov:skip=CKV_AWS_51:Mutable image tags acceptable for dev workflow
 resource "aws_ecr_repository" "app" {
   name                 = "${var.project_name}-app"
   image_tag_mutability = "MUTABLE"

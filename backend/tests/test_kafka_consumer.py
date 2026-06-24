@@ -1,4 +1,5 @@
 """Unit tests for Kafka consumer."""
+
 from __future__ import annotations
 from unittest.mock import MagicMock, patch
 from itertools import cycle
@@ -108,11 +109,13 @@ class TestRunConsumerRouting:
     def _make_poll(self, mock_tp, mock_record, times=1):
         """Returns a poll function that yields {mock_tp: [mock_record]} for `times` calls then raises."""
         call_idx = [0]
+
         def poll(*args, **kwargs):
             if call_idx[0] < times:
                 call_idx[0] += 1
                 return {mock_tp: [mock_record]}
             raise _PollOnceThenStop()
+
         return poll
 
     def test_events_routed_to_event_handler(self):
@@ -129,13 +132,23 @@ class TestRunConsumerRouting:
         mock_consumer.close = MagicMock()
         mock_dedup = MagicMock()
 
-        with patch("backend.kafka.handlers.event_handler.handle_event", side_effect=handle_event), \
-             patch("backend.kafka.handlers.metric_handler.handle_metric", side_effect=handle_metric), \
-             patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer), \
-             patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup), \
-             patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()), \
-             patch("backend.kafka.consumer.route_raw_ingestion_errors"), \
-             patch("backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])):
+        with (
+            patch(
+                "backend.kafka.handlers.event_handler.handle_event",
+                side_effect=handle_event,
+            ),
+            patch(
+                "backend.kafka.handlers.metric_handler.handle_metric",
+                side_effect=handle_metric,
+            ),
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
             try:
                 run_consumer()
             except _PollOnceThenStop:
@@ -158,13 +171,23 @@ class TestRunConsumerRouting:
         mock_consumer.close = MagicMock()
         mock_dedup = MagicMock()
 
-        with patch("backend.kafka.handlers.event_handler.handle_event", side_effect=handle_event), \
-             patch("backend.kafka.handlers.metric_handler.handle_metric", side_effect=handle_metric), \
-             patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer), \
-             patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup), \
-             patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()), \
-             patch("backend.kafka.consumer.route_raw_ingestion_errors"), \
-             patch("backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])):
+        with (
+            patch(
+                "backend.kafka.handlers.event_handler.handle_event",
+                side_effect=handle_event,
+            ),
+            patch(
+                "backend.kafka.handlers.metric_handler.handle_metric",
+                side_effect=handle_metric,
+            ),
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
             try:
                 run_consumer()
             except _PollOnceThenStop:
@@ -188,13 +211,17 @@ class TestRunConsumerRouting:
         mock_consumer.commit = MagicMock()
         mock_consumer.close = MagicMock()
 
-        with patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer), \
-             patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup), \
-             patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()), \
-             patch.object(event_handler, "handle_event", side_effect=handle_event), \
-             patch.object(metric_handler, "handle_metric", side_effect=handle_metric), \
-             patch("backend.kafka.consumer.route_raw_ingestion_errors"), \
-             patch("backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])):
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch.object(metric_handler, "handle_metric", side_effect=handle_metric),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
             try:
                 run_consumer()
             except _PollOnceThenStop:
@@ -217,13 +244,17 @@ class TestRunConsumerRouting:
         mock_consumer.close = MagicMock()
         mock_dedup = MagicMock()
 
-        with patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer), \
-             patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup), \
-             patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()), \
-             patch.object(event_handler, "handle_event", side_effect=handle_event), \
-             patch.object(metric_handler, "handle_metric", side_effect=handle_metric), \
-             patch("backend.kafka.consumer.route_raw_ingestion_errors"), \
-             patch("backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])):
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch.object(metric_handler, "handle_metric", side_effect=handle_metric),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
             try:
                 run_consumer()
             except _PollOnceThenStop:
@@ -247,14 +278,19 @@ class TestRunConsumerRouting:
         mock_dedup.is_duplicate.return_value = False
         mock_trigger = MagicMock()
 
-        with patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer), \
-             patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup), \
-             patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()), \
-             patch.object(event_handler, "handle_event", side_effect=handle_event), \
-             patch.object(metric_handler, "handle_metric", side_effect=handle_metric), \
-             patch("backend.kafka.consumer.route_raw_ingestion_errors"), \
-             patch("backend.kafka.consumer._trigger_anomaly_detection", side_effect=mock_trigger), \
-             patch("backend.kafka.consumer.time.monotonic", side_effect=[0.0, 35.0]):
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch.object(metric_handler, "handle_metric", side_effect=handle_metric),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch(
+                "backend.kafka.consumer._trigger_anomaly_detection",
+                side_effect=mock_trigger,
+            ),
+            patch("backend.kafka.consumer.time.monotonic", side_effect=[0.0, 35.0]),
+        ):
             try:
                 run_consumer()
             except _PollOnceThenStop:
@@ -275,6 +311,7 @@ class TestRunConsumerRouting:
         mock_tp.topic = TOPIC_EVENTS
 
         call_count = [0]
+
         def poll(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -291,20 +328,24 @@ class TestRunConsumerRouting:
         mock_dedup.is_duplicate.return_value = False
         mock_log = MagicMock()
 
-        with patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer), \
-             patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup), \
-             patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()), \
-             patch.object(event_handler, "handle_event", side_effect=handle_event), \
-             patch.object(metric_handler, "handle_metric", side_effect=handle_metric), \
-             patch("backend.kafka.consumer.route_raw_ingestion_errors"), \
-             patch("backend.kafka.consumer.log", new=mock_log), \
-             patch("backend.kafka.consumer.time.monotonic", return_value=0.0):
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch.object(metric_handler, "handle_metric", side_effect=handle_metric),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch("backend.kafka.consumer.log", new=mock_log),
+            patch("backend.kafka.consumer.time.monotonic", return_value=0.0),
+        ):
             try:
                 run_consumer()
             except _PollOnceThenStop:
                 pass
 
-        info_calls = [call for call in mock_log.info.call_args_list if "messages" in str(call)]
+        info_calls = [
+            call for call in mock_log.info.call_args_list if "messages" in str(call)
+        ]
         assert len(info_calls) >= 1
 
     def test_unknown_topic_writes_false(self):
@@ -323,14 +364,18 @@ class TestRunConsumerRouting:
         mock_dedup.is_duplicate.return_value = False
         mock_log = MagicMock()
 
-        with patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer), \
-             patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup), \
-             patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()), \
-             patch.object(event_handler, "handle_event", side_effect=handle_event), \
-             patch.object(metric_handler, "handle_metric", side_effect=handle_metric), \
-             patch("backend.kafka.consumer.route_raw_ingestion_errors"), \
-             patch("backend.kafka.consumer.log", new=mock_log), \
-             patch("backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])):
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch.object(metric_handler, "handle_metric", side_effect=handle_metric),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch("backend.kafka.consumer.log", new=mock_log),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
             try:
                 run_consumer()
             except _PollOnceThenStop:

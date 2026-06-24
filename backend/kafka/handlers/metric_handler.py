@@ -6,6 +6,7 @@ malformed messages to ingestion_errors.
 Called by the consumer router for every message on atm-metrics topic.
 Metrics are NOT embedded into ChromaDB — only event-type logs are.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,11 +16,21 @@ from datetime import datetime, timezone
 import psycopg2.extras
 
 from backend.src.database.connection import get_cursor
-from backend.src.analytics.analytics_router import increment_event_counter, track_unique_atm
+from backend.src.analytics.analytics_router import (
+    increment_event_counter,
+    track_unique_atm,
+)
 
 log = logging.getLogger(__name__)
 
-REQUIRED_FIELDS = {"message_id", "timestamp", "source", "entity_id", "metric_name", "metric_value"}
+REQUIRED_FIELDS = {
+    "message_id",
+    "timestamp",
+    "source",
+    "entity_id",
+    "metric_name",
+    "metric_value",
+}
 
 
 def handle_metric(msg: dict) -> bool:
@@ -74,7 +85,9 @@ def handle_metric(msg: dict) -> bool:
                 ),
             )
     except Exception as exc:
-        log.error("DB write failed for metric (name=%s): %s", msg.get("metric_name"), exc)
+        log.error(
+            "DB write failed for metric (name=%s): %s", msg.get("metric_name"), exc
+        )
         return False
 
     entity_id = msg.get("entity_id", "")
