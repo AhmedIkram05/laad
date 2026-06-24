@@ -15,8 +15,17 @@ from backend.tests.helpers import reset_test_db
 
 
 def seed_anomaly_data(conn):
-    """Insert test anomaly rows for metrics endpoint testing."""
+    """Insert test anomaly rows for metrics endpoint testing.
+    Must seed atms first to satisfy the FK constraint."""
     with conn.cursor() as cur:
+        # Ensure ATMs exist for foreign key constraint
+        for atm_id in ("ATM-1", "ATM-2"):
+            cur.execute(
+                "INSERT INTO atms (atm_id, location_code) VALUES (%s, 'test') "
+                "ON CONFLICT (atm_id) DO NOTHING",
+                (atm_id,),
+            )
+        conn.commit()
         now = datetime.now(timezone.utc)
         anomalies = [
             (now, "A1", "ATM-1", "CRITICAL", "Test Critical", "{}", "action1", 1),

@@ -28,6 +28,18 @@ class TestBatchedDelete:
         """First batch returns 5000 rows, second returns 0 → total = 5000."""
         cursor = mock_conn.cursor.return_value.__enter__.return_value
         cursor.rowcount = 5000
+        # Defer rowcount change to second execute call so the
+        # batched_delete while-loop terminates instead of looping forever.
+        execute_call_count = [0]
+        original_execute = cursor.execute
+
+        def side_effect(*args, **kwargs):
+            execute_call_count[0] += 1
+            if execute_call_count[0] >= 2:
+                cursor.rowcount = 0
+            return original_execute(*args, **kwargs)
+
+        cursor.execute = side_effect
 
         result = batched_delete(mock_conn, "events", "timestamp",
                                 "2026-01-01T00:00:00")
@@ -51,11 +63,8 @@ class TestBatchedDelete:
         cursor = mock_conn.cursor.return_value.__enter__.return_value
         cursor.rowcount = 5000
 
-        # First call returns 5000, second returns 5000, third returns 0
+        # Rowcount sequence: 5000, 5000, 0
         results = [5000, 5000, 0]
-        cursor.rowcount = results.pop(0)
-
-        # We need rowcount to change between iterations
         original_execute = cursor.execute
 
         def side_effect(*args, **kwargs):
@@ -122,7 +131,8 @@ class TestRunWipe:
         mock_conn.cursor.return_value = cursor
         mock_conn.cursor.return_value.__enter__.return_value = cursor
 
-        with patch("backend.src.admin.cleanup.get_conn", return_value=mock_conn):
+        with patch("backend.src.admin.cleanup.get_conn", return_value=mock_conn), \
+             patch("backend.src.admin.cleanup.release_conn"):
             result = run_wipe()
 
         assert result["action"] == "wipe"

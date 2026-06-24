@@ -1,6 +1,13 @@
 import os
+import time
+
+import psycopg2
 
 from backend.src.database.connection import get_conn, release_conn
+
+
+DEADLOCK_RETRIES = 3
+DEADLOCK_BACKOFF = 0.5
 
 
 def sample_path(filename: str) -> str:
@@ -11,26 +18,35 @@ def sample_path(filename: str) -> str:
 
 
 def clear_core_tables() -> None:
-    """Best-effort truncation for core app tables used in tests."""
-    conn = get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                TRUNCATE TABLE
-                    anomalies,
-                    metrics,
-                    events,
-                    ingestion_errors,
-                    users,
-                    atms,
-                    retention_config
-                RESTART IDENTITY CASCADE
-                """
-            )
-        conn.commit()
-    finally:
-        release_conn(conn)
+    """Best-effort truncation for core app tables used in tests.
+    Retries on deadlock detection to handle concurrent TestClient sessions."""
+    for attempt in range(DEADLOCK_RETRIES):
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    TRUNCATE TABLE
+                        anomalies,
+                        metrics,
+                        events,
+                        ingestion_errors,
+                        users,
+                        atms,
+                        retention_config
+                    RESTART IDENTITY CASCADE
+                    """
+                )
+            conn.commit()
+            return  # success
+        except psycopg2.errors.DeadlockDetected:
+            conn.rollback()
+            if attempt < DEADLOCK_RETRIES - 1:
+                time.sleep(DEADLOCK_BACKOFF * (2 ** attempt))
+                continue
+            raise  # exhausted retries
+        finally:
+            release_conn(conn)
 
 
 def seed_test_defaults() -> None:

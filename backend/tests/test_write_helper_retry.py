@@ -17,9 +17,14 @@ from backend.src.ingestion.write_helper import write_batch
 @pytest.fixture
 def mock_conn():
     conn = MagicMock(spec=psycopg2.extensions.connection)
+    conn.encoding = "UTF8"
     cursor = MagicMock()
+    # psycopg2.extras.execute_values calls cur.mogrify() then cur.execute()
+    cursor.mogrify.return_value = b"('x')"
     conn.cursor.return_value = cursor
     conn.cursor.return_value.__enter__.return_value = cursor
+    # execute_values also accesses cur.connection.encoding for the SQL encode
+    cursor.connection = conn
     return conn
 
 
