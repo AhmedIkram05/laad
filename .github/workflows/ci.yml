@@ -285,8 +285,8 @@ jobs:
         run: |
           npm ci
           npm run build
-          npm install -g serve
-          serve -s dist -l 5173 &
+          # vite preview serves dist/ with proxy config (unlike serve, which has no proxy)
+          npx vite preview --port 5173 &
           for i in $(seq 1 10); do
             curl -sf http://localhost:5173 >/dev/null 2>&1 && echo "Frontend ready" && break
             echo "Waiting for frontend... ($i)"
