@@ -151,3 +151,11 @@ test-e2e-quick:
 	docker compose run --rm playwright
 	@echo ""
 	@echo "✓ E2E tests complete!"
+
+# ── IaC Compliance ─────────────────────────────────────────────────────────
+
+checkov:
+	@echo "==> Running checkov IaC compliance checks..."
+	python3 scripts/checkov-compliance.py
+	@echo ""
+	@echo "✓ checkov compliance checks complete!"

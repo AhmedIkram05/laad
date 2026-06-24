@@ -8,6 +8,7 @@ Each detection function takes a list of row dicts and an optional time window
 and returns a list of detected anomalies.  Designed to be called by the ML detector
 on every inference cycle with the current 300-second window.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,10 +23,13 @@ from backend.src.analytics.analytics_router import increment_anomaly_counter
 
 def _datetime_safe_json_dumps(data: Any) -> str:
     """json.dumps that converts datetime objects to ISO strings."""
-    return json.dumps(data, default=lambda x: x.isoformat() if isinstance(x, datetime) else str(x))
+    return json.dumps(
+        data, default=lambda x: x.isoformat() if isinstance(x, datetime) else str(x)
+    )
 
 
 # ─── Helpers (used by all detection functions) ────────────────────────────────
+
 
 def _payload_get(row: Dict[str, Any], key: str) -> Any:
     """Get `key` from the row, preferring explicit column then JSON payload."""
@@ -35,7 +39,11 @@ def _payload_get(row: Dict[str, Any], key: str) -> Any:
     if not raw:
         return None
     try:
-        p = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, dict) else {})
+        p = (
+            json.loads(raw)
+            if isinstance(raw, str)
+            else (raw if isinstance(raw, dict) else {})
+        )
         return p.get(key)
     except Exception:
         return None
@@ -75,13 +83,15 @@ def _ingestion_errors_in_window(
                 "FROM ingestion_errors ORDER BY timestamp ASC"
             )
         for e in cur.fetchall():
-            errors.append({
-                "id": e[0],
-                "ts": e[1],
-                "source": (e[2] or "").upper(),
-                "raw_input": e[4],
-                "error_detail": e[3],
-            })
+            errors.append(
+                {
+                    "id": e[0],
+                    "ts": e[1],
+                    "source": (e[2] or "").upper(),
+                    "raw_input": e[4],
+                    "error_detail": e[3],
+                }
+            )
     except Exception:
         pass
     finally:
@@ -96,6 +106,7 @@ def _ingestion_errors_in_window(
 
 
 # ─── Detection Functions (stateless, data-driven) ────────────────────────────
+
 
 def a1_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """A1: Network Timeout Cascade.
@@ -116,16 +127,21 @@ def a1_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         atm_id = r.get("atm_id") or _payload_get(r, "atm_id")
         if not atm_id:
             continue
-        state = atm_check.setdefault(atm_id, {
-            "network_disconnect": False,
-            "timeout": False,
-            "kafka_offline": False,
-            "terminal_network_error": False,
-            "last_ts": r.get("timestamp"),
-            "correlation_id": None,
-        })
+        state = atm_check.setdefault(
+            atm_id,
+            {
+                "network_disconnect": False,
+                "timeout": False,
+                "kafka_offline": False,
+                "terminal_network_error": False,
+                "last_ts": r.get("timestamp"),
+                "correlation_id": None,
+            },
+        )
         state["last_ts"] = r.get("timestamp") or state["last_ts"]
-        state["correlation_id"] = state["correlation_id"] or _payload_get(r, "correlation_id")
+        state["correlation_id"] = state["correlation_id"] or _payload_get(
+            r, "correlation_id"
+        )
 
         src = (r.get("source") or "").upper()
         if src == "ATM_APP":
@@ -145,29 +161,34 @@ def a1_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 state["terminal_network_error"] = True
 
     for atm_id, s in atm_check.items():
-        signal_count = sum([
-            s["network_disconnect"],
-            s["timeout"],
-            s["kafka_offline"],
-            s["terminal_network_error"],
-        ])
+        signal_count = sum(
+            [
+                s["network_disconnect"],
+                s["timeout"],
+                s["kafka_offline"],
+                s["terminal_network_error"],
+            ]
+        )
         if signal_count >= 3:
-            anomalies.append({
-                "anomaly_type": "A1",
-                "atm_id": atm_id,
-                "detected_at": s.get("last_ts") or datetime.now(timezone.utc).isoformat(),
-                "severity": "CRITICAL",
-                "title": "ATM offline due to network failure.",
-                "explanation": _datetime_safe_json_dumps(s),
-                "sources_involved": ["ATM_APP", "KAFKA", "TERMINAL_HANDLER"],
-                "recommended_action": (
-                    "1. Check network connectivity to ATM. "
-                    "2. Verify router/switch status. "
-                    "3. Confirm host availability. "
-                    "4. Once restored, verify ATM status in Kafka dashboard."
-                ),
-                "correlation_id": s.get("correlation_id"),
-            })
+            anomalies.append(
+                {
+                    "anomaly_type": "A1",
+                    "atm_id": atm_id,
+                    "detected_at": s.get("last_ts")
+                    or datetime.now(timezone.utc).isoformat(),
+                    "severity": "CRITICAL",
+                    "title": "ATM offline due to network failure.",
+                    "explanation": _datetime_safe_json_dumps(s),
+                    "sources_involved": ["ATM_APP", "KAFKA", "TERMINAL_HANDLER"],
+                    "recommended_action": (
+                        "1. Check network connectivity to ATM. "
+                        "2. Verify router/switch status. "
+                        "3. Confirm host availability. "
+                        "4. Once restored, verify ATM status in Kafka dashboard."
+                    ),
+                    "correlation_id": s.get("correlation_id"),
+                }
+            )
 
     return anomalies
 
@@ -185,11 +206,18 @@ def a2_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         atm_id = r.get("atm_id") or _payload_get(r, "atm_id")
         if not atm_id:
             continue
-        st = checklist.setdefault(atm_id, {
-            "low": 0, "empty": 0, "kafka_oos": False,
-            "kafka_dispense_error": False, "kafka_trtps_zero": False,
-            "last_ts": r.get("timestamp"), "correlation_id": None,
-        })
+        st = checklist.setdefault(
+            atm_id,
+            {
+                "low": 0,
+                "empty": 0,
+                "kafka_oos": False,
+                "kafka_dispense_error": False,
+                "kafka_trtps_zero": False,
+                "last_ts": r.get("timestamp"),
+                "correlation_id": None,
+            },
+        )
         st["last_ts"] = r.get("timestamp") or st["last_ts"]
         st["correlation_id"] = st["correlation_id"] or _payload_get(r, "correlation_id")
 
@@ -199,12 +227,18 @@ def a2_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             st["empty"] += 1
 
         if (r.get("source") or "").upper() == "KAFKA":
-            atm_status = (_payload_get(r, "atm_status") or r.get("atm_status") or "").lower()
+            atm_status = (
+                _payload_get(r, "atm_status") or r.get("atm_status") or ""
+            ).lower()
             if "out of service" in atm_status or "outofservice" == atm_status:
                 st["kafka_oos"] = True
             if _payload_get(r, "transaction_failure_reason") == "CASH_DISPENSE_ERROR":
                 st["kafka_dispense_error"] = True
-            mv = _payload_get(r, "transaction_rate_tps") or r.get("transaction_rate_tps") or r.get("metric_value")
+            mv = (
+                _payload_get(r, "transaction_rate_tps")
+                or r.get("transaction_rate_tps")
+                or r.get("metric_value")
+            )
             try:
                 if mv is not None and float(mv) == 0.0:
                     st["kafka_trtps_zero"] = True
@@ -212,23 +246,28 @@ def a2_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 pass
 
     for atm_id, st in checklist.items():
-        if st["empty"] >= 1 and (st["kafka_oos"] or (st["kafka_dispense_error"] and st["kafka_trtps_zero"])):
-            anomalies.append({
-                "anomaly_type": "A2",
-                "atm_id": atm_id,
-                "detected_at": st.get("last_ts") or datetime.now(timezone.utc).isoformat(),
-                "severity": "CRITICAL",
-                "title": "ATM out of service — cash cassettes exhausted.",
-                "explanation": _datetime_safe_json_dumps(st),
-                "sources_involved": ["HARDWARE", "KAFKA"],
-                "recommended_action": (
-                    "1. Dispatch cash replenishment crew to ATM. "
-                    "2. Verify cassette fill levels on site. "
-                    "3. Mark ATM as back in service after replenishment. "
-                    "4. Review cash usage patterns to optimise refill schedule."
-                ),
-                "correlation_id": st.get("correlation_id"),
-            })
+        if st["empty"] >= 1 and (
+            st["kafka_oos"] or (st["kafka_dispense_error"] and st["kafka_trtps_zero"])
+        ):
+            anomalies.append(
+                {
+                    "anomaly_type": "A2",
+                    "atm_id": atm_id,
+                    "detected_at": st.get("last_ts")
+                    or datetime.now(timezone.utc).isoformat(),
+                    "severity": "CRITICAL",
+                    "title": "ATM out of service — cash cassettes exhausted.",
+                    "explanation": _datetime_safe_json_dumps(st),
+                    "sources_involved": ["HARDWARE", "KAFKA"],
+                    "recommended_action": (
+                        "1. Dispatch cash replenishment crew to ATM. "
+                        "2. Verify cassette fill levels on site. "
+                        "3. Mark ATM as back in service after replenishment. "
+                        "4. Review cash usage patterns to optimise refill schedule."
+                    ),
+                    "correlation_id": st.get("correlation_id"),
+                }
+            )
 
     return anomalies
 
@@ -249,7 +288,10 @@ def a3_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     for r in data:
         src = (r.get("source") or "").upper()
-        if src == "TERMINAL_HANDLER" and (r.get("event_type") in ("OOM_ERROR", "OutOfMemoryError") or r.get("severity") == "FATAL"):
+        if src == "TERMINAL_HANDLER" and (
+            r.get("event_type") in ("OOM_ERROR", "OutOfMemoryError")
+            or r.get("severity") == "FATAL"
+        ):
             pod = _payload_get(r, "pod_name") or r.get("component") or "unknown"
             atm_id = r.get("atm_id") or _payload_get(r, "atm_id")
             if pod not in oom_pods:
@@ -316,30 +358,44 @@ def a3_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         except Exception:
             rel_increase = 0.0
 
-        increases = sum(1 for i in range(len(filtered) - 1) if filtered[i + 1] > filtered[i])
+        increases = sum(
+            1 for i in range(len(filtered) - 1) if filtered[i + 1] > filtered[i]
+        )
         frac_increase = increases / max(1, len(filtered) - 1)
 
         if rel_increase >= 0.2 or frac_increase >= 0.6:
             pod_atm_id = oom_pods[pod].get("atm_id")
-            anomalies.append({
-                "anomaly_type": "A3",
-                "atm_id": pod_atm_id,
-                "detected_at": (oom_ts_val.isoformat() if isinstance(oom_ts_val, datetime) else oom_ts_val) or datetime.now(timezone.utc).isoformat(),
-                "severity": "MAJOR",
-                "title": "JVM memory leak suspected — heap usage increasing.",
-                "explanation": _datetime_safe_json_dumps({
-                    "pod": pod, "atm_id": pod_atm_id, "points": filtered[-5:],
-                    "rel_increase": rel_increase, "frac_increase": frac_increase,
-                }),
-                "sources_involved": ["PROMETHEUS", "TERMINAL_HANDLER"],
-                "recommended_action": (
-                    "1. Capture JVM heap dump before restart. "
-                    "2. Analyse heap dump for memory leaks (focus on long-lived objects). "
-                    "3. Review recent code changes for memory-holding patterns. "
-                    "4. Consider increasing max heap or scaling the service. "
-                    "5. Schedule a controlled restart during low-traffic window."
-                ),
-            })
+            anomalies.append(
+                {
+                    "anomaly_type": "A3",
+                    "atm_id": pod_atm_id,
+                    "detected_at": (
+                        oom_ts_val.isoformat()
+                        if isinstance(oom_ts_val, datetime)
+                        else oom_ts_val
+                    )
+                    or datetime.now(timezone.utc).isoformat(),
+                    "severity": "MAJOR",
+                    "title": "JVM memory leak suspected — heap usage increasing.",
+                    "explanation": _datetime_safe_json_dumps(
+                        {
+                            "pod": pod,
+                            "atm_id": pod_atm_id,
+                            "points": filtered[-5:],
+                            "rel_increase": rel_increase,
+                            "frac_increase": frac_increase,
+                        }
+                    ),
+                    "sources_involved": ["PROMETHEUS", "TERMINAL_HANDLER"],
+                    "recommended_action": (
+                        "1. Capture JVM heap dump before restart. "
+                        "2. Analyse heap dump for memory leaks (focus on long-lived objects). "
+                        "3. Review recent code changes for memory-holding patterns. "
+                        "4. Consider increasing max heap or scaling the service. "
+                        "5. Schedule a controlled restart during low-traffic window."
+                    ),
+                }
+            )
 
     return anomalies
 
@@ -369,7 +425,8 @@ def a4_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         if not atm_id and entity_id and "atm" in str(entity_id).lower():
             import re
-            match = re.search(r'(ATM-[A-Z]{2}-\d{4})', str(entity_id), re.IGNORECASE)
+
+            match = re.search(r"(ATM-[A-Z]{2}-\d{4})", str(entity_id), re.IGNORECASE)
             if match:
                 atm_id = match.group(1).upper()
 
@@ -382,7 +439,9 @@ def a4_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if metric_name in ("restart_count", "container/restart_count"):
                 v = _as_float(r.get("metric_value") or _payload_get(r, "metric_value"))
                 if v is not None:
-                    atm_restarts.setdefault(atm_id, []).append({"ts": r.get("timestamp"), "count": v})
+                    atm_restarts.setdefault(atm_id, []).append(
+                        {"ts": r.get("timestamp"), "count": v}
+                    )
 
         if src == "TERMINAL_HANDLER":
             if r.get("event_type") == "STARTUP":
@@ -390,7 +449,9 @@ def a4_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if r.get("event_type") == "OOM_ERROR" or r.get("severity") == "FATAL":
                 atm_fatals[atm_id] = atm_fatals.get(atm_id, 0) + 1
 
-    all_atms = set(list(atm_restarts.keys()) + list(atm_startups.keys()) + list(atm_fatals.keys()))
+    all_atms = set(
+        list(atm_restarts.keys()) + list(atm_startups.keys()) + list(atm_fatals.keys())
+    )
     for atm_id in all_atms:
         restarts = atm_restarts.get(atm_id, [])
         startups = atm_startups.get(atm_id, 0)
@@ -398,26 +459,31 @@ def a4_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         if len(restarts) >= 1 and (startups >= 2 or fatals >= 2):
             detected_ts = restarts[-1].get("ts") or atm_last_ts.get(atm_id)
-            anomalies.append({
-                "anomaly_type": "A4",
-                "atm_id": atm_id,
-                "detected_at": detected_ts or datetime.now(timezone.utc).isoformat(),
-                "severity": "MAJOR",
-                "title": "Container restart loop causing instability.",
-                "explanation": _datetime_safe_json_dumps({
-                    "gcp_restarts": restarts,
-                    "total_startups": startups,
-                    "total_fatals": fatals,
-                }),
-                "sources_involved": ["GCP", "TERMINAL_HANDLER"],
-                "recommended_action": (
-                    "1. Identify the root cause from container logs before restart. "
-                    "2. Check resource limits (CPU/memory) in Kubernetes. "
-                    "3. Review application startup sequence for failure points. "
-                    "4. If OOM suspected, increase memory limit or optimise usage. "
-                    "5. Block further restarts with a pre-stop hook if the crash loop is harmful."
-                ),
-            })
+            anomalies.append(
+                {
+                    "anomaly_type": "A4",
+                    "atm_id": atm_id,
+                    "detected_at": detected_ts
+                    or datetime.now(timezone.utc).isoformat(),
+                    "severity": "MAJOR",
+                    "title": "Container restart loop causing instability.",
+                    "explanation": _datetime_safe_json_dumps(
+                        {
+                            "gcp_restarts": restarts,
+                            "total_startups": startups,
+                            "total_fatals": fatals,
+                        }
+                    ),
+                    "sources_involved": ["GCP", "TERMINAL_HANDLER"],
+                    "recommended_action": (
+                        "1. Identify the root cause from container logs before restart. "
+                        "2. Check resource limits (CPU/memory) in Kubernetes. "
+                        "3. Review application startup sequence for failure points. "
+                        "4. If OOM suspected, increase memory limit or optimise usage. "
+                        "5. Block further restarts with a pre-stop hook if the crash loop is harmful."
+                    ),
+                }
+            )
 
     return anomalies
 
@@ -439,34 +505,58 @@ def a5_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             continue
         last_ts.setdefault(atm, r.get("timestamp"))
         if (r.get("source") or "").upper() == "KAFKA":
-            rt = _as_float(_payload_get(r, "response_time_ms") or r.get("response_time_ms") or r.get("metric_value"))
-            sr = _as_float(_payload_get(r, "transaction_success_rate") or _payload_get(r, "success_rate") or r.get("success_rate"))
+            rt = _as_float(
+                _payload_get(r, "response_time_ms")
+                or r.get("response_time_ms")
+                or r.get("metric_value")
+            )
+            sr = _as_float(
+                _payload_get(r, "transaction_success_rate")
+                or _payload_get(r, "success_rate")
+                or r.get("success_rate")
+            )
             fc = _as_float(_payload_get(r, "failure_count"))
             if rt is not None and rt >= 3000:
-                spikes_by_atm.setdefault(atm, []).append({"ts": r.get("timestamp"), "rt": rt, "sr": sr, "fc": fc})
+                spikes_by_atm.setdefault(atm, []).append(
+                    {"ts": r.get("timestamp"), "rt": rt, "sr": sr, "fc": fc}
+                )
 
         if (r.get("source") or "").upper() == "ATM_APP":
-            if r.get("event_type") == "TIMEOUT" and (r.get("error_code") == "ERR-0012" or _payload_get(r, "error_code") == "ERR-0012"):
-                timeouts_by_atm.setdefault(atm, []).append({"ts": r.get("timestamp"), "txn": _payload_get(r, "transaction_id") or r.get("transaction_id")})
+            if r.get("event_type") == "TIMEOUT" and (
+                r.get("error_code") == "ERR-0012"
+                or _payload_get(r, "error_code") == "ERR-0012"
+            ):
+                timeouts_by_atm.setdefault(atm, []).append(
+                    {
+                        "ts": r.get("timestamp"),
+                        "txn": _payload_get(r, "transaction_id")
+                        or r.get("transaction_id"),
+                    }
+                )
 
     for atm, spikes in spikes_by_atm.items():
         if len(spikes) >= 2 and timeouts_by_atm.get(atm):
-            anomalies.append({
-                "anomaly_type": "A5",
-                "atm_id": atm,
-                "detected_at": last_ts.get(atm) or datetime.now(timezone.utc).isoformat(),
-                "severity": "MAJOR",
-                "title": "High response time spike and success rate drop.",
-                "explanation": _datetime_safe_json_dumps({"spikes": spikes[-3:], "timeouts": timeouts_by_atm.get(atm)}),
-                "sources_involved": ["KAFKA", "ATM_APP"],
-                "recommended_action": (
-                    "1. Identify slow database queries or external service timeouts. "
-                    "2. Check ATM backend service health and latency. "
-                    "3. Verify network path between ATM and host systems. "
-                    "4. Review recent deployments for performance regressions. "
-                    "5. Scale horizontally if load-related."
-                ),
-            })
+            anomalies.append(
+                {
+                    "anomaly_type": "A5",
+                    "atm_id": atm,
+                    "detected_at": last_ts.get(atm)
+                    or datetime.now(timezone.utc).isoformat(),
+                    "severity": "MAJOR",
+                    "title": "High response time spike and success rate drop.",
+                    "explanation": _datetime_safe_json_dumps(
+                        {"spikes": spikes[-3:], "timeouts": timeouts_by_atm.get(atm)}
+                    ),
+                    "sources_involved": ["KAFKA", "ATM_APP"],
+                    "recommended_action": (
+                        "1. Identify slow database queries or external service timeouts. "
+                        "2. Check ATM backend service health and latency. "
+                        "3. Verify network path between ATM and host systems. "
+                        "4. Review recent deployments for performance regressions. "
+                        "5. Scale horizontally if load-related."
+                    ),
+                }
+            )
 
     return anomalies
 
@@ -493,7 +583,10 @@ def a6_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if r.get("metric_name") == "memory_usage_percent":
                 mem = _as_float(r.get("metric_value"))
             else:
-                mem = _as_float(_payload_get(r, "memory_usage_percent") or r.get("memory_usage_percent"))
+                mem = _as_float(
+                    _payload_get(r, "memory_usage_percent")
+                    or r.get("memory_usage_percent")
+                )
             if mem is not None:
                 mem_by_atm.setdefault(atm, []).append(mem)
 
@@ -502,28 +595,40 @@ def a6_detection(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 detail = r.get("error_detail") or _payload_get(r, "error_detail") or ""
                 code = r.get("error_code") or _payload_get(r, "error_code")
                 if "ThreadAbortException" in detail or code == "ERR-MEM":
-                    timeout_evidence[atm] = {"ts": r.get("timestamp"), "error_detail": detail, "error_code": code}
+                    timeout_evidence[atm] = {
+                        "ts": r.get("timestamp"),
+                        "error_detail": detail,
+                        "error_code": code,
+                    }
 
     for atm, mems in mem_by_atm.items():
         max_mem = max(mems) if mems else 0
         if max_mem >= 90 or (len(mems) >= 3 and mems[-1] - mems[0] > 30):
             if atm in timeout_evidence:
-                anomalies.append({
-                    "anomaly_type": "A6",
-                    "atm_id": atm,
-                    "detected_at": last_ts.get(atm) or datetime.now(timezone.utc).isoformat(),
-                    "severity": "MAJOR",
-                    "title": "OS memory pressure causing application timeouts.",
-                    "explanation": _datetime_safe_json_dumps({"memory_samples": mems[-5:], "timeout": timeout_evidence.get(atm)}),
-                    "sources_involved": ["OS", "ATM_APP"],
-                    "recommended_action": (
-                        "1. Check for memory leaks on the host OS. "
-                        "2. Review running processes consuming excessive RAM. "
-                        "3. Investigate application thread pool exhaustion. "
-                        "4. Consider adding RAM or moving ATM to a higher-capacity host. "
-                        "5. Schedule maintenance window for OS-level remediation."
-                    ),
-                })
+                anomalies.append(
+                    {
+                        "anomaly_type": "A6",
+                        "atm_id": atm,
+                        "detected_at": last_ts.get(atm)
+                        or datetime.now(timezone.utc).isoformat(),
+                        "severity": "MAJOR",
+                        "title": "OS memory pressure causing application timeouts.",
+                        "explanation": _datetime_safe_json_dumps(
+                            {
+                                "memory_samples": mems[-5:],
+                                "timeout": timeout_evidence.get(atm),
+                            }
+                        ),
+                        "sources_involved": ["OS", "ATM_APP"],
+                        "recommended_action": (
+                            "1. Check for memory leaks on the host OS. "
+                            "2. Review running processes consuming excessive RAM. "
+                            "3. Investigate application thread pool exhaustion. "
+                            "4. Consider adding RAM or moving ATM to a higher-capacity host. "
+                            "5. Schedule maintenance window for OS-level remediation."
+                        ),
+                    }
+                )
 
     return anomalies
 
@@ -557,13 +662,15 @@ def a7_detection(
         if src == "KAFKA":
             atm = r.get("atm_id") or _payload_get(r, "atm_id") or "_none_"
             kafka_offset = _payload_get(r, "kafka_offset") or _payload_get(r, "offset")
-            kafka_by_atm.setdefault(atm, []).append({
-                "offset": kafka_offset,
-                "ts": r.get("timestamp"),
-                "atm_status": r.get("atm_status"),
-                "transaction_rate_tps": _payload_get(r, "transaction_rate_tps"),
-                "row": r,
-            })
+            kafka_by_atm.setdefault(atm, []).append(
+                {
+                    "offset": kafka_offset,
+                    "ts": r.get("timestamp"),
+                    "atm_status": r.get("atm_status"),
+                    "transaction_rate_tps": _payload_get(r, "transaction_rate_tps"),
+                    "row": r,
+                }
+            )
             trtps_val = _payload_get(r, "transaction_rate_tps")
             if str(kafka_offset) == "-1" or kafka_offset == -1:
                 kafka_offset_minus_one.setdefault(atm, []).append(r.get("timestamp"))
@@ -579,7 +686,11 @@ def a7_detection(
 
     kafka_out_of_order_atms: set = set()
     for atm, rows in kafka_by_atm.items():
-        seq = [(_as_float(x.get("offset")), x.get("ts")) for x in rows if x.get("offset") is not None and _as_float(x.get("offset")) != -1]
+        seq = [
+            (_as_float(x.get("offset")), x.get("ts"))
+            for x in rows
+            if x.get("offset") is not None and _as_float(x.get("offset")) != -1
+        ]
         seq_sorted = sorted(seq, key=lambda x: x[0])
         for i in range(1, len(seq_sorted)):
             prev_ts = seq_sorted[i - 1][1]
@@ -599,43 +710,57 @@ def a7_detection(
     if ingestion_errors is None:
         ingestion_errors = _ingestion_errors_in_window(None, None)
 
-    prom_errs = [e for e in ingestion_errors if e["source"].startswith("PROMETHEUS") or e["source"] == "METRIC"]
+    prom_errs = [
+        e
+        for e in ingestion_errors
+        if e["source"].startswith("PROMETHEUS") or e["source"] == "METRIC"
+    ]
     kafka_errs = [e for e in ingestion_errors if e["source"].startswith("KAFKA")]
 
     paired_errs: List[Dict[str, Any]] = []
     five_min = timedelta(minutes=5)
     for p in prom_errs:
         for k in kafka_errs:
-            if p["ts"] and k["ts"] and abs((p["ts"] - k["ts"]).total_seconds()) <= five_min.total_seconds():
+            if (
+                p["ts"]
+                and k["ts"]
+                and abs((p["ts"] - k["ts"]).total_seconds()) <= five_min.total_seconds()
+            ):
                 paired_errs.append({"prom": p, "kafka": k})
 
     for atm in set(kafka_by_atm.keys()):
         has_missing = bool(kafka_missing_ts.get(atm))
         has_out_of_order = atm in kafka_out_of_order_atms
         has_offset_minus_one = bool(kafka_offset_minus_one.get(atm))
-        if has_offset_minus_one or ((has_missing or has_out_of_order) and prom_malformed):
-            anomalies.append({
-                "anomaly_type": "A7",
-                "atm_id": atm if atm != "_none_" else None,
-                "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
-                "severity": "HIGH",
-                "title": "Malformed or out-of-order Kafka events detected.",
-                "explanation": _datetime_safe_json_dumps({
-                    "atm": atm,
-                    "kafka_missing_count": len(kafka_missing_ts.get(atm, [])),
-                    "out_of_order": has_out_of_order,
-                    "prom_malformed_count": len(prom_malformed_ts),
-                    "offset_minus_one": has_offset_minus_one,
-                }),
-                "sources_involved": ["KAFKA", "PROMETHEUS"],
-                "recommended_action": (
-                    "1. Inspect Kafka producer for timestamp misconfiguration. "
-                    "2. Verify message ordering in Kafka partition. "
-                    "3. Check Prometheus scraper for parse errors. "
-                    "4. Validate CSV/JSON schema at ingestion layer. "
-                    "5. Repair or discard corrupted historical records."
-                ),
-            })
+        if has_offset_minus_one or (
+            (has_missing or has_out_of_order) and prom_malformed
+        ):
+            anomalies.append(
+                {
+                    "anomaly_type": "A7",
+                    "atm_id": atm if atm != "_none_" else None,
+                    "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
+                    "severity": "HIGH",
+                    "title": "Malformed or out-of-order Kafka events detected.",
+                    "explanation": _datetime_safe_json_dumps(
+                        {
+                            "atm": atm,
+                            "kafka_missing_count": len(kafka_missing_ts.get(atm, [])),
+                            "out_of_order": has_out_of_order,
+                            "prom_malformed_count": len(prom_malformed_ts),
+                            "offset_minus_one": has_offset_minus_one,
+                        }
+                    ),
+                    "sources_involved": ["KAFKA", "PROMETHEUS"],
+                    "recommended_action": (
+                        "1. Inspect Kafka producer for timestamp misconfiguration. "
+                        "2. Verify message ordering in Kafka partition. "
+                        "3. Check Prometheus scraper for parse errors. "
+                        "4. Validate CSV/JSON schema at ingestion layer. "
+                        "5. Repair or discard corrupted historical records."
+                    ),
+                }
+            )
 
     for pair in paired_errs:
         kraw = pair["kafka"]["raw_input"]
@@ -654,57 +779,80 @@ def a7_detection(
             if isinstance(praw, str) and praw.strip().startswith("{"):
                 parsed_p = json.loads(praw)
                 if isinstance(parsed_p, dict):
-                    attributed_atm = attributed_atm or parsed_p.get("atm_id") or parsed_p.get("entity_id")
+                    attributed_atm = (
+                        attributed_atm
+                        or parsed_p.get("atm_id")
+                        or parsed_p.get("entity_id")
+                    )
                     detected_iso = detected_iso or parsed_p.get("timestamp")
         except Exception:
             pass
         detected_at_val = None
         try:
             detected_at_val = detected_iso or (
-                pair["kafka"]["ts"].isoformat() if pair["kafka"]["ts"] else
-                (pair["prom"]["ts"].isoformat() if pair["prom"]["ts"] else None)
+                pair["kafka"]["ts"].isoformat()
+                if pair["kafka"]["ts"]
+                else (pair["prom"]["ts"].isoformat() if pair["prom"]["ts"] else None)
             )
         except Exception:
             pass
 
-        anomalies.append({
-            "anomaly_type": "A7",
-            "atm_id": attributed_atm,
-            "detected_at": detected_at_val or last_ts or datetime.now(timezone.utc).isoformat(),
-            "severity": "HIGH",
-            "title": "Ingestion errors: Prometheus + Kafka failures detected in same time window.",
-            "explanation": _datetime_safe_json_dumps({
-                "prom_err_id": pair["prom"]["id"],
-                "kafka_err_id": pair["kafka"]["id"],
-                "prom_ts": pair["prom"]["ts"].isoformat() if pair["prom"]["ts"] else None,
-                "kafka_ts": pair["kafka"]["ts"].isoformat() if pair["kafka"]["ts"] else None,
-            }),
-            "sources_involved": ["PROMETHEUS", "KAFKA"],
-            "recommended_action": (
-                "1. Inspect Prometheus scrape targets for parse errors. "
-                "2. Verify Kafka message schema and encoding. "
-                "3. Check for clock skew between producers. "
-                "4. Add schema validation at the ingestion layer. "
-                "5. Reprocess or discard failed ingestion batches."
-            ),
-        })
+        anomalies.append(
+            {
+                "anomaly_type": "A7",
+                "atm_id": attributed_atm,
+                "detected_at": detected_at_val
+                or last_ts
+                or datetime.now(timezone.utc).isoformat(),
+                "severity": "HIGH",
+                "title": "Ingestion errors: Prometheus + Kafka failures detected in same time window.",
+                "explanation": _datetime_safe_json_dumps(
+                    {
+                        "prom_err_id": pair["prom"]["id"],
+                        "kafka_err_id": pair["kafka"]["id"],
+                        "prom_ts": pair["prom"]["ts"].isoformat()
+                        if pair["prom"]["ts"]
+                        else None,
+                        "kafka_ts": pair["kafka"]["ts"].isoformat()
+                        if pair["kafka"]["ts"]
+                        else None,
+                    }
+                ),
+                "sources_involved": ["PROMETHEUS", "KAFKA"],
+                "recommended_action": (
+                    "1. Inspect Prometheus scrape targets for parse errors. "
+                    "2. Verify Kafka message schema and encoding. "
+                    "3. Check for clock skew between producers. "
+                    "4. Add schema validation at the ingestion layer. "
+                    "5. Reprocess or discard failed ingestion batches."
+                ),
+            }
+        )
 
-    if prom_malformed and not paired_errs and not any(a.get("anomaly_type") == "A7" for a in anomalies):
-        anomalies.append({
-            "anomaly_type": "A7",
-            "atm_id": None,
-            "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
-            "severity": "HIGH",
-            "title": "Malformed Prometheus metric detected.",
-            "explanation": _datetime_safe_json_dumps({"issue": "prometheus_malformed", "samples": prom_malformed_ts}),
-            "sources_involved": ["PROMETHEUS"],
-            "recommended_action": (
-                "1. Identify the malformed metric in Prometheus targets. "
-                "2. Fix the exporter or scraping configuration. "
-                "3. Validate metric types (gauge vs counter vs histogram). "
-                "4. Re-ingest corrected data."
-            ),
-        })
+    if (
+        prom_malformed
+        and not paired_errs
+        and not any(a.get("anomaly_type") == "A7" for a in anomalies)
+    ):
+        anomalies.append(
+            {
+                "anomaly_type": "A7",
+                "atm_id": None,
+                "detected_at": last_ts or datetime.now(timezone.utc).isoformat(),
+                "severity": "HIGH",
+                "title": "Malformed Prometheus metric detected.",
+                "explanation": _datetime_safe_json_dumps(
+                    {"issue": "prometheus_malformed", "samples": prom_malformed_ts}
+                ),
+                "sources_involved": ["PROMETHEUS"],
+                "recommended_action": (
+                    "1. Identify the malformed metric in Prometheus targets. "
+                    "2. Fix the exporter or scraping configuration. "
+                    "3. Validate metric types (gauge vs counter vs histogram). "
+                    "4. Re-ingest corrected data."
+                ),
+            }
+        )
 
     return anomalies
 
@@ -730,7 +878,11 @@ def detect_anomalies_from_window(
     """
     ing_errors = _ingestion_errors_in_window(window_start, window_end)
 
-    detectors: List[Callable[[List[Dict[str, Any]], List[Dict[str, Any]] | None], List[Dict[str, Any]]]] = [
+    detectors: List[
+        Callable[
+            [List[Dict[str, Any]], List[Dict[str, Any]] | None], List[Dict[str, Any]]
+        ]
+    ] = [
         lambda d, _: a1_detection(d),
         lambda d, _: a2_detection(d),
         lambda d, _: a3_detection(d),
@@ -755,6 +907,7 @@ def detect_anomalies_from_window(
 
 # ─── Class Wrapper (legacy API + connection management) ───────────────────────
 
+
 class AnomalyDetector:
     """Connection-aware convenience wrapper around the stateless detection functions.
 
@@ -770,6 +923,7 @@ class AnomalyDetector:
 
     def query(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
         from psycopg2.extras import RealDictCursor
+
         conn = self._get_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -820,11 +974,13 @@ class AnomalyDetector:
                     if atm_id is None:
                         cur.execute(
                             "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id IS NULL",
-                            (anomaly_type,))
+                            (anomaly_type,),
+                        )
                     else:
                         cur.execute(
                             "SELECT 1 FROM anomalies WHERE anomaly_type = %s AND atm_id = %s",
-                            (anomaly_type, atm_id))
+                            (anomaly_type, atm_id),
+                        )
                     if cur.fetchone():
                         continue
 
@@ -835,10 +991,20 @@ class AnomalyDetector:
                         "recommended_action, sources_involved, feedback_rating, is_active, is_starred) "
                         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                         (
-                            detected_at, anomaly_type, atm_id, correlation_id, transaction_id,
+                            detected_at,
+                            anomaly_type,
+                            atm_id,
+                            correlation_id,
+                            transaction_id,
                             a.get("model_confidence_score"),
-                            severity, title, explanation, recommended_action,
-                            Json(sources), None, 1, 0,
+                            severity,
+                            title,
+                            explanation,
+                            recommended_action,
+                            Json(sources),
+                            None,
+                            1,
+                            0,
                         ),
                     )
                     saved += 1

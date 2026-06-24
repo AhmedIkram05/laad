@@ -3,6 +3,7 @@
 Simulates multiple emitters running concurrently, verifying that the
 producer interface handles concurrent calls gracefully.
 """
+
 from __future__ import annotations
 import threading
 from unittest.mock import MagicMock

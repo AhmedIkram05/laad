@@ -5,6 +5,7 @@ Covers:
   - RBAC escalation: non-admin access attempts, role injection
   - Token abuse: missing claims, blank tokens, replay after logout
 """
+
 from __future__ import annotations
 import time
 
@@ -36,9 +37,13 @@ def admin_token(client):
 def user_token(client):
     """Register a plain user and get a token."""
     username = f"secauthuser_{time.time_ns()}"
-    resp = client.post("/auth/register", json={"username": username, "password": "testpass123"})
+    resp = client.post(
+        "/auth/register", json={"username": username, "password": "testpass123"}
+    )
     assert resp.status_code == 201
-    resp2 = client.post("/auth/login", data={"username": username, "password": "testpass123"})
+    resp2 = client.post(
+        "/auth/login", data={"username": username, "password": "testpass123"}
+    )
     assert resp2.status_code == 200
     return resp2.json()["access_token"], username
 
@@ -54,9 +59,14 @@ class TestJWTTampering:
     def test_tampered_username(self, client):
         """Token with modified 'sub' claim is validly signed — app trusts JWT."""
         token = jwt.encode(
-            {"sub": "hacker", "role": "admin", "exp": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ) + __import__("datetime").timedelta(hours=1)},
+            {
+                "sub": "hacker",
+                "role": "admin",
+                "exp": __import__("datetime").datetime.now(
+                    __import__("datetime").timezone.utc
+                )
+                + __import__("datetime").timedelta(hours=1),
+            },
             auth_router.SECRET_KEY,
             algorithm=auth_router.ALGORITHM,
         )
@@ -70,13 +80,20 @@ class TestJWTTampering:
         """Token with role escalated to admin may still decode, but /admin
         should reject it if the role was not legitimately assigned."""
         token = jwt.encode(
-            {"sub": "regular_user", "role": "admin", "exp": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ) + __import__("datetime").timedelta(hours=1)},
+            {
+                "sub": "regular_user",
+                "role": "admin",
+                "exp": __import__("datetime").datetime.now(
+                    __import__("datetime").timezone.utc
+                )
+                + __import__("datetime").timedelta(hours=1),
+            },
             auth_router.SECRET_KEY,
             algorithm=auth_router.ALGORITHM,
         )
-        resp = client.get("/admin/retention", headers={"Authorization": f"Bearer {token}"})
+        resp = client.get(
+            "/admin/retention", headers={"Authorization": f"Bearer {token}"}
+        )
         # The role check is against the JWT payload, so this token *will* pass
         # the role check. But the user 'regular_user' doesn't exist in the DB.
         # The token is validly signed — this test documents current behaviour.
@@ -86,9 +103,14 @@ class TestJWTTampering:
     def test_wrong_signing_key(self, client):
         """Token signed with a different key should be rejected."""
         token = jwt.encode(
-            {"sub": "admin", "role": "admin", "exp": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ) + __import__("datetime").timedelta(hours=1)},
+            {
+                "sub": "admin",
+                "role": "admin",
+                "exp": __import__("datetime").datetime.now(
+                    __import__("datetime").timezone.utc
+                )
+                + __import__("datetime").timedelta(hours=1),
+            },
             ATTACKER_KEY,
             algorithm="HS256",
         )
@@ -99,15 +121,32 @@ class TestJWTTampering:
         """Token with algorithm 'none' should be rejected."""
         import json
         import base64
-        header = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode()).rstrip(b"=").decode()
-        payload = base64.urlsafe_b64encode(json.dumps({"sub": "admin", "role": "admin", "exp": 9999999999}).encode()).rstrip(b"=").decode()
+
+        header = (
+            base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode())
+            .rstrip(b"=")
+            .decode()
+        )
+        payload = (
+            base64.urlsafe_b64encode(
+                json.dumps(
+                    {"sub": "admin", "role": "admin", "exp": 9999999999}
+                ).encode()
+            )
+            .rstrip(b"=")
+            .decode()
+        )
         token = f"{header}.{payload}."
-        resp = client.get("/admin/retention", headers={"Authorization": f"Bearer {token}"})
+        resp = client.get(
+            "/admin/retention", headers={"Authorization": f"Bearer {token}"}
+        )
         assert resp.status_code == 401
 
     def test_malformed_token(self, client):
         """Token with a single segment should be rejected."""
-        resp = client.get("/auth/me", headers={"Authorization": "Bearer not-a-real-jwt"})
+        resp = client.get(
+            "/auth/me", headers={"Authorization": "Bearer not-a-real-jwt"}
+        )
         assert resp.status_code == 401
 
     def test_missing_exp_claim(self, client):
@@ -130,9 +169,13 @@ class TestJWTTampering:
         With TestClient the error bubbles up as an unhandled exception; the
         global exception handler would return 500 in production."""
         token = jwt.encode(
-            {"sub": "admin", "exp": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ) + __import__("datetime").timedelta(hours=1)},
+            {
+                "sub": "admin",
+                "exp": __import__("datetime").datetime.now(
+                    __import__("datetime").timezone.utc
+                )
+                + __import__("datetime").timedelta(hours=1),
+            },
             auth_router.SECRET_KEY,
             algorithm=auth_router.ALGORITHM,
         )
@@ -160,7 +203,12 @@ class TestRBACEscalation:
         headers = {"Authorization": f"Bearer {token}"}
         resp = client.post(
             "/admin/users",
-            json={"username": "should_fail", "password": "pass123", "confirm_password": "pass123", "role": "admin"},
+            json={
+                "username": "should_fail",
+                "password": "pass123",
+                "confirm_password": "pass123",
+                "role": "admin",
+            },
             headers=headers,
         )
         assert resp.status_code == 403
@@ -202,10 +250,14 @@ class TestTokenAbuse:
 
     def test_logout_then_reuse(self, client, admin_token):
         """After logout, reusing the same token should be rejected."""
-        logout_resp = client.post("/auth/logout", headers={"Authorization": f"Bearer {admin_token}"})
+        logout_resp = client.post(
+            "/auth/logout", headers={"Authorization": f"Bearer {admin_token}"}
+        )
         assert logout_resp.status_code == 200
 
-        resp = client.get("/auth/me", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/auth/me", headers={"Authorization": f"Bearer {admin_token}"}
+        )
         # If Redis is available and blacklist works, this returns 401.
         # If Redis is unavailable, it degrades gracefully (token still valid).
         assert resp.status_code in (200, 401), (

@@ -1,8 +1,8 @@
 """Tests for backend.src.database.config."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
-
 
 
 class TestDBConfig:
@@ -13,6 +13,7 @@ class TestDBConfig:
             mock_getenv.side_effect = lambda key, default=None: default
             from importlib import reload
             import backend.src.database.config as cfg
+
             reload(cfg)
             assert cfg.DB_CONFIG["host"] == "localhost"
             assert cfg.DB_CONFIG["port"] == 5432
@@ -29,9 +30,13 @@ class TestDBConfig:
             "POSTGRES_USER": "test_user",
             "POSTGRES_PASSWORD": "test_pass",
         }
-        with patch("backend.src.database.config.os.getenv", side_effect=lambda k, d=None: env_vals.get(k, d)):
+        with patch(
+            "backend.src.database.config.os.getenv",
+            side_effect=lambda k, d=None: env_vals.get(k, d),
+        ):
             from importlib import reload
             import backend.src.database.config as cfg
+
             reload(cfg)
             assert cfg.DB_CONFIG["host"] == "test-host"
             assert cfg.DB_CONFIG["port"] == 9999

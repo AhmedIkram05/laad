@@ -2,6 +2,7 @@
 
 Maps ATM application JSON events into the `events` table format.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,7 @@ class AtmAppParser(EventDataParser):
     def parse_line(self, line: str) -> Optional[Dict[str, Any]]:
         payload_obj = None
         if not line:
-            raise ValueError('empty line')
+            raise ValueError("empty line")
         # Accept either a JSON object or a line with trailing commas etc.
         try:
             payload_obj = json.loads(line)
@@ -29,32 +30,32 @@ class AtmAppParser(EventDataParser):
             raise
 
         # Normalise timestamp
-        ts = parse_to_utc_iso(payload_obj.get('timestamp'))
+        ts = parse_to_utc_iso(payload_obj.get("timestamp"))
         if not ts:
-            raise ValueError('invalid timestamp')
+            raise ValueError("invalid timestamp")
 
         # Core explicit columns for `events`
-        atm_id = payload_obj.get('atm_id')
-        location_code = payload_obj.get('location_code')
-        
+        atm_id = payload_obj.get("atm_id")
+        location_code = payload_obj.get("location_code")
+
         # Unify reference fields dynamically
         if atm_id and location_code:
             self._upsert_atm_reference(atm_id, location_code=location_code)
 
         row = {
-            'timestamp': ts,
-            'source': 'ATM_APP',
-            'atm_id': atm_id,
-            'correlation_id': payload_obj.get('correlation_id'),
-            'transaction_id': payload_obj.get('transaction_id'),
-            'event_type': payload_obj.get('event_type'),
-            'severity': payload_obj.get('log_level'),
-            'message': payload_obj.get('message'),
+            "timestamp": ts,
+            "source": "ATM_APP",
+            "atm_id": atm_id,
+            "correlation_id": payload_obj.get("correlation_id"),
+            "transaction_id": payload_obj.get("transaction_id"),
+            "event_type": payload_obj.get("event_type"),
+            "severity": payload_obj.get("log_level"),
+            "message": payload_obj.get("message"),
         }
 
         # Build payload for remaining fields (exclude keys already mapped)
-        excluded = set(row.keys()) | {'timestamp'}
+        excluded = set(row.keys()) | {"timestamp"}
         extras = {k: v for k, v in payload_obj.items() if k not in excluded}
-        row['payload'] = json.dumps(extras)
+        row["payload"] = json.dumps(extras)
 
         return row

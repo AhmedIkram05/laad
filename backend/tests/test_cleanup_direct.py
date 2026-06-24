@@ -3,13 +3,19 @@
 Uses mocked connections to test batched_delete, batched_delete_all,
 edge cases, and error handling without requiring real DB state.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.src.admin.cleanup import batched_delete, batched_delete_all, run_wipe, TABLE_CONFIG
+from backend.src.admin.cleanup import (
+    batched_delete,
+    batched_delete_all,
+    run_wipe,
+    TABLE_CONFIG,
+)
 
 
 @pytest.fixture
@@ -41,8 +47,7 @@ class TestBatchedDelete:
 
         cursor.execute = side_effect
 
-        result = batched_delete(mock_conn, "events", "timestamp",
-                                "2026-01-01T00:00:00")
+        result = batched_delete(mock_conn, "events", "timestamp", "2026-01-01T00:00:00")
 
         assert result == 5000
         assert mock_conn.commit.call_count >= 2
@@ -52,8 +57,7 @@ class TestBatchedDelete:
         cursor = mock_conn.cursor.return_value.__enter__.return_value
         cursor.rowcount = 0
 
-        result = batched_delete(mock_conn, "events", "timestamp",
-                                "2026-01-01T00:00:00")
+        result = batched_delete(mock_conn, "events", "timestamp", "2026-01-01T00:00:00")
 
         assert result == 0
         mock_conn.commit.assert_called_once()
@@ -74,23 +78,28 @@ class TestBatchedDelete:
 
         cursor.execute = side_effect
 
-        result = batched_delete(mock_conn, "events", "timestamp",
-                                "2026-01-01T00:00:00")
+        result = batched_delete(mock_conn, "events", "timestamp", "2026-01-01T00:00:00")
 
         assert result == 10000
         assert mock_conn.commit.call_count >= 2
 
     def test_invalid_table_raises_value_error(self, mock_conn):
         with pytest.raises(ValueError, match="Invalid table"):
-            batched_delete(mock_conn, "nonexistent_table", "timestamp",
-                           "2026-01-01T00:00:00")
+            batched_delete(
+                mock_conn, "nonexistent_table", "timestamp", "2026-01-01T00:00:00"
+            )
 
     def test_applies_extra_condition(self, mock_conn):
         cursor = mock_conn.cursor.return_value.__enter__.return_value
         cursor.rowcount = 0
 
-        batched_delete(mock_conn, "anomalies", "detected_at",
-                       "2026-01-01T00:00:00", extra_cond="AND is_active = 0")
+        batched_delete(
+            mock_conn,
+            "anomalies",
+            "detected_at",
+            "2026-01-01T00:00:00",
+            extra_cond="AND is_active = 0",
+        )
 
         sql = cursor.execute.call_args[0][0]
         assert "AND is_active = 0" in sql
@@ -131,8 +140,10 @@ class TestRunWipe:
         mock_conn.cursor.return_value = cursor
         mock_conn.cursor.return_value.__enter__.return_value = cursor
 
-        with patch("backend.src.admin.cleanup.get_conn", return_value=mock_conn), \
-             patch("backend.src.admin.cleanup.release_conn"):
+        with (
+            patch("backend.src.admin.cleanup.get_conn", return_value=mock_conn),
+            patch("backend.src.admin.cleanup.release_conn"),
+        ):
             result = run_wipe()
 
         assert result["action"] == "wipe"

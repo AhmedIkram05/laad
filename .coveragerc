@@ -1,6 +1,6 @@
 [run]
 source = backend/src,backend/generator,backend/kafka
-omit = 
+omit =
     */__pycache__/*
     */tests/*
     */.pytest_cache/*

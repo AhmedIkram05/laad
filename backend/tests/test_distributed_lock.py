@@ -83,7 +83,11 @@ class TestDistributedLock:
     @patch("backend.kafka.consumer.get_redis_client")
     def test_lock_timeout_is_less_than_interval(self, mock_get_client):
         """Test that lock timeout is shorter than the trigger interval."""
-        from backend.kafka.consumer import _acquire_detection_lock, LOCK_TIMEOUT_S, ANOMALY_INTERVAL_S
+        from backend.kafka.consumer import (
+            _acquire_detection_lock,
+            LOCK_TIMEOUT_S,
+            ANOMALY_INTERVAL_S,
+        )
 
         mock_client = MagicMock()
         mock_client.set.return_value = True

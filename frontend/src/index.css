@@ -22,16 +22,16 @@
   --color-ring: oklch(0.54 0.245 262.9);
   --color-popover: oklch(1 0 0);
   --color-popover-foreground: oklch(0.13 0.028 261.7);
-  
+
   --color-chart-1: oklch(0.54 0.245 262.9);
   --color-chart-2: oklch(0.55 0.245 292.7);
   --color-chart-3: oklch(0.55 0.245 199.7);
   --color-chart-4: oklch(0.55 0.245 142.7);
   --color-chart-5: oklch(0.65 0.245 38.7);
-  
+
   --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
-  
+
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;

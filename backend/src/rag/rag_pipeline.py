@@ -76,14 +76,20 @@ def process_query(
                 for c in response.sources
             ],
             "uncertainty_score": uncertainty.final_confidence if uncertainty else 0.5,
-            "confidence_level": uncertainty.confidence_level if uncertainty else "medium",
+            "confidence_level": uncertainty.confidence_level
+            if uncertainty
+            else "medium",
             "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
-            "recommendation": uncertainty.recommendation if uncertainty else "Review recommended",
+            "recommendation": uncertainty.recommendation
+            if uncertainty
+            else "Review recommended",
             "model_used": response.model,
             "self_consistency_score": response.self_consistency_score,
             "verbalized_confidence": response.verbalized_confidence,
             "grounding_score": response.grounding_score,
-            "generation_variance": uncertainty.generation_variance if uncertainty else None,
+            "generation_variance": uncertainty.generation_variance
+            if uncertainty
+            else None,
             "cross_encoder_used": response.cross_encoder_used,
             "was_revised": response.was_revised,
         }

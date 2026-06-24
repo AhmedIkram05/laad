@@ -3,6 +3,7 @@
 Covers feedback PATCH, all 3 grouping modes, all 3 sort modes,
 filters, cache hit/miss behavior, pagination, and auth enforcement.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
@@ -92,8 +93,11 @@ class TestFeedback:
                 aid = _seed_anomaly(conn)
                 headers = _login(client)
 
-                resp = client.patch(f"/anomalies/{aid}/feedback",
-                                    json={"rating": "LIKE"}, headers=headers)
+                resp = client.patch(
+                    f"/anomalies/{aid}/feedback",
+                    json={"rating": "LIKE"},
+                    headers=headers,
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["feedback_rating"] == "LIKE"
@@ -109,16 +113,22 @@ class TestFeedback:
                 aid = _seed_anomaly(conn)
                 headers = _login(client)
 
-                resp = client.patch(f"/anomalies/{aid}/feedback",
-                                    json={"rating": "DISLIKE"}, headers=headers)
+                resp = client.patch(
+                    f"/anomalies/{aid}/feedback",
+                    json={"rating": "DISLIKE"},
+                    headers=headers,
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["feedback_rating"] == "DISLIKE"
                 assert body["false_positive_count"] == 1
 
                 # Second DISLIKE increments again
-                resp2 = client.patch(f"/anomalies/{aid}/feedback",
-                                     json={"rating": "DISLIKE"}, headers=headers)
+                resp2 = client.patch(
+                    f"/anomalies/{aid}/feedback",
+                    json={"rating": "DISLIKE"},
+                    headers=headers,
+                )
                 assert resp2.status_code == 200
                 assert resp2.json()["false_positive_count"] == 2
         finally:
@@ -132,8 +142,11 @@ class TestFeedback:
                 aid = _seed_anomaly(conn)
                 headers = _login(client)
 
-                resp = client.patch(f"/anomalies/{aid}/feedback",
-                                    json={"rating": "INVALID"}, headers=headers)
+                resp = client.patch(
+                    f"/anomalies/{aid}/feedback",
+                    json={"rating": "INVALID"},
+                    headers=headers,
+                )
                 assert resp.status_code == 400
         finally:
             app.dependency_overrides.clear()
@@ -144,8 +157,11 @@ class TestFeedback:
         try:
             with TestClient(app) as client:
                 headers = _login(client)
-                resp = client.patch("/anomalies/99999/feedback",
-                                    json={"rating": "LIKE"}, headers=headers)
+                resp = client.patch(
+                    "/anomalies/99999/feedback",
+                    json={"rating": "LIKE"},
+                    headers=headers,
+                )
                 assert resp.status_code == 404
         finally:
             app.dependency_overrides.clear()
@@ -194,12 +210,14 @@ class TestListSortModes:
             with TestClient(app) as client:
                 now = datetime.now(timezone.utc)
                 a1 = _seed_anomaly(conn, anomaly_type="A1", detected_at=now)
-                a2 = _seed_anomaly(conn, anomaly_type="A2",
-                                   detected_at=now - timedelta(hours=2))
+                _seed_anomaly(
+                    conn, anomaly_type="A2", detected_at=now - timedelta(hours=2)
+                )
                 headers = _login(client)
 
-                resp = client.get("/anomalies", params={"sort_by": "detected_at"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"sort_by": "detected_at"}, headers=headers
+                )
                 assert resp.status_code == 200
                 data = resp.json()["data"]
                 assert len(data) == 2
@@ -213,12 +231,13 @@ class TestListSortModes:
         conn = _setup()
         try:
             with TestClient(app) as client:
-                high_id = _seed_anomaly(conn, severity="HIGH")
+                _seed_anomaly(conn, severity="HIGH")
                 critical_id = _seed_anomaly(conn, severity="CRITICAL")
                 headers = _login(client)
 
-                resp = client.get("/anomalies", params={"sort_by": "severity"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"sort_by": "severity"}, headers=headers
+                )
                 assert resp.status_code == 200
                 data = resp.json()["data"]
                 assert len(data) == 2
@@ -233,7 +252,7 @@ class TestListSortModes:
         try:
             with TestClient(app) as client:
                 # A1 (gravity 7) should rank above A7 (gravity 1)
-                a7_id = _seed_anomaly(conn, anomaly_type="A7", severity="LOW")
+                _seed_anomaly(conn, anomaly_type="A7", severity="LOW")
                 a1_id = _seed_anomaly(conn, anomaly_type="A1", severity="CRITICAL")
                 headers = _login(client)
 
@@ -261,8 +280,9 @@ class TestListFilters:
                 _seed_anomaly(conn, anomaly_type="A2")
                 headers = _login(client)
 
-                resp = client.get("/anomalies", params={"anomaly_type": "A1"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"anomaly_type": "A1"}, headers=headers
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["total"] == 1
@@ -279,9 +299,9 @@ class TestListFilters:
                 _seed_anomaly(conn, explanation='{"source": "ZSCORE"}')
                 headers = _login(client)
 
-                resp = client.get("/anomalies",
-                                  params={"detection_source": "ZSCORE"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"detection_source": "ZSCORE"}, headers=headers
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["total"] == 1
@@ -297,8 +317,9 @@ class TestListFilters:
                 _seed_anomaly(conn, is_starred=0)
                 headers = _login(client)
 
-                resp = client.get("/anomalies", params={"is_starred": 1},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"is_starred": 1}, headers=headers
+                )
                 assert resp.status_code == 200
                 assert resp.json()["total"] == 1
         finally:
@@ -313,8 +334,9 @@ class TestListFilters:
                 _seed_anomaly(conn, atm_id="ATM-SERVER-001")
                 headers = _login(client)
 
-                resp = client.get("/anomalies", params={"entity_type": "atm"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"entity_type": "atm"}, headers=headers
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["total"] == 1
@@ -331,8 +353,9 @@ class TestListFilters:
                 _seed_anomaly(conn, atm_id="ATM-SERVER-001")
                 headers = _login(client)
 
-                resp = client.get("/anomalies", params={"entity_type": "server"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"entity_type": "server"}, headers=headers
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["total"] == 1
@@ -351,9 +374,11 @@ class TestListFilters:
                 headers = _login(client)
 
                 recent = datetime.now(timezone.utc) - timedelta(hours=1)
-                resp = client.get("/anomalies",
-                                  params={"from_date": recent.isoformat()},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies",
+                    params={"from_date": recent.isoformat()},
+                    headers=headers,
+                )
                 assert resp.status_code == 200
                 assert resp.json()["total"] == 1
         finally:
@@ -370,13 +395,15 @@ class TestListGroupingModes:
         try:
             with TestClient(app) as client:
                 _seed_anomaly(conn, anomaly_type="A1", atm_id="ATM-GB-0001")
-                _seed_anomaly(conn, anomaly_type="A1", atm_id="ATM-GB-0001")  # duplicate
+                _seed_anomaly(
+                    conn, anomaly_type="A1", atm_id="ATM-GB-0001"
+                )  # duplicate
                 _seed_anomaly(conn, anomaly_type="A2", atm_id="ATM-GB-0001")
                 headers = _login(client)
 
-                resp = client.get("/anomalies",
-                                  params={"group_by": "atm_anomaly"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"group_by": "atm_anomaly"}, headers=headers
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 # 2 unique atm_id + anomaly_type combos
@@ -391,13 +418,15 @@ class TestListGroupingModes:
         try:
             with TestClient(app) as client:
                 _seed_anomaly(conn, title="Connection Timeout", atm_id="ATM-GB-0001")
-                _seed_anomaly(conn, title="Connection Timeout", atm_id="ATM-GB-0001")  # duplicate
+                _seed_anomaly(
+                    conn, title="Connection Timeout", atm_id="ATM-GB-0001"
+                )  # duplicate
                 _seed_anomaly(conn, title="Cassandra Error", atm_id="ATM-GB-0001")
                 headers = _login(client)
 
-                resp = client.get("/anomalies",
-                                  params={"group_by": "title_atm"},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"group_by": "title_atm"}, headers=headers
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["total"] == 2
@@ -425,8 +454,7 @@ class TestAuthEnforcement:
         conn = _setup()
         try:
             with TestClient(app) as client:
-                resp = client.patch("/anomalies/1/feedback",
-                                    json={"rating": "LIKE"})
+                resp = client.patch("/anomalies/1/feedback", json={"rating": "LIKE"})
                 assert resp.status_code in (401, 403)
         finally:
             app.dependency_overrides.clear()
@@ -446,8 +474,9 @@ class TestPagination:
                     ids.append(_seed_anomaly(conn, title=f"Anomaly {i}"))
                 headers = _login(client)
 
-                resp = client.get("/anomalies", params={"limit": 2, "offset": 0},
-                                  headers=headers)
+                resp = client.get(
+                    "/anomalies", params={"limit": 2, "offset": 0}, headers=headers
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["limit"] == 2

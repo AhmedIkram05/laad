@@ -6,6 +6,7 @@ Validates:
   3. Responses match their declared schema for a representative subset
   4. Undocumented paths return 404
 """
+
 from __future__ import annotations
 
 import pytest
@@ -25,14 +26,19 @@ def admin_token(client):
     """Obtain a valid admin JWT, cached per module.
     Retries on 401 to handle transient DB state corruption from deadlocks."""
     import time
+
     max_attempts = 5
     for attempt in range(max_attempts):
-        resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
         if resp.status_code == 200:
             return resp.json()["access_token"]
         if attempt < max_attempts - 1:
-            time.sleep(1.5 ** attempt)
-    assert resp.status_code == 200, f"admin login failed after {max_attempts} attempts: {resp.status_code} {resp.text}"
+            time.sleep(1.5**attempt)
+    assert resp.status_code == 200, (
+        f"admin login failed after {max_attempts} attempts: {resp.status_code} {resp.text}"
+    )
     return resp.json()["access_token"]
 
 
@@ -57,7 +63,9 @@ def _count_endpoints(schema: dict) -> int:
     """Count total path+method combinations in the schema."""
     count = 0
     for path, methods in schema.get("paths", {}).items():
-        count += sum(1 for m in ("get", "post", "put", "patch", "delete") if m in methods)
+        count += sum(
+            1 for m in ("get", "post", "put", "patch", "delete") if m in methods
+        )
     return count
 
 
@@ -110,7 +118,9 @@ class TestOpenAPISchema:
                     spec = methods.get(method)
                     if spec and spec.get("tags"):
                         tag_names.update(spec["tags"])
-            assert len(tag_names) >= 3, f"Expected >=3 tag groups across routes, got {len(tag_names)}"
+            assert len(tag_names) >= 3, (
+                f"Expected >=3 tag groups across routes, got {len(tag_names)}"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -140,18 +150,24 @@ class TestEndpointBehaviour:
     # ── Auth endpoints ───────────────────────────────────────────
 
     def test_auth_login_success(self, client):
-        resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
 
     def test_auth_login_invalid(self, client):
-        resp = client.post("/auth/login", data={"username": "admin", "password": "wrong"})
+        resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "wrong"}
+        )
         assert resp.status_code == 401
 
     def test_auth_me_with_token(self, client, admin_token):
-        resp = client.get("/auth/me", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/auth/me", headers={"Authorization": f"Bearer {admin_token}"}
+        )
         assert resp.status_code == 200
         assert resp.json()["username"] == "admin"
 
@@ -161,14 +177,18 @@ class TestEndpointBehaviour:
 
     def test_auth_register(self, client):
         username = f"contract_test_user_{__import__('time').time_ns()}"
-        resp = client.post("/auth/register", json={"username": username, "password": "TestPass123"})
+        resp = client.post(
+            "/auth/register", json={"username": username, "password": "TestPass123"}
+        )
         assert resp.status_code == 201
         assert resp.json()["username"] == username
 
     # ── Admin endpoints (authenticated) ──────────────────────────
 
     def test_admin_retention_get(self, client, admin_token):
-        resp = client.get("/admin/retention", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/admin/retention", headers={"Authorization": f"Bearer {admin_token}"}
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "retention_days" in data
@@ -176,7 +196,10 @@ class TestEndpointBehaviour:
     def test_admin_retention_update(self, client, admin_token):
         resp = client.put(
             "/admin/retention",
-            headers={"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {admin_token}",
+                "Content-Type": "application/json",
+            },
             json={"days": 7},
         )
         assert resp.status_code == 200
@@ -194,15 +217,25 @@ class TestEndpointBehaviour:
     def test_admin_create_user(self, client, admin_token):
         resp = client.post(
             "/admin/users",
-            headers={"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"},
-            json={"username": "contract_admin", "password": "pass123", "confirm_password": "pass123", "role": "admin"},
+            headers={
+                "Authorization": f"Bearer {admin_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "username": "contract_admin",
+                "password": "pass123",
+                "confirm_password": "pass123",
+                "role": "admin",
+            },
         )
         assert resp.status_code in (201, 409)  # 409 duplicate is acceptable
 
     # ── Anomalies endpoints ──────────────────────────────────────
 
     def test_anomalies_list(self, client, admin_token):
-        resp = client.get("/anomalies", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/anomalies", headers={"Authorization": f"Bearer {admin_token}"}
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "data" in data
@@ -246,7 +279,10 @@ class TestEndpointBehaviour:
     # ── Analysis endpoints ───────────────────────────────────────
 
     def test_analysis_detailed(self, client, admin_token):
-        resp = client.get("/analysis/detailed?Anomaly=A1", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/analysis/detailed?Anomaly=A1",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         # Returns data key with array of anomaly objects
@@ -254,7 +290,10 @@ class TestEndpointBehaviour:
         assert isinstance(data["data"], list)
 
     def test_analysis_metrics(self, client, admin_token):
-        resp = client.get("/analysis/metrics?hours=24&bucket_minutes=60", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/analysis/metrics?hours=24&bucket_minutes=60",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
         # Analysis metrics should return 200
         assert resp.status_code == 200
 
@@ -292,14 +331,18 @@ class TestResponseShape:
         assert resp.json() == {"status": "ok"}
 
     def test_auth_login_shape(self, client):
-        resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+        resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
         body = resp.json()
         assert isinstance(body["access_token"], str)
         assert body["token_type"] == "bearer"
 
     def test_anomalies_list_shape(self, client, admin_token):
         """Anomalies list returns an array at .data."""
-        resp = client.get("/anomalies", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/anomalies", headers={"Authorization": f"Bearer {admin_token}"}
+        )
         body = resp.json()
         assert isinstance(body["data"], list)
         if len(body["data"]) > 0:
@@ -310,7 +353,9 @@ class TestResponseShape:
 
     def test_admin_retention_shape(self, client, admin_token):
         """Retention settings has retention_days."""
-        resp = client.get("/admin/retention", headers={"Authorization": f"Bearer {admin_token}"})
+        resp = client.get(
+            "/admin/retention", headers={"Authorization": f"Bearer {admin_token}"}
+        )
         body = resp.json()
         assert isinstance(body.get("retention_days"), int)
 

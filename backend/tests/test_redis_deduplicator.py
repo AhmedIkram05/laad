@@ -1,4 +1,5 @@
 """Unit tests for Redis-backed Kafka deduplicator."""
+
 from __future__ import annotations
 from unittest.mock import MagicMock, patch
 from backend.kafka.deduplicator import Deduplicator

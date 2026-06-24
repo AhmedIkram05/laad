@@ -18,6 +18,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      terraform: ${{ steps.filter.outputs.terraform }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -35,6 +36,9 @@ jobs:
               - 'terraform/**'
               - 'docker-compose.yml'
               - 'Makefile'
+              - '.github/workflows/ci.yml'
+            terraform:
+              - 'terraform/**'
               - '.github/workflows/ci.yml'
 
   # ── Lint & Security (fast, always runs) ──────────────────────────
@@ -67,6 +71,14 @@ jobs:
           format: table
           exit-code: 1
           skip-dirs: node_modules,frontend/node_modules,.git
+
+      - name: Checkov IaC compliance
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform/
+          framework: terraform
+          quiet: true
+          soft_fail: false
 
   # ── Dependency Review (supply chain security) ────────────────────
   deps:
@@ -179,6 +191,36 @@ jobs:
           flags: frontend
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  # ── Terraform tests (on terraform changes) ──────────────────────────
+  terraform-test:
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module:
+          - ecr_test
+          - ecs_test
+          - frontend_test
+          - iam_test
+          - kafka_test
+          - monitoring_test
+          - rds_test
+          - secrets_test
+          - vpc_test
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Terraform test — ${{ matrix.module }}
+        working-directory: terraform/tests/modules/${{ matrix.module }}
+        run: |
+          terraform init -backend=false && terraform test -verbose
 
   # ── Playwright E2E tests (on frontend or backend changes) ─────────
   e2e:

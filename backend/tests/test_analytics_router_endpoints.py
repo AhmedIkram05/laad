@@ -42,7 +42,11 @@ class TestAnalyticsEventsEndpoint:
         with TestClient(app) as client:
             resp = client.get(
                 "/api/analytics/events",
-                params={"hours": 24, "bucket_minutes": 30, "sources": "ATM_APP,HARDWARE"},
+                params={
+                    "hours": 24,
+                    "bucket_minutes": 30,
+                    "sources": "ATM_APP,HARDWARE",
+                },
             )
 
         assert resp.status_code == 200

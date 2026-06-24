@@ -25,6 +25,7 @@ W_GROUNDING = 0.20
 @dataclass
 class UncertaintyEstimate:
     """Uncertainty estimate with multiple signals fused."""
+
     final_confidence: float
     confidence_level: str
     self_consistency_score: Optional[float] = None
@@ -128,10 +129,18 @@ class UncertaintyEstimator:
         return UncertaintyEstimate(
             final_confidence=final_confidence,
             confidence_level=confidence_level,
-            self_consistency_score=round(self_consistency_score, 3) if self_consistency_score is not None else None,
-            verbalized_confidence=round(verbalized_confidence, 3) if verbalized_confidence is not None else None,
-            generation_variance=1.0 - round(self_consistency_score, 3) if self_consistency_score is not None else None,
-            grounding_score=round(grounding_score, 3) if grounding_score is not None else None,
+            self_consistency_score=round(self_consistency_score, 3)
+            if self_consistency_score is not None
+            else None,
+            verbalized_confidence=round(verbalized_confidence, 3)
+            if verbalized_confidence is not None
+            else None,
+            generation_variance=1.0 - round(self_consistency_score, 3)
+            if self_consistency_score is not None
+            else None,
+            grounding_score=round(grounding_score, 3)
+            if grounding_score is not None
+            else None,
             is_uncertain=is_uncertain,
             recommendation=recommendation,
         )

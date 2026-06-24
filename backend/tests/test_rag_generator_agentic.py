@@ -35,12 +35,14 @@ class TestTextSimilarity:
 
     def test_identical_texts(self):
         from backend.src.rag.generator import _compute_text_similarity
+
         text = "ATM-GB-0001 has a network timeout error"
         score = _compute_text_similarity(text, text)
         assert score == 1.0
 
     def test_similar_texts(self):
         from backend.src.rag.generator import _compute_text_similarity
+
         a = "ATM-GB-0001 has a network timeout error"
         b = "ATM-GB-0001 is experiencing a network timeout"
         score = _compute_text_similarity(a, b)
@@ -48,6 +50,7 @@ class TestTextSimilarity:
 
     def test_different_texts(self):
         from backend.src.rag.generator import _compute_text_similarity
+
         a = "ATM-GB-0001 has a network timeout error"
         b = "The weather today is sunny and warm"
         score = _compute_text_similarity(a, b)
@@ -55,6 +58,7 @@ class TestTextSimilarity:
 
     def test_empty_texts(self):
         from backend.src.rag.generator import _compute_text_similarity
+
         assert _compute_text_similarity("", "") == 0.0
         assert _compute_text_similarity("hello", "") == 0.0
 
@@ -64,6 +68,7 @@ class TestEntityExtraction:
 
     def test_extract_atm_ids(self):
         from backend.src.rag.generator import _extract_entities
+
         text = "ATM-GB-0001 and ATM-0002 are both experiencing issues"
         entities = _extract_entities(text)
         assert "ATM-GB-0001" in entities["atm_ids"]
@@ -71,12 +76,14 @@ class TestEntityExtraction:
 
     def test_extract_error_codes(self):
         from backend.src.rag.generator import _extract_entities
+
         text = "Error code ERR-0040 detected on ATM-GB-0001"
         entities = _extract_entities(text)
         assert "ERR-0040" in entities["error_codes"]
 
     def test_extract_anomaly_types(self):
         from backend.src.rag.generator import _extract_entities
+
         text = "This matches anomaly type A1 and A3"
         entities = _extract_entities(text)
         assert "A1" in entities["anomaly_types"]
@@ -84,12 +91,14 @@ class TestEntityExtraction:
 
     def test_extract_correlation_ids(self):
         from backend.src.rag.generator import _extract_entities
+
         text = "correlation corr-0030-nnet-disc-0001 found"
         entities = _extract_entities(text)
         assert len(entities["correlation_ids"]) >= 1
 
     def test_no_entities(self):
         from backend.src.rag.generator import _extract_entities
+
         entities = _extract_entities("Hello, this is a simple question")
         assert all(len(v) == 0 for v in entities.values())
 
@@ -99,25 +108,31 @@ class TestCitationGrounding:
 
     def test_all_claims_grounded(self, sample_chunks):
         from backend.src.rag.generator import _check_citations
+
         answer = "ATM-GB-0001 has a network disconnect with error ERR-0040"
         score = _check_citations(answer, sample_chunks)
         assert score == 1.0
 
     def test_no_claims(self, sample_chunks):
         from backend.src.rag.generator import _check_citations
+
         answer = "This is a general statement with no specific entities"
         score = _check_citations(answer, sample_chunks)
         assert score == 1.0
 
     def test_unclaimed_entity(self, sample_chunks):
         from backend.src.rag.generator import _check_citations
+
         answer = "ATM-GB-9999 has an unknown error ERR-9999"
         score = _check_citations(answer, sample_chunks)
         assert score == 0.0
 
     def test_partial_grounding(self, sample_chunks):
         from backend.src.rag.generator import _check_citations
-        answer = "ATM-GB-0001 has error ERR-0040 and also ATM-GB-9999 has error ERR-9999"
+
+        answer = (
+            "ATM-GB-0001 has error ERR-0040 and also ATM-GB-9999 has error ERR-9999"
+        )
         score = _check_citations(answer, sample_chunks)
         assert score == 0.5
 

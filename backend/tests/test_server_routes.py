@@ -70,9 +70,7 @@ class TestExceptionHandler:
 
         # Clean up the test route
         app.routes[:] = [
-            r
-            for r in app.routes
-            if getattr(r, "path", None) != "/_test_exception"
+            r for r in app.routes if getattr(r, "path", None) != "/_test_exception"
         ]
 
     def test_normal_routes_still_work(self):
@@ -168,6 +166,5 @@ class TestCors:
             )
 
         assert (
-            resp.headers.get("access-control-allow-origin")
-            == "http://localhost:5173"
+            resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
         )

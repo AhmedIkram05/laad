@@ -18,7 +18,9 @@ class TestRAGRetriever:
             mock_config.retrieval_top_k = 5
 
             with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-                with patch.object(RAGRetriever, "_get_collection", return_value=MagicMock()):
+                with patch.object(
+                    RAGRetriever, "_get_collection", return_value=MagicMock()
+                ):
                     retriever = RAGRetriever()
                     assert retriever is not None
 
@@ -60,15 +62,24 @@ class TestRetrievedChunk:
         mock_collection = MagicMock()
         mock_collection.query.return_value = {
             "documents": [["log entry 1", "log entry 2"]],
-            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}, {"atm_id": "ATM-GB-0002", "last_timestamp": "2026-05-15T10:01:00Z"}]],
+            "metadatas": [
+                [
+                    {"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"},
+                    {"atm_id": "ATM-GB-0002", "last_timestamp": "2026-05-15T10:01:00Z"},
+                ]
+            ],
             "distances": [[0.2, 0.3]],
             "ids": [["doc_1", "doc_2"]],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
-                chunks = retriever.retrieve(query="test", top_k=2, temporal_boost=False, most_recent_first=False)
+                chunks = retriever.retrieve(
+                    query="test", top_k=2, temporal_boost=False, most_recent_first=False
+                )
 
         assert len(chunks) == 2
         assert chunks[0].text == "log entry 1"
@@ -83,7 +94,9 @@ class TestRetrievedChunk:
         mock_collection.query.side_effect = Exception("Connection failed")
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
                 chunks = retriever.retrieve(query="test")
 
@@ -95,12 +108,17 @@ class TestRetrievedChunk:
         mock_collection = MagicMock()
         mock_collection.get.return_value = {
             "documents": ["log 1", "log 2"],
-            "metadatas": [{"last_timestamp": "2026-05-15T10:00:00Z"}, {"last_timestamp": "2026-05-15T10:01:00Z"}],
+            "metadatas": [
+                {"last_timestamp": "2026-05-15T10:00:00Z"},
+                {"last_timestamp": "2026-05-15T10:01:00Z"},
+            ],
             "ids": ["id_1", "id_2"],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
                 chunks = retriever.retrieve_by_atm(atm_id="ATM-GB-0001", limit=2)
 
@@ -114,7 +132,9 @@ class TestRetrievedChunk:
         mock_collection.count.return_value = 100
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
                 stats = retriever.get_collection_stats()
 
@@ -127,7 +147,9 @@ class TestRetrievedChunk:
         mock_collection.count.side_effect = Exception("Connection failed")
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
                 stats = retriever.get_collection_stats()
 
@@ -140,15 +162,27 @@ class TestRetrievedChunk:
         mock_collection = MagicMock()
         mock_collection.query.return_value = {
             "documents": [["log entry with A1 tag"]],
-            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z", "_anomaly_tag": "A1"}]],
+            "metadatas": [
+                [
+                    {
+                        "atm_id": "ATM-GB-0001",
+                        "last_timestamp": "2026-05-15T10:00:00Z",
+                        "_anomaly_tag": "A1",
+                    }
+                ]
+            ],
             "distances": [[0.2]],
             "ids": [["doc_1"]],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
-                chunks = retriever.retrieve(query="network timeout", anomaly_type="A1", error_only=False)
+                chunks = retriever.retrieve(
+                    query="network timeout", anomaly_type="A1", error_only=False
+                )
 
         assert len(chunks) == 1
         mock_collection.query.assert_called_once()
@@ -162,13 +196,17 @@ class TestRetrievedChunk:
         mock_collection = MagicMock()
         mock_collection.query.return_value = {
             "documents": [["log entry"]],
-            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]],
+            "metadatas": [
+                [{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]
+            ],
             "distances": [[0.3]],
             "ids": [["doc_1"]],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
                 _ = retriever.retrieve(
                     query="test",
@@ -178,7 +216,9 @@ class TestRetrievedChunk:
                 )
 
         call_kwargs = mock_collection.query.call_args[1]
-        assert call_kwargs["where"] == {"$and": [{"atm_id": "ATM-GB-0001"}, {"_anomaly_tag": "A3"}]}
+        assert call_kwargs["where"] == {
+            "$and": [{"atm_id": "ATM-GB-0001"}, {"_anomaly_tag": "A3"}]
+        }
 
     def test_retrieve_with_temporal_boost(self):
         """Test that temporal boost is applied when enabled."""
@@ -188,15 +228,19 @@ class TestRetrievedChunk:
         mock_collection.query.return_value = {
             "documents": [["recent log", "old log"]],
             "metadatas": [
-                [{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-19T10:00:00Z"},
-                 {"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-18T10:00:00Z"}]
+                [
+                    {"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-19T10:00:00Z"},
+                    {"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-18T10:00:00Z"},
+                ]
             ],
             "distances": [[0.5, 0.5]],
             "ids": [["doc_1", "doc_2"]],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
                 chunks = retriever.retrieve(query="test", temporal_boost=True)
 
@@ -209,13 +253,17 @@ class TestRetrievedChunk:
         mock_collection = MagicMock()
         mock_collection.query.return_value = {
             "documents": [["log entry"]],
-            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]],
+            "metadatas": [
+                [{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]
+            ],
             "distances": [[0.3]],
             "ids": [["doc_1"]],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 retriever = RAGRetriever()
                 chunks = retriever.retrieve(query="test", temporal_boost=False)
 
@@ -228,16 +276,25 @@ class TestRetrievedChunk:
         mock_collection = MagicMock()
         mock_collection.query.return_value = {
             "documents": [["log entry 1", "log entry 2"]],
-            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}, {"atm_id": "ATM-GB-0002", "last_timestamp": "2026-05-15T10:01:00Z"}]],
+            "metadatas": [
+                [
+                    {"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"},
+                    {"atm_id": "ATM-GB-0002", "last_timestamp": "2026-05-15T10:01:00Z"},
+                ]
+            ],
             "distances": [[0.2, 0.3]],
             "ids": [["doc_1", "doc_2"]],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 with patch("backend.src.rag.retriever._HAS_CROSS_ENCODER", False):
                     retriever = RAGRetriever()
-                    chunks = retriever.retrieve(query="test", top_k=2, temporal_boost=False)
+                    chunks = retriever.retrieve(
+                        query="test", top_k=2, temporal_boost=False
+                    )
 
         assert len(chunks) == 2
         assert retriever._cross_encoder is None
@@ -249,13 +306,17 @@ class TestRetrievedChunk:
         mock_collection = MagicMock()
         mock_collection.query.return_value = {
             "documents": [["log entry"]],
-            "metadatas": [[{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]],
+            "metadatas": [
+                [{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]
+            ],
             "distances": [[0.3]],
             "ids": [["doc_1"]],
         }
 
         with patch.object(RAGRetriever, "_build_client", return_value=MagicMock()):
-            with patch.object(RAGRetriever, "_get_collection", return_value=mock_collection):
+            with patch.object(
+                RAGRetriever, "_get_collection", return_value=mock_collection
+            ):
                 with patch("backend.src.rag.retriever.config") as mock_config:
                     mock_config.cross_encoder_enabled = False
                     mock_config.retrieval_top_k = 3

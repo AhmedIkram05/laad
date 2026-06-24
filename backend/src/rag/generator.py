@@ -24,9 +24,9 @@ from backend.src.rag.utils import QueryType
 
 logger = logging.getLogger(__name__)
 
-_BOLD_HEADING_RE = re.compile(r'^\*{2}.*?\*{2}\s*$', re.MULTILINE)
-_HASH_HEADING_RE = re.compile(r'^#{1,6}\s+\S', re.MULTILINE)
-_LIST_ITEM_RE = re.compile(r'^(\s*[-*+] |\s*\d+[.)]\s)', re.MULTILINE)
+_BOLD_HEADING_RE = re.compile(r"^\*{2}.*?\*{2}\s*$", re.MULTILINE)
+_HASH_HEADING_RE = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
+_LIST_ITEM_RE = re.compile(r"^(\s*[-*+] |\s*\d+[.)]\s)", re.MULTILINE)
 
 
 def _normalize_markdown_spacing(text: str) -> str:
@@ -42,7 +42,7 @@ def _normalize_markdown_spacing(text: str) -> str:
     if not text:
         return text
 
-    lines = text.split('\n')
+    lines = text.split("\n")
     result: list[str] = []
     i = 0
     while i < len(lines):
@@ -54,19 +54,23 @@ def _normalize_markdown_spacing(text: str) -> str:
         is_list_item = bool(_LIST_ITEM_RE.match(stripped))
 
         if is_bold_heading or is_hash_heading or is_list_item:
-            if result and result[-1].strip() != '':
-                result.append('')
+            if result and result[-1].strip() != "":
+                result.append("")
 
         result.append(line)
 
-        if (is_bold_heading or is_hash_heading) and i + 1 < len(lines) and lines[i + 1].strip() != '':
-            result.append('')
+        if (
+            (is_bold_heading or is_hash_heading)
+            and i + 1 < len(lines)
+            and lines[i + 1].strip() != ""
+        ):
+            result.append("")
 
         i += 1
 
-    cleaned = '\n'.join(result)
-    while '\n\n\n' in cleaned:
-        cleaned = cleaned.replace('\n\n\n', '\n\n')
+    cleaned = "\n".join(result)
+    while "\n\n\n" in cleaned:
+        cleaned = cleaned.replace("\n\n\n", "\n\n")
 
     return cleaned.strip()
 
@@ -74,6 +78,7 @@ def _normalize_markdown_spacing(text: str) -> str:
 @dataclass
 class GeneratedResponse:
     """Generated response with sources and agentic metadata."""
+
     text: str
     sources: list[RetrievedChunk]
     model: str
@@ -174,9 +179,10 @@ def _compute_text_similarity(text_a: str, text_b: str) -> float:
     similarity without requiring an embedding model. Suitable for measuring
     self-consistency between generated responses.
     """
+
     def _ngrams(t: str, n: int = 3) -> set[str]:
         t = t.lower().strip()
-        return {t[i:i+n] for i in range(len(t) - n + 1)}
+        return {t[i : i + n] for i in range(len(t) - n + 1)}
 
     grams_a = _ngrams(text_a)
     grams_b = _ngrams(text_b)
@@ -192,10 +198,26 @@ def _compute_text_similarity(text_a: str, text_b: str) -> float:
 def _extract_entities(text: str) -> dict[str, list[str]]:
     """Extract entities (ATM IDs, error codes, anomaly types, correlation IDs) from text."""
     entities: dict[str, list[str]] = {
-        "atm_ids": list(set(re.findall(r'ATM[-_][A-Z]{2}[-_]\d{4}|ATM[-_]\d{4}|ATM-\d{1,2}', text, re.IGNORECASE))),
-        "error_codes": list(set(re.findall(r'ERR[-_]\d{4}', text, re.IGNORECASE))),
-        "anomaly_types": list(set(re.findall(r'\b(A[1-7])\b', text))),
-        "correlation_ids": list(set(re.findall(r'corr[-_][a-z0-9]+[-_][a-z0-9]+[-_][a-z0-9]+[-_][a-z0-9]+', text, re.IGNORECASE))),
+        "atm_ids": list(
+            set(
+                re.findall(
+                    r"ATM[-_][A-Z]{2}[-_]\d{4}|ATM[-_]\d{4}|ATM-\d{1,2}",
+                    text,
+                    re.IGNORECASE,
+                )
+            )
+        ),
+        "error_codes": list(set(re.findall(r"ERR[-_]\d{4}", text, re.IGNORECASE))),
+        "anomaly_types": list(set(re.findall(r"\b(A[1-7])\b", text))),
+        "correlation_ids": list(
+            set(
+                re.findall(
+                    r"corr[-_][a-z0-9]+[-_][a-z0-9]+[-_][a-z0-9]+[-_][a-z0-9]+",
+                    text,
+                    re.IGNORECASE,
+                )
+            )
+        ),
     }
     return entities
 
@@ -266,7 +288,10 @@ class RAGGenerator:
         samples = []
         if enable_self_consistency:
             self_consistency_score, samples = self._compute_self_consistency(
-                query, context, system_prompt, query_type,
+                query,
+                context,
+                system_prompt,
+                query_type,
             )
 
         if samples:
@@ -275,19 +300,27 @@ class RAGGenerator:
             response = self._generate_single(query, context, system_prompt, query_type)
 
         if enable_reflexion and response.text:
-            critique = self._critique_response(query, context, response.text, system_prompt)
+            critique = self._critique_response(
+                query, context, response.text, system_prompt
+            )
             if critique:
-                response = self._regenerate(query, context, system_prompt, query_type, response.text, critique)
+                response = self._regenerate(
+                    query, context, system_prompt, query_type, response.text, critique
+                )
 
         verbalized_confidence = None
         if enable_self_consistency and response.text:
-            verbalized_confidence = self._estimate_verbalized_confidence(query, context, response.text, system_prompt)
+            verbalized_confidence = self._estimate_verbalized_confidence(
+                query, context, response.text, system_prompt
+            )
 
         grounding_score = None
         if enable_citation_grounding and response.text:
             grounding_score = _check_citations(response.text, chunks)
 
-        cross_encoder_used = getattr(chunks[0], 'confidence_score', 0) > 0 if chunks else False
+        cross_encoder_used = (
+            getattr(chunks[0], "confidence_score", 0) > 0 if chunks else False
+        )
 
         return GeneratedResponse(
             text=_normalize_markdown_spacing(response.text),
@@ -318,11 +351,15 @@ class RAGGenerator:
             return self.llm_client.generate(
                 prompt=prompt,
                 system_prompt=system_prompt,
-                temperature=temperature if temperature is not None else config.temperature,
+                temperature=temperature
+                if temperature is not None
+                else config.temperature,
             )
         except Exception as e:
             logger.error(f"Generation failed: {e}")
-            fallback_text = self._generate_fallback(query, chunks=[], query_type=query_type)
+            fallback_text = self._generate_fallback(
+                query, chunks=[], query_type=query_type
+            )
             return LLMResponse(
                 text=fallback_text,
                 raw_response={},
@@ -392,7 +429,9 @@ class RAGGenerator:
                 pairwise_scores.append(score)
 
         consistency = sum(pairwise_scores) / len(pairwise_scores)
-        logger.info(f"Self-consistency score: {consistency:.3f} across {len(samples)} samples ({len(pairwise_scores)} pairs)")
+        logger.info(
+            f"Self-consistency score: {consistency:.3f} across {len(samples)} samples ({len(pairwise_scores)} pairs)"
+        )
         return round(consistency, 3), samples
 
     def _estimate_verbalized_confidence(
@@ -429,7 +468,7 @@ Return ONLY a single number between 0.0 and 1.0. No explanation."""
                 temperature=0.1,
                 max_tokens=10,
             )
-            match = re.search(r'([01]\.\d+|0|1(?:\.0)?)', conf_response.text.strip())
+            match = re.search(r"([01]\.\d+|0|1(?:\.0)?)", conf_response.text.strip())
             if match:
                 confidence = float(match.group(1))
                 confidence = max(0.0, min(1.0, confidence))
@@ -523,10 +562,15 @@ If the context doesn't contain enough information to fully answer the question, 
                 finish_reason="fallback",
             )
 
-    def _generate_fallback(self, query: str, chunks: list[RetrievedChunk], query_type: QueryType = QueryType.DIAGNOSTIC) -> str:
+    def _generate_fallback(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        query_type: QueryType = QueryType.DIAGNOSTIC,
+    ) -> str:
         """Generate a basic response from chunks when LLM is unavailable."""
         if not chunks:
-            return f"I don't have enough context to answer your question about \"{query}\". Please try again or rephrase."
+            return f'I don\'t have enough context to answer your question about "{query}". Please try again or rephrase.'
 
         if query_type == QueryType.STATS:
             return self._generate_stats_fallback(chunks)
@@ -537,7 +581,7 @@ If the context doesn't contain enough information to fully answer the question, 
             return self._generate_troubleshooting_fallback(query, top_chunks)
 
         summary_parts = [
-            f"I found {len(chunks)} relevant log entries for your query: \"{query}\"",
+            f'I found {len(chunks)} relevant log entries for your query: "{query}"',
             "",
             "**Pattern Detection:**",
             "",
@@ -550,24 +594,26 @@ If the context doesn't contain enough information to fully answer the question, 
             tag_label = f" [{anomaly_tag}]" if anomaly_tag else ""
             summary_parts.append(f"{i}. **ATM {atm}**{tag_label} (at {ts}): {text}...")
 
-        summary_parts.extend([
-            "",
-            "**Severity Assessment:**",
-            "",
-            f"- {len(chunks)} log entries found across {len(set(c.atm_id for c in chunks if c.atm_id))} ATM(s)",
-            f"- Most relevant entry distance: {chunks[0].distance:.3f} (lower = more relevant)",
-            "",
-            "**Recommended Actions:**",
-            "",
-            "1. Review the log entries above for error codes and timestamps",
-            "2. Check the ATM status dashboard for current operational state",
-            "3. Correlate events using the correlation_id if present in logs",
-            "4. Escalate to engineering team if critical errors (FATAL/OOM) are detected",
-            "",
-            "**Note:** The AI response generator is currently experiencing high demand. "
-            "The analysis above is based on direct log extraction. "
-            "Please try again later for a full AI-generated diagnostic response.",
-        ])
+        summary_parts.extend(
+            [
+                "",
+                "**Severity Assessment:**",
+                "",
+                f"- {len(chunks)} log entries found across {len(set(c.atm_id for c in chunks if c.atm_id))} ATM(s)",
+                f"- Most relevant entry distance: {chunks[0].distance:.3f} (lower = more relevant)",
+                "",
+                "**Recommended Actions:**",
+                "",
+                "1. Review the log entries above for error codes and timestamps",
+                "2. Check the ATM status dashboard for current operational state",
+                "3. Correlate events using the correlation_id if present in logs",
+                "4. Escalate to engineering team if critical errors (FATAL/OOM) are detected",
+                "",
+                "**Note:** The AI response generator is currently experiencing high demand. "
+                "The analysis above is based on direct log extraction. "
+                "Please try again later for a full AI-generated diagnostic response.",
+            ]
+        )
         return "\n".join(summary_parts)
 
     def _generate_stats_fallback(self, chunks: list[RetrievedChunk]) -> str:
@@ -597,20 +643,26 @@ If the context doesn't contain enough information to fully answer the question, 
                     lines.append(f"  {t}: {count}")
 
         lines.append("")
-        lines.append("Note: This is approximate based on log retrieval. For accurate counts, use the /api/rag/anomalies/stats endpoint.")
+        lines.append(
+            "Note: This is approximate based on log retrieval. For accurate counts, use the /api/rag/anomalies/stats endpoint."
+        )
 
         return "\n".join(lines)
 
-    def _generate_troubleshooting_fallback(self, query: str, chunks: list[RetrievedChunk]) -> str:
+    def _generate_troubleshooting_fallback(
+        self, query: str, chunks: list[RetrievedChunk]
+    ) -> str:
         """Generate troubleshooting response from chunks."""
         lines = [
-            f"Found {len(chunks)} relevant log entries for troubleshooting query: \"{query}\"",
+            f'Found {len(chunks)} relevant log entries for troubleshooting query: "{query}"',
             "",
             "**Quick Troubleshooting Steps:**",
             "",
         ]
 
-        errors = [c for c in chunks if "error" in c.text.lower() or "fatal" in c.text.lower()]
+        errors = [
+            c for c in chunks if "error" in c.text.lower() or "fatal" in c.text.lower()
+        ]
 
         if errors:
             lines.append("1. Check for recent errors:")
@@ -618,18 +670,22 @@ If the context doesn't contain enough information to fully answer the question, 
                 atm = chunk.atm_id or "unknown"
                 lines.append(f"   - ATM {atm}: {chunk.text[:100]}...")
 
-        lines.extend([
-            "",
-            "2. Verify ATM status via dashboard",
-            "3. Check network connectivity for timeout issues",
-            "4. Review cassette status for dispense errors",
-            "",
-            "**Note:** AI troubleshooting assistant unavailable. Please use dashboard for real-time ATM status.",
-        ])
+        lines.extend(
+            [
+                "",
+                "2. Verify ATM status via dashboard",
+                "3. Check network connectivity for timeout issues",
+                "4. Review cassette status for dispense errors",
+                "",
+                "**Note:** AI troubleshooting assistant unavailable. Please use dashboard for real-time ATM status.",
+            ]
+        )
 
         return "\n".join(lines)
 
-    def _build_context(self, chunks: list[RetrievedChunk], query_type: QueryType = QueryType.DIAGNOSTIC) -> str:
+    def _build_context(
+        self, chunks: list[RetrievedChunk], query_type: QueryType = QueryType.DIAGNOSTIC
+    ) -> str:
         """Build context string from retrieved chunks."""
         truncate_len = config.chunk_truncate_length
         context_parts = []
@@ -639,7 +695,9 @@ If the context doesn't contain enough information to fully answer the question, 
 
         return "\n".join(context_parts)
 
-    def _build_prompt(self, query: str, context: str, query_type: QueryType = QueryType.DIAGNOSTIC) -> str:
+    def _build_prompt(
+        self, query: str, context: str, query_type: QueryType = QueryType.DIAGNOSTIC
+    ) -> str:
         """Build prompt with query and context based on query type."""
         if query_type == QueryType.TROUBLESHOOTING:
             return f"""Based on the following ATM log data, provide troubleshooting steps for the question.

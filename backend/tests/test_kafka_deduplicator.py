@@ -1,4 +1,5 @@
 """Unit tests for Kafka deduplicator."""
+
 from __future__ import annotations
 from backend.kafka.deduplicator import Deduplicator
 

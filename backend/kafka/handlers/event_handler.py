@@ -5,6 +5,7 @@ ChromaDB buffer, and routes malformed messages to ingestion_errors.
 
 Called by the consumer router for every message on atm-events topic.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,10 @@ import psycopg2.extras
 
 from backend.src.database.connection import get_cursor
 from backend.kafka.chroma_buffer import ChromaBuffer, format_event_text
-from backend.src.analytics.analytics_router import increment_event_counter, track_unique_atm
+from backend.src.analytics.analytics_router import (
+    increment_event_counter,
+    track_unique_atm,
+)
 
 log = logging.getLogger(__name__)
 
@@ -74,7 +78,9 @@ def handle_event(msg: dict, chroma_buffer: ChromaBuffer) -> bool:
     atm_id = msg.get("atm_id")
     if atm_id:
         text = format_event_text(msg)
-        ts_str = msg["timestamp"] if isinstance(msg["timestamp"], str) else ts.isoformat()
+        ts_str = (
+            msg["timestamp"] if isinstance(msg["timestamp"], str) else ts.isoformat()
+        )
         severity = msg.get("severity")
         payload = msg.get("payload") or {}
         anomaly_tag = payload.get("_anomaly_tag") if isinstance(payload, dict) else None

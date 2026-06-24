@@ -42,7 +42,9 @@ def push_to_dlq(raw_message: Any, error: str, source: str = "UNKNOWN") -> bool:
 
     try:
         entry = {
-            "raw_message": json.dumps(raw_message) if not isinstance(raw_message, str) else raw_message,
+            "raw_message": json.dumps(raw_message)
+            if not isinstance(raw_message, str)
+            else raw_message,
             "error": error,
             "source": source,
             "retry_count": "0",
@@ -101,31 +103,41 @@ def process_dlq_batch(batch_size: int = 10) -> int:
                     continue
 
                 if retry_count >= MAX_RETRIES:
-                    client.xadd(DLQ_STREAM, {
-                        **fields,
-                        "status": "exhausted",
-                        "last_retry_at": str(time.time()),
-                    })
+                    client.xadd(
+                        DLQ_STREAM,
+                        {
+                            **fields,
+                            "status": "exhausted",
+                            "last_retry_at": str(time.time()),
+                        },
+                    )
                     client.xdel(DLQ_STREAM, message_id)
-                    logger.warning(f"DLQ message {message_id} exhausted after {retry_count} retries")
+                    logger.warning(
+                        f"DLQ message {message_id} exhausted after {retry_count} retries"
+                    )
                     processed += 1
                     continue
 
                 now = time.time()
                 created_at = float(fields.get("created_at", now))
-                backoff = BASE_BACKOFF_SECONDS * (2 ** retry_count)
+                backoff = BASE_BACKOFF_SECONDS * (2**retry_count)
 
                 if now - created_at < backoff:
                     continue
 
-                client.xadd(DLQ_STREAM, {
-                    **fields,
-                    "retry_count": str(retry_count + 1),
-                    "status": "retrying",
-                    "last_retry_at": str(time.time()),
-                })
+                client.xadd(
+                    DLQ_STREAM,
+                    {
+                        **fields,
+                        "retry_count": str(retry_count + 1),
+                        "status": "retrying",
+                        "last_retry_at": str(time.time()),
+                    },
+                )
                 client.xdel(DLQ_STREAM, message_id)
-                logger.info(f"Retrying DLQ message {message_id} (attempt {retry_count + 1}/{MAX_RETRIES})")
+                logger.info(
+                    f"Retrying DLQ message {message_id} (attempt {retry_count + 1}/{MAX_RETRIES})"
+                )
                 processed += 1
 
     except Exception as e:

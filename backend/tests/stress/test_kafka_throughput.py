@@ -6,6 +6,7 @@ without requiring a real Kafka broker.
 
 In production, k6 or real Kafka load tests would validate actual broker throughput.
 """
+
 from __future__ import annotations
 import time
 from unittest.mock import MagicMock, patch
@@ -80,6 +81,7 @@ class TestKafkaConsumerThroughput:
 
         # Generate unique message IDs
         import uuid
+
         msg_ids = [str(uuid.uuid4()) for _ in range(n_messages)]
 
         # Measure mark + check throughput

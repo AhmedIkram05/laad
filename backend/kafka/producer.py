@@ -13,6 +13,7 @@ Usage:
     producer.send_event({...})
     producer.send_metric({...})
 """
+
 from __future__ import annotations
 
 import json
@@ -27,7 +28,7 @@ from kafka.errors import KafkaError
 log = logging.getLogger(__name__)
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-TOPIC_EVENTS  = "atm-events"
+TOPIC_EVENTS = "atm-events"
 TOPIC_METRICS = "atm-metrics"
 
 

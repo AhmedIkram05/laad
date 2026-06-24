@@ -3,6 +3,7 @@
 Deletes records older than the configured retention period using batched
 deletes to avoid long WAL write-locks, then VACUUMs to reclaim disk space.
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,14 +16,16 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 5000
 
 TABLE_CONFIG = [
-    ("events",           "timestamp", ""),
-    ("metrics",          "timestamp", ""),
+    ("events", "timestamp", ""),
+    ("metrics", "timestamp", ""),
     ("ingestion_errors", "timestamp", ""),
-    ("anomalies",        "detected_at", "AND is_active = 0"),
+    ("anomalies", "detected_at", "AND is_active = 0"),
 ]
 
 
-def batched_delete(conn, table: str, col: str, cutoff: str, extra_cond: str = "") -> int:
+def batched_delete(
+    conn, table: str, col: str, cutoff: str, extra_cond: str = ""
+) -> int:
     """Deletes rows older than cutoff in batches of BATCH_SIZE.
     Commits between batches to yield the WAL write-lock to ingestion workers.
     """
@@ -140,8 +143,4 @@ def run_cleanup() -> dict:
         release_conn(conn)
 
     logger.info(f"Cleanup complete: {deleted}")
-    return {
-        "cutoff": cutoff,
-        "retention_days": retention_days,
-        "deleted": deleted
-    }
+    return {"cutoff": cutoff, "retention_days": retention_days, "deleted": deleted}

@@ -21,6 +21,7 @@ class TestRedisCache:
         mock_pool_class.return_value = mock_pool
 
         from backend.src.cache import redis_client
+
         redis_client._redis_client = None
         redis_client._redis_connection_pool = None
 
@@ -51,11 +52,13 @@ class TestRedisCache:
         from backend.src.rag.cache import get_cached_response
 
         mock_client = MagicMock()
-        cached_data = json.dumps({
-            "answer": "Test answer",
-            "uncertainty_score": 0.85,
-            "confidence_level": "high",
-        })
+        cached_data = json.dumps(
+            {
+                "answer": "Test answer",
+                "uncertainty_score": 0.85,
+                "confidence_level": "high",
+            }
+        )
         mock_client.get.return_value = cached_data
         mock_get_client.return_value = mock_client
 

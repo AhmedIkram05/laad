@@ -195,7 +195,7 @@ function AnomalyData() {
                     <span className="font-mono">{Math.round(confidence * 100)}%</span>
                   </div>
                   <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className={`h-full ${confidence >= 0.8 ? "bg-emerald-500" : confidence >= 0.6 ? "bg-amber-500" : "bg-red-500"}`}
                       style={{ width: `${confidence * 100}%` }}
                     />

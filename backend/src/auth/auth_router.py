@@ -6,6 +6,7 @@ Endpoints:
     POST /auth/register       — create a new user account
     POST /auth/logout         — blacklist current JWT (requires auth)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -143,7 +144,6 @@ def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 
-
 class RegisterRequest(BaseModel):
     username: str
     password: str
@@ -163,7 +163,9 @@ def login(
         )
         row = cur.fetchone()
 
-    if not row or not bcrypt.checkpw(form.password.encode(), row["password_hash"].encode()):
+    if not row or not bcrypt.checkpw(
+        form.password.encode(), row["password_hash"].encode()
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -182,8 +184,6 @@ def get_me(current_user: dict = Depends(get_current_user)):
     return {"username": current_user["sub"], "role": current_user["role"]}
 
 
-
-
 @router.post("/register", status_code=201)
 def register(request: RegisterRequest, conn=Depends(get_db_connection)):
     """Create a new user account.
@@ -193,10 +193,16 @@ def register(request: RegisterRequest, conn=Depends(get_db_connection)):
     """
     # Basic validation
     if not request.username or not request.password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="username and password are required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="username and password are required",
+        )
 
     if len(request.password) < 6:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="password must be at least 6 characters")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="password must be at least 6 characters",
+        )
 
     # Hash the password and insert the user
     password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
@@ -210,9 +216,15 @@ def register(request: RegisterRequest, conn=Depends(get_db_connection)):
         conn.commit()
     except psycopg2.IntegrityError:
         conn.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="username already exists")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="username already exists"
+        )
     logger.info(f"New user created: '{request.username}' (id={user_id})")
-    return {"message": "Account created successfully", "username": request.username, "id": user_id}
+    return {
+        "message": "Account created successfully",
+        "username": request.username,
+        "id": user_id,
+    }
 
 
 @router.post("/logout")
@@ -223,7 +235,9 @@ def logout(token: str = Depends(oauth2_scheme)):
     If Redis is unavailable, the endpoint returns success but logs a warning.
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+        payload = jwt.decode(
+            token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False}
+        )
         expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
         _blacklist_token(token, expires_at)
         username = payload.get("sub", "unknown")

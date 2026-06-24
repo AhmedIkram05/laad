@@ -74,4 +74,3 @@ resource "aws_eip" "kafka" {
     Project     = var.project_name
   }
 }
-

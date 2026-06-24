@@ -8,11 +8,13 @@ class TestRedisClient:
 
     def setup_method(self):
         from backend.src.cache import redis_client
+
         redis_client._redis_client = None
         redis_client._redis_connection_pool = None
 
     def teardown_method(self):
         from backend.src.cache import redis_client
+
         redis_client._redis_client = None
         redis_client._redis_connection_pool = None
 
@@ -79,9 +81,12 @@ class TestRedisClient:
         """Test that reset_redis_client clears the singleton."""
         from backend.src.cache.redis_client import get_redis_client, reset_redis_client
 
-        with patch("backend.src.cache.redis_client.redis.ConnectionPool") as mock_pool_class, \
-             patch("backend.src.cache.redis_client.redis.Redis") as mock_redis_class:  # noqa: F841
-
+        with (
+            patch(
+                "backend.src.cache.redis_client.redis.ConnectionPool"
+            ) as _mock_pool_class,
+            patch("backend.src.cache.redis_client.redis.Redis") as mock_redis_class,
+        ):
             mock_instance = MagicMock()
             mock_instance.ping.return_value = True
             mock_redis_class.return_value = mock_instance
@@ -108,7 +113,14 @@ class TestRedisClient:
 
         with patch.dict("os.environ", {}, clear=False):
             import os
-            for key in ["REDIS_HOST", "REDIS_PORT", "REDIS_DB", "REDIS_PASSWORD", "REDIS_CACHE_TTL"]:
+
+            for key in [
+                "REDIS_HOST",
+                "REDIS_PORT",
+                "REDIS_DB",
+                "REDIS_PASSWORD",
+                "REDIS_CACHE_TTL",
+            ]:
                 os.environ.pop(key, None)
 
             config = _load_redis_config()
@@ -123,13 +135,16 @@ class TestRedisClient:
         """Test that config loads from environment variables."""
         from backend.src.cache.redis_client import _load_redis_config
 
-        with patch.dict("os.environ", {
-            "REDIS_HOST": "my-redis-host",
-            "REDIS_PORT": "6380",
-            "REDIS_DB": "3",
-            "REDIS_PASSWORD": "secret",
-            "REDIS_CACHE_TTL": "600",
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "REDIS_HOST": "my-redis-host",
+                "REDIS_PORT": "6380",
+                "REDIS_DB": "3",
+                "REDIS_PASSWORD": "secret",
+                "REDIS_CACHE_TTL": "600",
+            },
+        ):
             config = _load_redis_config()
 
             assert config["host"] == "my-redis-host"

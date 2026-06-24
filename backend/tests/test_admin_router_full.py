@@ -3,6 +3,7 @@
 Covers ingestion-errors CRUD, cleanup/wipe trigger,
 and admin user creation with validation.
 """
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
@@ -35,9 +36,13 @@ def _admin_login(client) -> dict:
 
 
 def _user_login(client, username="normal1", password="password1") -> dict:
-    resp = client.post("/auth/register", json={"username": username, "password": password})
+    resp = client.post(
+        "/auth/register", json={"username": username, "password": password}
+    )
     assert resp.status_code == 201
-    login = client.post("/auth/login", data={"username": username, "password": password})
+    login = client.post(
+        "/auth/login", data={"username": username, "password": password}
+    )
     assert login.status_code == 200
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -74,8 +79,11 @@ class TestIngestionErrors:
 
             with TestClient(app) as client:
                 headers = _admin_login(client)
-                resp = client.get("/admin/ingestion-errors", params={"limit": 10, "offset": 0},
-                                  headers=headers)
+                resp = client.get(
+                    "/admin/ingestion-errors",
+                    params={"limit": 10, "offset": 0},
+                    headers=headers,
+                )
                 assert resp.status_code == 200
                 body = resp.json()
                 assert body["total"] == 1
@@ -162,10 +170,16 @@ class TestAdminCreateUser:
         try:
             with TestClient(app) as client:
                 headers = _admin_login(client)
-                resp = client.post("/admin/users",
-                                   json={"username": "newguy", "password": "pass123",
-                                         "confirm_password": "pass123", "role": "user"},
-                                   headers=headers)
+                resp = client.post(
+                    "/admin/users",
+                    json={
+                        "username": "newguy",
+                        "password": "pass123",
+                        "confirm_password": "pass123",
+                        "role": "user",
+                    },
+                    headers=headers,
+                )
                 assert resp.status_code == 201
                 body = resp.json()
                 assert body["username"] == "newguy"
@@ -180,10 +194,16 @@ class TestAdminCreateUser:
         try:
             with TestClient(app) as client:
                 headers = _admin_login(client)
-                resp = client.post("/admin/users",
-                                   json={"username": "badpwd", "password": "pass123",
-                                         "confirm_password": "wrong", "role": "user"},
-                                   headers=headers)
+                resp = client.post(
+                    "/admin/users",
+                    json={
+                        "username": "badpwd",
+                        "password": "pass123",
+                        "confirm_password": "wrong",
+                        "role": "user",
+                    },
+                    headers=headers,
+                )
                 assert resp.status_code == 400
                 assert "passwords do not match" in resp.text.lower()
         finally:
@@ -196,15 +216,27 @@ class TestAdminCreateUser:
             with TestClient(app) as client:
                 headers = _admin_login(client)
                 # First create
-                client.post("/admin/users",
-                            json={"username": "dupuser", "password": "pass123",
-                                  "confirm_password": "pass123", "role": "user"},
-                            headers=headers)
+                client.post(
+                    "/admin/users",
+                    json={
+                        "username": "dupuser",
+                        "password": "pass123",
+                        "confirm_password": "pass123",
+                        "role": "user",
+                    },
+                    headers=headers,
+                )
                 # Duplicate
-                resp = client.post("/admin/users",
-                                   json={"username": "dupuser", "password": "pass123",
-                                         "confirm_password": "pass123", "role": "user"},
-                                   headers=headers)
+                resp = client.post(
+                    "/admin/users",
+                    json={
+                        "username": "dupuser",
+                        "password": "pass123",
+                        "confirm_password": "pass123",
+                        "role": "user",
+                    },
+                    headers=headers,
+                )
                 assert resp.status_code == 409
                 assert "already exists" in resp.text.lower()
         finally:
@@ -216,10 +248,16 @@ class TestAdminCreateUser:
         try:
             with TestClient(app) as client:
                 headers = _admin_login(client)
-                resp = client.post("/admin/users",
-                                   json={"username": "badrole", "password": "pass123",
-                                         "confirm_password": "pass123", "role": "superadmin"},
-                                   headers=headers)
+                resp = client.post(
+                    "/admin/users",
+                    json={
+                        "username": "badrole",
+                        "password": "pass123",
+                        "confirm_password": "pass123",
+                        "role": "superadmin",
+                    },
+                    headers=headers,
+                )
                 assert resp.status_code == 400
                 assert "role" in resp.text.lower()
         finally:

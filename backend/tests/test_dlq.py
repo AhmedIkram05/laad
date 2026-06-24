@@ -85,16 +85,22 @@ class TestDLQ:
         mock_client = MagicMock()
         old_time = time.time() - 60
         mock_client.xread.return_value = [
-            ("ingestion:dlq", [
-                ("1234567890-0", {
-                    "raw_message": '{"test": 1}',
-                    "error": "Parse error",
-                    "source": "KAFKA",
-                    "retry_count": "0",
-                    "status": "pending",
-                    "created_at": str(old_time),
-                })
-            ])
+            (
+                "ingestion:dlq",
+                [
+                    (
+                        "1234567890-0",
+                        {
+                            "raw_message": '{"test": 1}',
+                            "error": "Parse error",
+                            "source": "KAFKA",
+                            "retry_count": "0",
+                            "status": "pending",
+                            "created_at": str(old_time),
+                        },
+                    )
+                ],
+            )
         ]
         mock_client.xadd.return_value = "1234567891-0"
         mock_get_client.return_value = mock_client
@@ -112,16 +118,22 @@ class TestDLQ:
         mock_client = MagicMock()
         old_time = time.time() - 60
         mock_client.xread.return_value = [
-            ("ingestion:dlq", [
-                ("1234567890-0", {
-                    "raw_message": '{"test": 1}',
-                    "error": "Parse error",
-                    "source": "KAFKA",
-                    "retry_count": str(MAX_RETRIES),
-                    "status": "pending",
-                    "created_at": str(old_time),
-                })
-            ])
+            (
+                "ingestion:dlq",
+                [
+                    (
+                        "1234567890-0",
+                        {
+                            "raw_message": '{"test": 1}',
+                            "error": "Parse error",
+                            "source": "KAFKA",
+                            "retry_count": str(MAX_RETRIES),
+                            "status": "pending",
+                            "created_at": str(old_time),
+                        },
+                    )
+                ],
+            )
         ]
         mock_client.xadd.return_value = "1234567891-0"
         mock_get_client.return_value = mock_client
@@ -141,16 +153,22 @@ class TestDLQ:
         mock_client = MagicMock()
         now = time.time()
         mock_client.xread.return_value = [
-            ("ingestion:dlq", [
-                ("1234567890-0", {
-                    "raw_message": '{"test": 1}',
-                    "error": "Parse error",
-                    "source": "KAFKA",
-                    "retry_count": "0",
-                    "status": "pending",
-                    "created_at": str(now),
-                })
-            ])
+            (
+                "ingestion:dlq",
+                [
+                    (
+                        "1234567890-0",
+                        {
+                            "raw_message": '{"test": 1}',
+                            "error": "Parse error",
+                            "source": "KAFKA",
+                            "retry_count": "0",
+                            "status": "pending",
+                            "created_at": str(now),
+                        },
+                    )
+                ],
+            )
         ]
         mock_get_client.return_value = mock_client
 

@@ -4,6 +4,7 @@ Verifies execute_values vs executemany selection,
 transient error retry logic, exponential backoff,
 and non-transient error propagation.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -92,7 +93,9 @@ class TestWriteBatch:
         import time
 
         cursor = mock_conn.cursor.return_value.__enter__.return_value
-        cursor.execute.side_effect = psycopg2.OperationalError("could not serialize access")
+        cursor.execute.side_effect = psycopg2.OperationalError(
+            "could not serialize access"
+        )
 
         original_sleep = time.sleep
         slept_times = []
@@ -103,8 +106,14 @@ class TestWriteBatch:
 
         with patch("time.sleep", side_effect=track_sleep):
             with pytest.raises(psycopg2.OperationalError):
-                write_batch(mock_conn, "INSERT INTO t (a) VALUES %s", [("x",)],
-                            retries=3, backoff_base=0.1, backoff_max=2.0)
+                write_batch(
+                    mock_conn,
+                    "INSERT INTO t (a) VALUES %s",
+                    [("x",)],
+                    retries=3,
+                    backoff_base=0.1,
+                    backoff_max=2.0,
+                )
 
         # Expected backoffs: 0.1, 0.2, 0.4 (capped at 2.0)
         assert len(slept_times) == 3

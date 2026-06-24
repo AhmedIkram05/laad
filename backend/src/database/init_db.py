@@ -20,7 +20,10 @@ def _read_schema(schema_path: str = "schema.sql") -> str:
 
 
 def seed_atms(conn) -> None:
-    atms = [(f"ATM-GB-{str(i).zfill(4)}", "linux-5.19", f"LOC-{str(i).zfill(4)}") for i in range(1, 11)]
+    atms = [
+        (f"ATM-GB-{str(i).zfill(4)}", "linux-5.19", f"LOC-{str(i).zfill(4)}")
+        for i in range(1, 11)
+    ]
     servers = [
         ("ATM-SERVER-001", "Windows-Server-2019", "SRV-001"),
         ("ATM-SERVER-002", "Windows-Server-2019", "SRV-002"),
@@ -34,7 +37,9 @@ def seed_atms(conn) -> None:
         )
         affected = cur.rowcount
         if affected > 0:
-            logger.info(f"Seeded {affected} entities: ATM-GB-0001 through ATM-GB-0010, ATM-SERVER-001 through ATM-SERVER-003")
+            logger.info(
+                f"Seeded {affected} entities: ATM-GB-0001 through ATM-GB-0010, ATM-SERVER-001 through ATM-SERVER-003"
+            )
         else:
             logger.info("Entities already exist, skipping")
 
@@ -93,10 +98,14 @@ def init_db(schema_path: str = "schema.sql", db_path=None, force: bool = False) 
     existing call sites/tests from the SQLite era.
     """
     if db_path is not None:
-        logger.info("init_db(db_path=...) is deprecated under PostgreSQL and is ignored")
+        logger.info(
+            "init_db(db_path=...) is deprecated under PostgreSQL and is ignored"
+        )
 
     if force and os.getenv("LAAD_ENV") == "production":
-        logger.error("init_db(force=True) is not allowed in production — refusing to drop tables")
+        logger.error(
+            "init_db(force=True) is not allowed in production — refusing to drop tables"
+        )
         return False
 
     schema_sql = _read_schema(schema_path)

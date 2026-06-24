@@ -1,4 +1,5 @@
 """Utility helpers for ingestion pipeline."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -32,8 +33,8 @@ def parse_to_utc_iso(timestamp_str: str) -> Optional[str]:
             return dt_utc.isoformat()
         # Fallback: handle common ISO formats including milliseconds and trailing Z
         ts = timestamp_str
-        if ts.endswith('Z'):
-            ts = ts[:-1] + '+00:00'
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
         try:
             # datetime.fromisoformat can parse YYYY-MM-DDTHH:MM:SS[.mmmmmm]+HH:MM
             dt = datetime.fromisoformat(ts)
@@ -46,7 +47,11 @@ def parse_to_utc_iso(timestamp_str: str) -> Optional[str]:
             return dt.astimezone(timezone.utc).isoformat()
         except Exception:
             # As a last resort, try a few legacy formats
-            for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            for fmt in (
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S",
+            ):
                 try:
                     dt = datetime.strptime(timestamp_str, fmt)
                     # Treat naive parsed times as UTC

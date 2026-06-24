@@ -1,4 +1,5 @@
 """Tests for backend.src.rag.config."""
+
 from __future__ import annotations
 
 import os
@@ -12,6 +13,7 @@ class TestRAGConfig:
         with patch.dict(os.environ, {}, clear=True):
             from importlib import reload
             import backend.src.rag.config as cfg
+
             reload(cfg)
             config = cfg.RAGConfig()
             assert config.confidence_high_threshold == 0.8
@@ -27,17 +29,22 @@ class TestRAGConfig:
             assert config.cache_ttl == 300
 
     def test_env_override(self):
-        with patch.dict(os.environ, {
-            "RAG_TOP_K": "10",
-            "RAG_TEMPERATURE": "0.9",
-            "CONF_HIGH": "0.95",
-            "REDIS_HOST": "myredis",
-            "REDIS_PORT": "6380",
-            "REDIS_CACHE_TTL": "600",
-            "OLLAMA_MODEL": "llama3",
-        }, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "RAG_TOP_K": "10",
+                "RAG_TEMPERATURE": "0.9",
+                "CONF_HIGH": "0.95",
+                "REDIS_HOST": "myredis",
+                "REDIS_PORT": "6380",
+                "REDIS_CACHE_TTL": "600",
+                "OLLAMA_MODEL": "llama3",
+            },
+            clear=True,
+        ):
             from importlib import reload
             import backend.src.rag.config as cfg
+
             reload(cfg)
             config = cfg.RAGConfig()
             assert config.retrieval_top_k == 10
@@ -52,6 +59,7 @@ class TestRAGConfig:
         with patch.dict(os.environ, {}, clear=True):
             from importlib import reload
             import backend.src.rag.config as cfg
+
             reload(cfg)
             config = cfg.RAGConfig()
             assert config.is_configured is False
@@ -61,6 +69,7 @@ class TestRAGConfig:
         with patch.dict(os.environ, {key: "test-key"}, clear=True):
             from importlib import reload
             import backend.src.rag.config as cfg
+
             reload(cfg)
             config = cfg.RAGConfig()
             assert config.is_configured is True

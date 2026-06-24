@@ -434,7 +434,7 @@ resource "aws_instance" "kafka" {
   instance_type = "t4g.small"     # 2 GB RAM — sufficient for Kafka
   subnet_id     = var.public_subnet_ids[0]
   key_name      = aws_key_pair.kafka.key_name
-  
+
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
@@ -448,31 +448,31 @@ resource "aws_instance" "kafka" {
     set -e
     # Install Java 17 (Kafka 3.6+ supports Java 17)
     dnf install -y java-17-amazon-corretto-headless
-    
+
     # Download and extract Kafka
     cd /home/ec2-user
     wget -q https://downloads.apache.org/kafka/3.6.0/kafka_2.13-3.6.0.tgz
     tar -xzf kafka_2.13-3.6.0.tgz
     cd kafka_2.13-3.6.0
-    
+
     # Configure KRaft (KIP-500)
     KAFKA_CLUSTER_ID=$(bin/kafka-storage.sh random-uuid)
-    
+
     # Configure heap for t4g.small (2GB RAM)
     export KAFKA_HEAP_OPTS="-Xms512m -Xmx512m"
-    
+
     # Create data directory and configure log.dirs BEFORE format
     sudo mkdir -p /var/lib/kafka/data
     sudo chown -R ec2-user:ec2-user /var/lib/kafka/data
     sed -i "s|log.dirs=/tmp/kraft-combined-logs|log.dirs=/var/lib/kafka/data|" config/kraft/server.properties
-    
+
     # Format storage (now uses correct log.dirs from server.properties)
     bin/kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c config/kraft/server.properties
-    
+
     # Configure advertised listeners for private IP
     PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
     sed -i "s/advertised.listeners=.*/advertised.listeners=PLAINTEXT:\/\/$PRIVATE_IP:9092/" config/kraft/server.properties
-    
+
     # Start Kafka
     nohup bin/kafka-server-start.sh config/kraft/server.properties > /home/ec2-user/kafka.log 2>&1 &
     echo "Kafka started with cluster ID: $KAFKA_CLUSTER_ID"
@@ -820,12 +820,12 @@ def _download_models_from_s3():
     s3_bucket = os.environ.get("MLFLOW_S3_ARTIFACT_ROOT", "")
     if not s3_bucket:
         return {}
-    
+
     # Parse bucket and prefix from s3:// URI
     s3 = boto3.client("s3")
     bucket = s3_bucket.replace("s3://", "").split("/")[0]
     prefix = "/".join(s3_bucket.replace("s3://", "").split("/")[1:])
-    
+
     models = {}
     for model_name in ["xgb_classifier", "scaler", "pca"]:
         local_path = MODEL_DIR / f"{model_name}.joblib"
@@ -883,15 +883,15 @@ class RAGRetriever:
             self.collection = self._get_collection()
         except Exception as e:
             logger.warning(f"ChromaDB unavailable: {e}. RAG retrieval disabled.")
-    
+
     def retrieve(self, query: str, top_k: int = 5) -> list:
         if self.collection is None:
             return []   # Graceful degradation
         # ... normal retrieval logic
-    
+
     async def answer(self, query: str) -> dict:
         if self.collection is None:
-            return {"answer": "Vector store unavailable. RAG queries require ChromaDB.", 
+            return {"answer": "Vector store unavailable. RAG queries require ChromaDB.",
                     "confidence": 0.0, "sources": []}
         # ... normal RAG flow
 ```
@@ -945,10 +945,10 @@ def _predict_via_sagemaker(self, features: np.ndarray) -> np.ndarray:
     endpoint_name = os.environ.get("SAGEMAKER_ENDPOINT_NAME")
     if not endpoint_name:
         raise ValueError("SAGEMAKER_ENDPOINT_NAME not set")
-    
+
     runtime = boto3.client("sagemaker-runtime")
     payload = json.dumps(features.tolist())
-    
+
     response = runtime.invoke_endpoint(
         EndpointName=endpoint_name,
         ContentType="application/json",
@@ -1003,7 +1003,7 @@ CMD ["python", "-m", "uvicorn", "backend.src.api.server:app", "--host", "0.0.0.0
 ```python
 def init_db(force: bool = False):
     """Initialize database schema.
-    
+
     Args:
         force: If True, drops all tables before creating them.
                Raises RuntimeError if LAAD_ENV=production.
@@ -1033,8 +1033,8 @@ Batch 1a: Foundation (parallel)         Batch 1b: Dockerfile + Code (parallel)
   │                                              ├── Consumer health check + retry
   ▼                                              ├── Frontend VITE_API_URL
 Batch 2a: Infrastructure (parallel)              └── init_db production guard
-  ├── RDS module                       
-  ├── EC2 Kafka (t4g.small, user_data)       
+  ├── RDS module
+  ├── EC2 Kafka (t4g.small, user_data)
   ├── ECS module (5 task defs + services)   Batch 2b: CI/CD
   ├── Frontend module (S3 + CloudFront)         ├── ci.yml (tests with services.postgres)
   ├── Monitoring module (dashboard, budget)     └── cd.yml (deploy, triggered by CI success)

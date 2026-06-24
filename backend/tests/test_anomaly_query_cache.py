@@ -103,7 +103,9 @@ class TestAnomalyQueryCache:
 
         _invalidate_anomaly_cache()
 
-        mock_client.delete.assert_called_once_with("anomaly:list:abc123", "anomaly:list:def456")
+        mock_client.delete.assert_called_once_with(
+            "anomaly:list:abc123", "anomaly:list:def456"
+        )
 
     @patch("backend.src.anomalies.anomalies_router.get_redis_client")
     def test_invalidate_cache_noop_when_redis_down(self, mock_get_client):

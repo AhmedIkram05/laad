@@ -3,6 +3,7 @@
 Uses mocked producers, emitters, and anomaly injectors
 to test emit_tick, backfill, and main shutdown behavior.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ def mock_signal():
 def reset_globals():
     """Reset module-level globals before each test."""
     import backend.generator.continuous_generator as cg
+
     cg._shutdown_requested = False
     cg._in_backfill = False
     yield
@@ -35,8 +37,12 @@ class TestEmitTick:
         emitter = MagicMock()
         t = datetime.now(timezone.utc)
 
-        with patch("backend.generator.continuous_generator.BASELINE_EMITTERS", [emitter]):
-            with patch("backend.generator.continuous_generator.rng.random", return_value=0.5):
+        with patch(
+            "backend.generator.continuous_generator.BASELINE_EMITTERS", [emitter]
+        ):
+            with patch(
+                "backend.generator.continuous_generator.rng.random", return_value=0.5
+            ):
                 with patch("backend.generator.continuous_generator.ANOMALY_PROB", 0.3):
                     emit_tick(producer, t, {})
 
@@ -50,10 +56,17 @@ class TestEmitTick:
         t = datetime.now(timezone.utc)
 
         with patch("backend.generator.continuous_generator.BASELINE_EMITTERS", []):
-            with patch("backend.generator.continuous_generator.ANOMALY_REGISTRY",
-                       [("A1", injector, 0)]):
-                with patch("backend.generator.continuous_generator.rng.random", return_value=0.1):
-                    with patch("backend.generator.continuous_generator.ANOMALY_PROB", 0.3):
+            with patch(
+                "backend.generator.continuous_generator.ANOMALY_REGISTRY",
+                [("A1", injector, 0)],
+            ):
+                with patch(
+                    "backend.generator.continuous_generator.rng.random",
+                    return_value=0.1,
+                ):
+                    with patch(
+                        "backend.generator.continuous_generator.ANOMALY_PROB", 0.3
+                    ):
                         anomaly_last = {}
                         emit_tick(producer, t, anomaly_last)
 
@@ -71,10 +84,17 @@ class TestEmitTick:
         anomaly_last = {"A1": now}  # Recently injected
 
         with patch("backend.generator.continuous_generator.BASELINE_EMITTERS", []):
-            with patch("backend.generator.continuous_generator.ANOMALY_REGISTRY",
-                       [("A1", injector, 300)]):  # 5 min cooldown
-                with patch("backend.generator.continuous_generator.rng.random", return_value=0.1):
-                    with patch("backend.generator.continuous_generator.ANOMALY_PROB", 0.3):
+            with patch(
+                "backend.generator.continuous_generator.ANOMALY_REGISTRY",
+                [("A1", injector, 300)],
+            ):  # 5 min cooldown
+                with patch(
+                    "backend.generator.continuous_generator.rng.random",
+                    return_value=0.1,
+                ):
+                    with patch(
+                        "backend.generator.continuous_generator.ANOMALY_PROB", 0.3
+                    ):
                         emit_tick(producer, t, anomaly_last)
 
         injector.assert_not_called()
@@ -87,9 +107,14 @@ class TestEmitTick:
         t = datetime.now(timezone.utc)
 
         with patch("backend.generator.continuous_generator.BASELINE_EMITTERS", []):
-            with patch("backend.generator.continuous_generator.ANOMALY_REGISTRY",
-                       [("A1", injector, 0)]):
-                with patch("backend.generator.continuous_generator.rng.random", return_value=0.1):
+            with patch(
+                "backend.generator.continuous_generator.ANOMALY_REGISTRY",
+                [("A1", injector, 0)],
+            ):
+                with patch(
+                    "backend.generator.continuous_generator.rng.random",
+                    return_value=0.1,
+                ):
                     emit_tick(producer, t, {}, backfill_mode=True, backfill_prob=0.01)
 
         # In backfill mode, rng.random is compared to backfill_prob, not ANOMALY_PROB
@@ -128,10 +153,13 @@ class TestBackfill:
                 now = datetime(2026, 6, 24, 12, 0, 0, tzinfo=timezone.utc)
                 mock_now.return_value = now
                 with patch("backend.generator.continuous_generator.TICK_SECONDS", 60):
-                    with patch("backend.generator.continuous_generator.BACKFILL_MINUTES", 1):
+                    with patch(
+                        "backend.generator.continuous_generator.BACKFILL_MINUTES", 1
+                    ):
                         backfill(producer, 1)
 
         # With 1 min backfill and 60s tick, we expect 1 tick
         # Just verify it runs without error and sets globals correctly
         import backend.generator.continuous_generator as cg
+
         assert cg._in_backfill is False

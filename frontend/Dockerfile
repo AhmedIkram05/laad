@@ -1,6 +1,6 @@
 # Production-grade frontend Dockerfile
 # Multi-stage build: Node.js builder + nginx production
-# 
+#
 # Stage 1: Builder (Node.js) - Installs deps, builds production assets
 # Stage 2: Production (nginx alpine) - Serves static files + reverse proxies API
 

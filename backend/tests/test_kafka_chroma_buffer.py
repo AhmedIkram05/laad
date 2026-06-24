@@ -1,4 +1,5 @@
 """Unit tests for ChromaDB buffer."""
+
 from __future__ import annotations
 from unittest.mock import MagicMock, patch
 from collections import defaultdict
@@ -65,9 +66,17 @@ class TestChromaBufferInit:
         mock_client = MagicMock()
         mock_client.get_or_create_collection.return_value = mock_collection
 
-        with patch("backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client):
-            with patch("backend.kafka.chroma_buffer._build_embeddings", return_value=MagicMock()):
-                with patch("backend.kafka.chroma_buffer._build_chunker", return_value=MagicMock()):
+        with patch(
+            "backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client
+        ):
+            with patch(
+                "backend.kafka.chroma_buffer._build_embeddings",
+                return_value=MagicMock(),
+            ):
+                with patch(
+                    "backend.kafka.chroma_buffer._build_chunker",
+                    return_value=MagicMock(),
+                ):
                     buffer = ChromaBuffer()
                     assert buffer._ready is True
                     assert buffer._collection is mock_collection
@@ -89,9 +98,17 @@ class TestChromaBufferAddEvent:
         mock_chunker = MagicMock()
         mock_chunker.create_documents.return_value = []
 
-        with patch("backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client):
-            with patch("backend.kafka.chroma_buffer._build_embeddings", return_value=MagicMock()):
-                with patch("backend.kafka.chroma_buffer._build_chunker", return_value=mock_chunker):
+        with patch(
+            "backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client
+        ):
+            with patch(
+                "backend.kafka.chroma_buffer._build_embeddings",
+                return_value=MagicMock(),
+            ):
+                with patch(
+                    "backend.kafka.chroma_buffer._build_chunker",
+                    return_value=mock_chunker,
+                ):
                     with patch("backend.kafka.chroma_buffer.WINDOW_SIZE", 3):
                         buffer = ChromaBuffer()
                         buffer._ready = True
@@ -100,8 +117,12 @@ class TestChromaBufferAddEvent:
                         buffer._buffers = defaultdict(list)
                         buffer._chunker = mock_chunker
 
-                        buffer.add_event("ATM-GB-0001", "event 1", "2026-05-12T10:00:00Z")
-                        buffer.add_event("ATM-GB-0001", "event 2", "2026-05-12T10:01:00Z")
+                        buffer.add_event(
+                            "ATM-GB-0001", "event 1", "2026-05-12T10:00:00Z"
+                        )
+                        buffer.add_event(
+                            "ATM-GB-0001", "event 2", "2026-05-12T10:01:00Z"
+                        )
                         assert len(buffer._buffers["ATM-GB-0001"]) == 2
 
     def test_add_event_triggers_flush_at_window_size(self):
@@ -114,9 +135,17 @@ class TestChromaBufferAddEvent:
         mock_doc.page_content = "chunked text"
         mock_chunker.create_documents.return_value = [mock_doc]
 
-        with patch("backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client):
-            with patch("backend.kafka.chroma_buffer._build_embeddings", return_value=MagicMock()):
-                with patch("backend.kafka.chroma_buffer._build_chunker", return_value=mock_chunker):
+        with patch(
+            "backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client
+        ):
+            with patch(
+                "backend.kafka.chroma_buffer._build_embeddings",
+                return_value=MagicMock(),
+            ):
+                with patch(
+                    "backend.kafka.chroma_buffer._build_chunker",
+                    return_value=mock_chunker,
+                ):
                     with patch("backend.kafka.chroma_buffer.WINDOW_SIZE", 2):
                         buffer = ChromaBuffer()
                         buffer._ready = True
@@ -125,10 +154,14 @@ class TestChromaBufferAddEvent:
                         buffer._buffers = defaultdict(list)
                         buffer._chunker = mock_chunker
 
-                        buffer.add_event("ATM-GB-0001", "event 1", "2026-05-12T10:00:00Z")
+                        buffer.add_event(
+                            "ATM-GB-0001", "event 1", "2026-05-12T10:00:00Z"
+                        )
                         assert len(buffer._buffers["ATM-GB-0001"]) == 1
 
-                        buffer.add_event("ATM-GB-0001", "event 2", "2026-05-12T10:01:00Z")
+                        buffer.add_event(
+                            "ATM-GB-0001", "event 2", "2026-05-12T10:01:00Z"
+                        )
                         assert "ATM-GB-0001" not in buffer._buffers
                         mock_collection.upsert.assert_called_once()
 
@@ -144,20 +177,43 @@ class TestChromaBufferFlush:
         mock_doc.page_content = "chunked text"
         mock_chunker.create_documents.return_value = [mock_doc]
 
-        with patch("backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client):
-            with patch("backend.kafka.chroma_buffer._build_embeddings", return_value=MagicMock()):
-                with patch("backend.kafka.chroma_buffer._build_chunker", return_value=mock_chunker):
+        with patch(
+            "backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client
+        ):
+            with patch(
+                "backend.kafka.chroma_buffer._build_embeddings",
+                return_value=MagicMock(),
+            ):
+                with patch(
+                    "backend.kafka.chroma_buffer._build_chunker",
+                    return_value=mock_chunker,
+                ):
                     buffer = ChromaBuffer()
                     buffer._ready = True
                     buffer._client = mock_client
                     buffer._collection = mock_collection
                     buffer._buffers = defaultdict(list)
                     buffer._buffers["ATM-GB-0001"] = [
-                        {"text": "text1", "timestamp": "ts1", "severity": None, "anomaly_tag": None},
-                        {"text": "text2", "timestamp": "ts2", "severity": None, "anomaly_tag": None},
+                        {
+                            "text": "text1",
+                            "timestamp": "ts1",
+                            "severity": None,
+                            "anomaly_tag": None,
+                        },
+                        {
+                            "text": "text2",
+                            "timestamp": "ts2",
+                            "severity": None,
+                            "anomaly_tag": None,
+                        },
                     ]
                     buffer._buffers["ATM-GB-0002"] = [
-                        {"text": "text3", "timestamp": "ts3", "severity": None, "anomaly_tag": None},
+                        {
+                            "text": "text3",
+                            "timestamp": "ts3",
+                            "severity": None,
+                            "anomaly_tag": None,
+                        },
                     ]
                     buffer._chunker = mock_chunker
 
@@ -172,9 +228,17 @@ class TestChromaBufferFlush:
         mock_client = MagicMock()
         mock_client.get_or_create_collection.return_value = mock_collection
 
-        with patch("backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client):
-            with patch("backend.kafka.chroma_buffer._build_embeddings", return_value=MagicMock()):
-                with patch("backend.kafka.chroma_buffer._build_chunker", return_value=MagicMock()):
+        with patch(
+            "backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client
+        ):
+            with patch(
+                "backend.kafka.chroma_buffer._build_embeddings",
+                return_value=MagicMock(),
+            ):
+                with patch(
+                    "backend.kafka.chroma_buffer._build_chunker",
+                    return_value=MagicMock(),
+                ):
                     buffer = ChromaBuffer()
                     buffer._ready = True
                     buffer._client = mock_client
@@ -195,9 +259,17 @@ class TestChromaBufferFlush:
         mock_doc.page_content = "text"
         mock_chunker.create_documents.return_value = [mock_doc]
 
-        with patch("backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client):
-            with patch("backend.kafka.chroma_buffer._build_embeddings", return_value=MagicMock()):
-                with patch("backend.kafka.chroma_buffer._build_chunker", return_value=mock_chunker):
+        with patch(
+            "backend.kafka.chroma_buffer._build_chroma_client", return_value=mock_client
+        ):
+            with patch(
+                "backend.kafka.chroma_buffer._build_embeddings",
+                return_value=MagicMock(),
+            ):
+                with patch(
+                    "backend.kafka.chroma_buffer._build_chunker",
+                    return_value=mock_chunker,
+                ):
                     buffer = ChromaBuffer()
                     buffer._ready = True
                     buffer._client = mock_client

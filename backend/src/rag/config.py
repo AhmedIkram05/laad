@@ -18,11 +18,18 @@ class RAGConfig:
         self.ollama_api_key: Optional[str] = os.getenv("OLLAMA_API_KEY")
         self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
         self.ollama_model: str = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
-        self.ollama_fallback_models: list[str] = [m.strip() for m in os.getenv("OLLAMA_FALLBACK_MODELS", "nemotron-3-supercloud").split(",") if m.strip()]
-
+        self.ollama_fallback_models: list[str] = [
+            m.strip()
+            for m in os.getenv("OLLAMA_FALLBACK_MODELS", "nemotron-3-supercloud").split(
+                ","
+            )
+            if m.strip()
+        ]
 
         self.primary_model: str = os.getenv("RAG_PRIMARY_MODEL", "gemma4:31b-cloud")
-        self.fallback_model: str = os.getenv("RAG_FALLBACK_MODEL", "nemotron-3-supercloud")
+        self.fallback_model: str = os.getenv(
+            "RAG_FALLBACK_MODEL", "nemotron-3-supercloud"
+        )
 
         self.chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
         try:
@@ -37,17 +44,41 @@ class RAGConfig:
             self.self_consistency_samples: int = int(os.getenv("RAG_SAMPLES", "3"))
             self.temperature: float = float(os.getenv("RAG_TEMPERATURE", "0.6"))
             self.confidence_high_threshold: float = float(os.getenv("CONF_HIGH", "0.8"))
-            self.confidence_medium_threshold: float = float(os.getenv("CONF_MEDIUM", "0.5"))
-            self.chunk_truncate_length: int = int(os.getenv("RAG_CHUNK_TRUNCATE", "800"))
-            self.error_only: bool = os.getenv("RAG_ERROR_ONLY", "true").lower() == "true"
-            self.anomaly_types: list[str] = [t.strip() for t in os.getenv("RAG_ANOMALY_TYPES", "A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL").split(",") if t.strip()]
-            self.most_recent_first: bool = os.getenv("RAG_MOST_RECENT_FIRST", "true").lower() == "true"
+            self.confidence_medium_threshold: float = float(
+                os.getenv("CONF_MEDIUM", "0.5")
+            )
+            self.chunk_truncate_length: int = int(
+                os.getenv("RAG_CHUNK_TRUNCATE", "800")
+            )
+            self.error_only: bool = (
+                os.getenv("RAG_ERROR_ONLY", "true").lower() == "true"
+            )
+            self.anomaly_types: list[str] = [
+                t.strip()
+                for t in os.getenv(
+                    "RAG_ANOMALY_TYPES", "A1,A2,A3,A4,A5,A6,A7,UNKNOWN,NORMAL"
+                ).split(",")
+                if t.strip()
+            ]
+            self.most_recent_first: bool = (
+                os.getenv("RAG_MOST_RECENT_FIRST", "true").lower() == "true"
+            )
 
-            self.reflexion_enabled: bool = os.getenv("RAG_REFLEXION", "true").lower() == "true"
-            self.citation_grounding_enabled: bool = os.getenv("RAG_CITATION_GROUNDING", "true").lower() == "true"
-            self.self_consistency_enabled: bool = os.getenv("RAG_SELF_CONSISTENCY", "true").lower() == "true"
-            self.cross_encoder_enabled: bool = os.getenv("RAG_CROSS_ENCODER", "true").lower() == "true"
-            self.cross_encoder_model: str = os.getenv("RAG_CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-2-v2")
+            self.reflexion_enabled: bool = (
+                os.getenv("RAG_REFLEXION", "true").lower() == "true"
+            )
+            self.citation_grounding_enabled: bool = (
+                os.getenv("RAG_CITATION_GROUNDING", "true").lower() == "true"
+            )
+            self.self_consistency_enabled: bool = (
+                os.getenv("RAG_SELF_CONSISTENCY", "true").lower() == "true"
+            )
+            self.cross_encoder_enabled: bool = (
+                os.getenv("RAG_CROSS_ENCODER", "true").lower() == "true"
+            )
+            self.cross_encoder_model: str = os.getenv(
+                "RAG_CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-2-v2"
+            )
         except (ValueError, TypeError):
             logger.warning("Invalid numeric config value, using defaults")
             self.retrieval_top_k = 10
@@ -57,7 +88,17 @@ class RAGConfig:
             self.confidence_medium_threshold = 0.5
             self.chunk_truncate_length = 800
             self.error_only = True
-            self.anomaly_types = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "UNKNOWN", "NORMAL"]
+            self.anomaly_types = [
+                "A1",
+                "A2",
+                "A3",
+                "A4",
+                "A5",
+                "A6",
+                "A7",
+                "UNKNOWN",
+                "NORMAL",
+            ]
             self.most_recent_first = True
             self.reflexion_enabled = True
             self.citation_grounding_enabled = True
@@ -78,7 +119,9 @@ class RAGConfig:
     def _check_configured(self) -> None:
         """Log warning if RAG is not fully configured."""
         if not (self.ollama_api_key or self.openrouter_api_key):
-            logger.warning("No LLM API keys set - RAG diagnostic assistant will not be available")
+            logger.warning(
+                "No LLM API keys set - RAG diagnostic assistant will not be available"
+            )
 
     @property
     def is_configured(self) -> bool:

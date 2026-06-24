@@ -5,6 +5,7 @@ Endpoints:
     PATCH /anomalies/{id}/resolve       — mark anomaly inactive
     PATCH /anomalies/{id}/star          — toggle starred
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -28,7 +29,7 @@ CACHE_PREFIX = "anomaly:list:"
 
 
 class FeedbackRequest(BaseModel):
-    rating: str     # 'LIKE' or 'DISLIKE'
+    rating: str  # 'LIKE' or 'DISLIKE'
 
 
 def _get_cache_key(params: dict) -> str:
@@ -90,14 +91,24 @@ def listAnomalies(
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
     group_by: Optional[str] = Query(None),
-    detection_source: Optional[str] = Query(None, description="Filter by detection source: ML_ENSEMBLE, ZSCORE, HEURISTIC"),
-    is_starred: Optional[int] = Query(None, description="Filter by starred state: 1=starred, 0=unstarred"),
-    entity_type: Optional[str] = Query(None, description="Filter by entity type: 'atm' (ATM-GB-*) or 'server' (ATM-SERVER-*)"),
-    sort_by: Optional[str] = Query(default="score", description="Sort by: score (default, criticality), detected_at (most recent), severity"),
+    detection_source: Optional[str] = Query(
+        None, description="Filter by detection source: ML_ENSEMBLE, ZSCORE, HEURISTIC"
+    ),
+    is_starred: Optional[int] = Query(
+        None, description="Filter by starred state: 1=starred, 0=unstarred"
+    ),
+    entity_type: Optional[str] = Query(
+        None,
+        description="Filter by entity type: 'atm' (ATM-GB-*) or 'server' (ATM-SERVER-*)",
+    ),
+    sort_by: Optional[str] = Query(
+        default="score",
+        description="Sort by: score (default, criticality), detected_at (most recent), severity",
+    ),
     limit: int = Query(default=None, ge=0),
     offset: int = Query(default=0, ge=0),
     currentUser: dict = Depends(get_current_user),
-    conn=Depends(get_db_connection)
+    conn=Depends(get_db_connection),
 ):
     """Returns a paginated, filterable list of anomalies.
     Supports grouping modes: `atm`, `atm_anomaly`, `title_atm`.
@@ -106,11 +117,19 @@ def listAnomalies(
     Results are cached in Redis for {CACHE_TTL} seconds.
     """
     cache_params = {
-        "atm_id": atm_id, "severity": severity, "is_active": is_active,
-        "anomaly_type": anomaly_type, "from_date": from_date, "to_date": to_date,
-        "group_by": group_by, "detection_source": detection_source,
-        "is_starred": is_starred, "entity_type": entity_type,
-        "sort_by": sort_by, "limit": limit, "offset": offset,
+        "atm_id": atm_id,
+        "severity": severity,
+        "is_active": is_active,
+        "anomaly_type": anomaly_type,
+        "from_date": from_date,
+        "to_date": to_date,
+        "group_by": group_by,
+        "detection_source": detection_source,
+        "is_starred": is_starred,
+        "entity_type": entity_type,
+        "sort_by": sort_by,
+        "limit": limit,
+        "offset": offset,
     }
     cached = _get_cached_result(cache_params)
     if cached:
@@ -165,7 +184,7 @@ def listAnomalies(
         elif entity_type.lower() == "server":
             where_clauses.append("atm_id LIKE %s")
             params.append("ATM-SERVER-%")
-    
+
     where_sql = " AND ".join(where_clauses)
 
     if group_by:
@@ -215,7 +234,12 @@ def listAnomalies(
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params + [limit, offset])
                 rows = cur.fetchall()
-            result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            result = {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "data": [dict(r) for r in rows],
+            }
             _cache_result(cache_params, result)
             return result
         if gb in ("atm_anomaly", "atm-anomaly", "atm_anom"):
@@ -300,7 +324,12 @@ def listAnomalies(
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params + [limit, offset])
                 rows = cur.fetchall()
-            result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            result = {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "data": [dict(r) for r in rows],
+            }
             _cache_result(cache_params, result)
             return result
 
@@ -347,14 +376,20 @@ def listAnomalies(
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(query, params + [limit, offset])
                 rows = cur.fetchall()
-            result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+            result = {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "data": [dict(r) for r in rows],
+            }
             _cache_result(cache_params, result)
             return result
 
     # Default — raw paginated anomalies, no grouping
     with conn.cursor() as cur:
         cur.execute(
-            f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql})", params or None
+            f"SELECT COUNT(*) FROM (SELECT 1 FROM anomalies WHERE {where_sql})",
+            params or None,
         )
         countRow = cur.fetchone()
     total = countRow[0] if countRow else 0
@@ -399,7 +434,12 @@ def listAnomalies(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params + [offset])
             rows = cur.fetchall()
-    result = {"total": total, "limit": limit, "offset": offset, "data": [dict(r) for r in rows]}
+    result = {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "data": [dict(r) for r in rows],
+    }
     _cache_result(cache_params, result)
     return result
 
@@ -408,7 +448,7 @@ def listAnomalies(
 def resolveAnomaly(
     anomalyId: int,
     currentUser: dict = Depends(get_current_user),
-    conn=Depends(get_db_connection)
+    conn=Depends(get_db_connection),
 ):
     """Marks an anomaly as resolved (is_active = 0) or unresolved."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -419,18 +459,26 @@ def resolveAnomaly(
 
     new_active = 0 if row["is_active"] else 1
     with conn.cursor() as cur:
-        cur.execute("UPDATE anomalies SET is_active = %s WHERE id = %s", (new_active, anomalyId))
+        cur.execute(
+            "UPDATE anomalies SET is_active = %s WHERE id = %s", (new_active, anomalyId)
+        )
     conn.commit()
     _invalidate_anomaly_cache()
-    logger.info(f"Anomaly {anomalyId} active status toggled to {new_active} by '{currentUser['sub']}'")
-    return {"id": anomalyId, "is_active": new_active, "message": "Anomaly status toggled"}
+    logger.info(
+        f"Anomaly {anomalyId} active status toggled to {new_active} by '{currentUser['sub']}'"
+    )
+    return {
+        "id": anomalyId,
+        "is_active": new_active,
+        "message": "Anomaly status toggled",
+    }
 
 
 @router.patch("/{anomalyId}/star")
 def toggleStar(
     anomalyId: int,
     currentUser: dict = Depends(get_current_user),
-    conn=Depends(get_db_connection)
+    conn=Depends(get_db_connection),
 ):
     """Toggles the starred state of an anomaly.
     Any logged-in user can star — no admin required.
@@ -448,8 +496,7 @@ def toggleStar(
         )
     conn.commit()
     _invalidate_anomaly_cache()
-    logger.info(
-        f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")
+    logger.info(f"Anomaly {anomalyId} starred={newStarred} by '{currentUser['sub']}'")
     return {"id": anomalyId, "is_starred": newStarred}
 
 
@@ -472,7 +519,7 @@ def setFeedback(
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             "SELECT id, anomaly_type, atm_id, false_positive_count FROM anomalies WHERE id = %s",
-            (anomalyId,)
+            (anomalyId,),
         )
         row = cur.fetchone()
     if not row:
@@ -493,7 +540,10 @@ def setFeedback(
         logger.info(
             "False positive reported for anomaly %s (type=%s, atm=%s). "
             "FP count for this (type, atm) pair incremented to %d",
-            anomalyId, row["anomaly_type"], row["atm_id"], fp_count
+            anomalyId,
+            row["anomaly_type"],
+            row["atm_id"],
+            fp_count,
         )
 
     return {

@@ -18,6 +18,7 @@ from backend.src.ingestion.parsers.windows_os import WindowsOSParser
 
 class DummyParser(BaseParser):
     """Minimal BaseParser subclass for testing base error handling."""
+
     def parse_line(self, line: str):
         line = line.strip()
         if line == "BAD":
@@ -49,7 +50,10 @@ EDGE_CASES_PROCESS_LINE = [
     (KafkaMetricsParser, "{bad"),
     (KafkaMetricsParser, '{"timestamp": "2026-01-01T00:00:00Z"}'),
     # KafkaMetricsParser — present but no entity_id
-    (KafkaMetricsParser, '{"timestamp": "2026-01-01T00:00:00Z", "transaction_rate_tps": 10}'),
+    (
+        KafkaMetricsParser,
+        '{"timestamp": "2026-01-01T00:00:00Z", "transaction_rate_tps": 10}',
+    ),
     # === CSV metric parsers ===
     # GcpCloudMetricsParser
     (GcpCloudMetricsParser, ""),
@@ -65,8 +69,8 @@ EDGE_CASES_PROCESS_LINE = [
     (WindowsOSParser, "2026-01-01T00:00:00Z,ATM-1"),
     # === BaseParser subclass ===
     (DummyParser, "BAD"),
-    (DummyParser, " BAD "),   # whitespace-trimmed to "BAD"
-    (DummyParser, "BAD\n"),   # stripped to "BAD"
+    (DummyParser, " BAD "),  # whitespace-trimmed to "BAD"
+    (DummyParser, "BAD\n"),  # stripped to "BAD"
 ]
 
 
@@ -91,20 +95,38 @@ class TestParsersProcessLineEdgeCases:
 
 EDGE_CASES_PARSE_LINE = [
     # CSV header lines raise ValueError("header") rather than inserting
-    (GcpCloudMetricsParser, "timestamp,project_id,resource_type,resource_id,zone,metric_name,metric_value", "header"),
-    (PrometheusParser, "timestamp,metric_name,metric_type,metric_value,service_name", "header"),
-    (WindowsOSParser, "timestamp,atm_id,hostname,os_version,cpu_usage_percent", "header"),
+    (
+        GcpCloudMetricsParser,
+        "timestamp,project_id,resource_type,resource_id,zone,metric_name,metric_value",
+        "header",
+    ),
+    (
+        PrometheusParser,
+        "timestamp,metric_name,metric_type,metric_value,service_name",
+        "header",
+    ),
+    (
+        WindowsOSParser,
+        "timestamp,atm_id,hostname,os_version,cpu_usage_percent",
+        "header",
+    ),
     # Incomplete CSV rows (too few columns)
     (GcpCloudMetricsParser, "2026-01-01T00:00:00Z", "incomplete row"),
     # Non-numeric metric value in CSV
-    (GcpCloudMetricsParser, "2026-01-01T00:00:00Z,proj1,type,res1,zone1,cpu_usage,not_a_number,,1,,,,,,,", "invalid metric_value"),
+    (
+        GcpCloudMetricsParser,
+        "2026-01-01T00:00:00Z,proj1,type,res1,zone1,cpu_usage,not_a_number,,1,,,,,,,",
+        "invalid metric_value",
+    ),
 ]
 
 
 class TestParsersParseLineEdgeCases:
     """Verify parse_line raises ValueError on specific edge cases."""
 
-    @pytest.mark.parametrize("parser_cls, bad_input, expected_match", EDGE_CASES_PARSE_LINE)
+    @pytest.mark.parametrize(
+        "parser_cls, bad_input, expected_match", EDGE_CASES_PARSE_LINE
+    )
     def test_parse_line_raises_value_error(self, parser_cls, bad_input, expected_match):
         parser = parser_cls(batch_size=1)
         with pytest.raises(ValueError, match=expected_match):
@@ -112,6 +134,7 @@ class TestParsersParseLineEdgeCases:
 
 
 # ── DummyParser-specific process_line behavior ───────────────────────────
+
 
 class TestDummyParserEdgeCases:
     """Additional edge cases for BaseParser subclasses via DummyParser."""

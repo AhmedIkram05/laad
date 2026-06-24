@@ -25,6 +25,7 @@ Environment variables:
     OLLAMA_BASE_URL              Default: http://localhost:11434
     CHROMA_WINDOW_SIZE           Default: 10
 """
+
 from __future__ import annotations
 
 import json
@@ -40,20 +41,22 @@ from kafka import KafkaConsumer
 from backend.kafka.chroma_buffer import ChromaBuffer
 from backend.kafka.deduplicator import Deduplicator
 from backend.kafka.handlers import event_handler, metric_handler
-from backend.kafka.handlers.event_handler import _route_to_ingestion_errors as route_raw_ingestion_errors
+from backend.kafka.handlers.event_handler import (
+    _route_to_ingestion_errors as route_raw_ingestion_errors,
+)
 from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.cache import get_redis_client
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [CONSUMER] %(message)s")
 
-KAFKA_BOOTSTRAP   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-CONSUMER_GROUP    = os.getenv("KAFKA_CONSUMER_GROUP", "atm-platform-consumer")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "atm-platform-consumer")
 AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest")
-POLL_TIMEOUT_MS   = int(os.getenv("KAFKA_POLL_TIMEOUT_MS", "1000"))
+POLL_TIMEOUT_MS = int(os.getenv("KAFKA_POLL_TIMEOUT_MS", "1000"))
 ANOMALY_INTERVAL_S = int(os.getenv("ANOMALY_TRIGGER_INTERVAL_S", "30"))
 
-TOPIC_EVENTS  = "atm-events"
+TOPIC_EVENTS = "atm-events"
 TOPIC_METRICS = "atm-metrics"
 
 _running = True
@@ -79,6 +82,7 @@ def _trigger_anomaly_detection() -> None:
     try:
         from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
         from backend.src.alerts.pubsub import publish_anomaly
+
         if _cached_detector is None:
             _cached_detector = MLAnomalyDetector()
         n = _cached_detector.detect_and_save()
@@ -137,11 +141,14 @@ def _trigger_anomaly_sync() -> None:
     global _cached_syncer
     try:
         from backend.kafka.anomaly_syncer import AnomalySyncer
+
         if _cached_syncer is None:
             _cached_syncer = AnomalySyncer()
         result = _cached_syncer.sync_once()
         if result.get("synced", 0) > 0:
-            log.info("Anomaly syncer: %d anomalies synced to ChromaDB", result["synced"])
+            log.info(
+                "Anomaly syncer: %d anomalies synced to ChromaDB", result["synced"]
+            )
     except Exception as exc:
         log.warning("Anomaly sync failed: %s", exc)
 
@@ -151,6 +158,7 @@ def _start_health_server() -> None:
 
     Serves {"status": "ok"} on GET /health. Runs as daemon thread.
     """
+
     class _HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             if self.path == "/health":
@@ -202,7 +210,8 @@ def run_consumer() -> None:
             )
             log.info(
                 "Kafka consumer connected (attempt %d/5). Bootstrap: %s",
-                attempt, KAFKA_BOOTSTRAP,
+                attempt,
+                KAFKA_BOOTSTRAP,
             )
             break
         except Exception as e:
@@ -213,12 +222,16 @@ def run_consumer() -> None:
                 log.critical("All 5 Kafka connection attempts failed — exiting")
                 sys.exit(1)
 
-    log.info("Consumer started. Topics: %s, %s. Group: %s",
-             TOPIC_EVENTS, TOPIC_METRICS, CONSUMER_GROUP)
+    log.info(
+        "Consumer started. Topics: %s, %s. Group: %s",
+        TOPIC_EVENTS,
+        TOPIC_METRICS,
+        CONSUMER_GROUP,
+    )
 
     last_anomaly_trigger = 0.0
     processed = 0
-    errors    = 0
+    errors = 0
 
     try:
         while _running:
@@ -266,14 +279,20 @@ def run_consumer() -> None:
             if processed > 0 and (now - last_anomaly_trigger) >= ANOMALY_INTERVAL_S:
                 if _acquire_detection_lock():
                     try:
-                        log.info("Triggering anomaly detection (processed=%d, last_trigger=%.1fs ago)", processed, now - last_anomaly_trigger)
+                        log.info(
+                            "Triggering anomaly detection (processed=%d, last_trigger=%.1fs ago)",
+                            processed,
+                            now - last_anomaly_trigger,
+                        )
                         _trigger_anomaly_detection()
                         _trigger_anomaly_sync()
                     finally:
                         _release_detection_lock()
                     last_anomaly_trigger = now
                 else:
-                    log.debug("Skipping anomaly detection — another consumer holds the lock")
+                    log.debug(
+                        "Skipping anomaly detection — another consumer holds the lock"
+                    )
 
             if processed % 500 == 0 and processed > 0:
                 log.info("Processed %d messages (%d errors).", processed, errors)
@@ -284,7 +303,9 @@ def run_consumer() -> None:
         log.info("Flushing ChromaDB buffer before shutdown...")
         chroma.flush_all()
         consumer.close()
-        log.info("Consumer shut down. Total processed: %d, errors: %d", processed, errors)
+        log.info(
+            "Consumer shut down. Total processed: %d, errors: %d", processed, errors
+        )
 
 
 if __name__ == "__main__":

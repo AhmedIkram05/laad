@@ -14,6 +14,7 @@ from backend.src.rag.config import config
 
 try:
     from sentence_transformers import CrossEncoder
+
     _HAS_CROSS_ENCODER = True
 except ImportError:
     _HAS_CROSS_ENCODER = False
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RetrievedChunk:
     """A retrieved document chunk with metadata."""
+
     text: str
     chunk_id: str
     atm_id: Optional[str]
@@ -50,7 +52,9 @@ class RAGRetriever:
         if self._cross_encoder is not None:
             return
         if not _HAS_CROSS_ENCODER:
-            logger.warning("sentence-transformers not installed — cross-encoder reranking disabled. Install with: pip install sentence-transformers")
+            logger.warning(
+                "sentence-transformers not installed — cross-encoder reranking disabled. Install with: pip install sentence-transformers"
+            )
             return
         if not config.cross_encoder_enabled:
             return
@@ -60,9 +64,13 @@ class RAGRetriever:
             self._cross_encoder = CrossEncoder(model_name)
             logger.info(f"Cross-encoder loaded successfully: {model_name}")
         except Exception as e:
-            logger.warning(f"Failed to load cross-encoder {config.cross_encoder_model}: {e}. Reranking disabled.")
+            logger.warning(
+                f"Failed to load cross-encoder {config.cross_encoder_model}: {e}. Reranking disabled."
+            )
 
-    def _rerank_with_cross_encoder(self, query: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    def _rerank_with_cross_encoder(
+        self, query: str, chunks: list[RetrievedChunk]
+    ) -> list[RetrievedChunk]:
         """Rerank chunks using cross-encoder for precise relevance scoring.
 
         Cross-encoders jointly attend to query + chunk text, producing more accurate
@@ -75,7 +83,9 @@ class RAGRetriever:
         try:
             scores = self._cross_encoder.predict(pairs)
         except Exception as e:
-            logger.warning(f"Cross-encoder reranking failed: {e}. Falling back to original order.")
+            logger.warning(
+                f"Cross-encoder reranking failed: {e}. Falling back to original order."
+            )
             return chunks
 
         for i, chunk in enumerate(chunks):
@@ -98,10 +108,14 @@ class RAGRetriever:
         """Get or create the ATM logs collection."""
         try:
             collection = self.client.get_collection(name=config.chroma_collection)
-            logger.info(f"Found existing ChromaDB collection: {config.chroma_collection}")
+            logger.info(
+                f"Found existing ChromaDB collection: {config.chroma_collection}"
+            )
             return collection
         except Exception as e:
-            logger.warning(f"Collection {config.chroma_collection} not found, creating: {e}")
+            logger.warning(
+                f"Collection {config.chroma_collection} not found, creating: {e}"
+            )
             return self.client.create_collection(
                 name=config.chroma_collection,
                 metadata={"hnsw:space": "cosine"},
@@ -118,7 +132,7 @@ class RAGRetriever:
         most_recent_first: Optional[bool] = None,
     ) -> list[RetrievedChunk]:
         """Retrieve relevant chunks for a query.
-        
+
         Args:
             query: The search query
             atm_id: Filter by specific ATM ID
@@ -138,25 +152,27 @@ class RAGRetriever:
             error_only = config.error_only
         if most_recent_first is None:
             most_recent_first = config.most_recent_first
-        
+
         try:
             where_filter = None
             filter_parts = []
-            
+
             if atm_id:
                 filter_parts.append({"atm_id": atm_id})
-            
+
             if anomaly_type:
                 filter_parts.append({"_anomaly_tag": anomaly_type})
-            
+
             if error_only:
-                severity_filter = {"$or": [
-                    {"severity": "ERROR"},
-                    {"severity": "FATAL"},
-                    {"_anomaly_tag": {"$in": config.anomaly_types}}
-                ]}
+                severity_filter = {
+                    "$or": [
+                        {"severity": "ERROR"},
+                        {"severity": "FATAL"},
+                        {"_anomaly_tag": {"$in": config.anomaly_types}},
+                    ]
+                }
                 filter_parts.append(severity_filter)
-            
+
             if len(filter_parts) > 1:
                 where_filter = {"$and": filter_parts}
             elif len(filter_parts) == 1:
@@ -173,20 +189,26 @@ class RAGRetriever:
             if results["documents"] and results["documents"][0]:
                 doc_ids = results.get("ids", [[]])[0] if results.get("ids") else []
                 for i, doc in enumerate(results["documents"][0]):
-                    distance = results["distances"][0][i] if results["distances"] else 0.0
-                    metadata = results["metadatas"][0][i] if results["metadatas"] else {}
+                    distance = (
+                        results["distances"][0][i] if results["distances"] else 0.0
+                    )
+                    metadata = (
+                        results["metadatas"][0][i] if results["metadatas"] else {}
+                    )
 
                     confidence = self._calculate_confidence(distance)
                     chunk_id = doc_ids[i] if i < len(doc_ids) else f"chunk_{i}"
 
-                    chunks.append(RetrievedChunk(
-                        text=doc,
-                        chunk_id=chunk_id,
-                        atm_id=metadata.get("atm_id"),
-                        timestamp=metadata.get("last_timestamp"),
-                        distance=distance,
-                        confidence_score=confidence,
-                    ))
+                    chunks.append(
+                        RetrievedChunk(
+                            text=doc,
+                            chunk_id=chunk_id,
+                            atm_id=metadata.get("atm_id"),
+                            timestamp=metadata.get("last_timestamp"),
+                            distance=distance,
+                            confidence_score=confidence,
+                        )
+                    )
 
             if temporal_boost and chunks:
                 chunks = self._apply_temporal_boost(chunks)
@@ -201,7 +223,9 @@ class RAGRetriever:
             chunks = chunks[:top_k]
 
             ce_used = self._cross_encoder is not None
-            logger.info(f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id}, anomaly_type={anomaly_type}, ce_rerank={ce_used})")
+            logger.info(
+                f"Retrieved {len(chunks)} chunks for query (atm_id={atm_id}, anomaly_type={anomaly_type}, ce_rerank={ce_used})"
+            )
             return chunks
 
         except Exception as e:
@@ -215,9 +239,11 @@ class RAGRetriever:
         confidence = 1.0 - min(distance, 1.0)
         return round(confidence, 3)
 
-    def _apply_temporal_boost(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    def _apply_temporal_boost(
+        self, chunks: list[RetrievedChunk]
+    ) -> list[RetrievedChunk]:
         """Boost relevance of recent chunks (last 6 hours).
-        
+
         Applies decay scoring: newer chunks get lower distance (higher confidence).
         Returns a new list to avoid mutating original chunks.
         """
@@ -247,20 +273,26 @@ class RAGRetriever:
                     pass
 
             from dataclasses import replace
-            boosted_chunks.append(replace(
-                chunk,
-                distance=new_distance,
-                confidence_score=new_confidence,
-            ))
+
+            boosted_chunks.append(
+                replace(
+                    chunk,
+                    distance=new_distance,
+                    confidence_score=new_confidence,
+                )
+            )
 
         boosted_chunks.sort(key=lambda c: c.distance)
         return boosted_chunks
 
-    def _sort_by_most_recent(self, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    def _sort_by_most_recent(
+        self, chunks: list[RetrievedChunk]
+    ) -> list[RetrievedChunk]:
         """Sort chunks by timestamp descending (most recent first).
-        
+
         Chunks without valid timestamps are placed at the end.
         """
+
         def get_timestamp_key(chunk: RetrievedChunk) -> float:
             if not chunk.timestamp:
                 return 0.0
@@ -272,7 +304,7 @@ class RAGRetriever:
                 return float(ts)
             except (ValueError, TypeError):
                 return 0.0
-        
+
         sorted_chunks = sorted(chunks, key=get_timestamp_key, reverse=True)
         return sorted_chunks
 
@@ -293,14 +325,18 @@ class RAGRetriever:
             if results["documents"]:
                 for i, doc in enumerate(results["documents"]):
                     metadata = results["metadatas"][i] if results["metadatas"] else {}
-                    chunks.append(RetrievedChunk(
-                        text=doc,
-                        chunk_id=results["ids"][i] if results["ids"] else f"chunk_{i}",
-                        atm_id=atm_id,
-                        timestamp=metadata.get("last_timestamp"),
-                        distance=0.0,
-                        confidence_score=0.8,
-                    ))
+                    chunks.append(
+                        RetrievedChunk(
+                            text=doc,
+                            chunk_id=results["ids"][i]
+                            if results["ids"]
+                            else f"chunk_{i}",
+                            atm_id=atm_id,
+                            timestamp=metadata.get("last_timestamp"),
+                            distance=0.0,
+                            confidence_score=0.8,
+                        )
+                    )
 
             return chunks
 
@@ -336,15 +372,21 @@ class RAGRetriever:
                 name=config.chroma_collection,
                 metadata={"hnsw:space": "cosine"},
             )
-            logger.warning("Cleared and recreated ChromaDB collection: %s", config.chroma_collection)
-            return {"success": True, "message": f"Cleared collection: {config.chroma_collection}"}
+            logger.warning(
+                "Cleared and recreated ChromaDB collection: %s",
+                config.chroma_collection,
+            )
+            return {
+                "success": True,
+                "message": f"Cleared collection: {config.chroma_collection}",
+            }
         except Exception as e:
             logger.error("Failed to clear collection: %s", str(e))
             return {"error": str(e)}
 
     def rebuild_collection(self, new_client: bool = False) -> dict[str, Any]:
         """Rebuild the collection (clear and reinitialize).
-        
+
         Args:
             new_client: If True, creates a new client (useful when ChromaDB was restarted)
         """
@@ -362,7 +404,10 @@ class RAGRetriever:
                 metadata={"hnsw:space": "cosine"},
             )
             logger.info("Rebuilt ChromaDB collection: %s", config.chroma_collection)
-            return {"success": True, "message": f"Rebuilt collection: {config.chroma_collection}"}
+            return {
+                "success": True,
+                "message": f"Rebuilt collection: {config.chroma_collection}",
+            }
         except Exception as e:
             logger.error("Failed to rebuild collection: %s", str(e))
             return {"error": str(e)}

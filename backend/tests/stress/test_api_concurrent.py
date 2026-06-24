@@ -9,6 +9,7 @@ Tests cover:
   2. Authentication under concurrent login attempts
   3. Anomalies listing with concurrent authenticated requests
 """
+
 from __future__ import annotations
 import threading
 
@@ -59,8 +60,7 @@ class TestConcurrentHealth:
                 results[idx] = f"error: {e}"
 
         threads = [
-            threading.Thread(target=_login, args=(i,))
-            for i in range(CONCURRENT_USERS)
+            threading.Thread(target=_login, args=(i,)) for i in range(CONCURRENT_USERS)
         ]
         for t in threads:
             t.start()

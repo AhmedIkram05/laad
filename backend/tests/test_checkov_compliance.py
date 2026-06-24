@@ -7,6 +7,7 @@ Skipped automatically when running inside Docker (no terraform/ directory
 available). Designed to run in CI on the host runner where both checkov
 and terraform/ are present.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,11 +32,14 @@ def _run_checkov(baseline_only: bool = False) -> dict:
     """Run checkov and return parsed results."""
     cmd = [
         "checkov",
-        "-d", os.path.abspath(TERRAFORM_DIR),
-        "--framework", "terraform",
+        "-d",
+        os.path.abspath(TERRAFORM_DIR),
+        "--framework",
+        "terraform",
         "--compact",
         "--quiet",
-        "--output", "json",
+        "--output",
+        "json",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if result.returncode not in (0, 1):
@@ -47,24 +51,6 @@ def _run_checkov(baseline_only: bool = False) -> dict:
         pytest.fail(f"checkov output is not valid JSON: {result.stdout[:500]}")
 
     return data
-
-
-def _count_by_severity(results: list) -> dict[str, int]:
-    """Count failed checks by severity."""
-    counts: dict[str, int] = {}
-    for check in results:
-        sev = check.get("severity", "unknown")
-        counts[sev] = counts.get(sev, 0) + 1
-    return counts
-
-
-def _count_by_check_id(results: list) -> dict[str, int]:
-    """Count failed checks by check ID."""
-    counts: dict[str, int] = {}
-    for check in results:
-        cid = check.get("check_id", "unknown")
-        counts[cid] = counts.get(cid, 0) + 1
-    return counts
 
 
 class TestCheckovCompliance:
@@ -79,7 +65,17 @@ class TestCheckovCompliance:
 
     def test_inline_skips_present_in_all_modules(self):
         """All 9 terraform modules must have checkov skip comments."""
-        modules = ["ecs", "frontend", "iam", "kafka", "monitoring", "rds", "secrets", "vpc", "ecr"]
+        modules = [
+            "ecs",
+            "frontend",
+            "iam",
+            "kafka",
+            "monitoring",
+            "rds",
+            "secrets",
+            "vpc",
+            "ecr",
+        ]
         modules_without_skips = []
         for mod in modules:
             mod_file = os.path.join(TERRAFORM_DIR, "modules", mod, "main.tf")
@@ -99,12 +95,11 @@ class TestCheckovCompliance:
         This sets a baseline; any NEW critical/high failure is a regression."""
         data = _run_checkov()
         failed = data["results"].get("failed_checks", [])
-        by_severity = _count_by_severity(failed)
 
         # Currently known CRITICAL/HIGH failures that have been reviewed
         # and accepted with inline skips in the relevant modules
         known_high_failures = {
-            "CKV_AWS_28",   # DynamoDB point-in-time recovery (bootstrap)
+            "CKV_AWS_28",  # DynamoDB point-in-time recovery (bootstrap)
             "CKV_AWS_119",  # DynamoDB KMS encryption (bootstrap)
         }
 
@@ -115,8 +110,8 @@ class TestCheckovCompliance:
             if sev in ("CRITICAL", "HIGH") and cid not in known_high_failures:
                 unexpected.append(f"{cid} ({sev}): {check.get('check_name', '')}")
 
-        assert not unexpected, (
-            "Unexpected CRITICAL/HIGH failures:\n" + "\n".join(unexpected)
+        assert not unexpected, "Unexpected CRITICAL/HIGH failures:\n" + "\n".join(
+            unexpected
         )
 
     def test_known_failure_count_stable(self):

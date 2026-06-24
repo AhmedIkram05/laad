@@ -6,6 +6,7 @@ which inherently prevent SQL injection. These tests verify that:
   2. The API returns appropriate 4xx status codes or gracefully handles input
   3. All major endpoint groups that accept user input are covered
 """
+
 from __future__ import annotations
 
 import pytest
@@ -34,7 +35,7 @@ SQLI_PAYLOADS = [
     "'; DROP TABLE anomalies; --",
     "1' AND SLEEP(1)--",
     "' OR '1'='1' /*",
-    "\\\"; SELECT * FROM users;",
+    '\\"; SELECT * FROM users;',
     "' WAITFOR DELAY '0:0:5'--",
     "<script>alert('xss')</script>",
 ]
@@ -58,7 +59,9 @@ class TestSQLInjection:
     def test_anomalies_filter_injection(self, client, admin_token, payload):
         """SQLi in anomalies query params should never produce 500."""
         headers = {"Authorization": f"Bearer {admin_token}"}
-        resp = client.get(f"/anomalies?atm_id={payload}&severity={payload}", headers=headers)
+        resp = client.get(
+            f"/anomalies?atm_id={payload}&severity={payload}", headers=headers
+        )
         assert resp.status_code < 500
 
     # ── 6: SQLi on login endpoint ─────────────────────────────────────
@@ -77,7 +80,10 @@ class TestSQLInjection:
         """SQLi payload in register username should not produce 500."""
         resp = client.post(
             "/auth/register",
-            json={"username": f"{SQLI_PAYLOADS[4]}_{__import__('time').time_ns()}", "password": "TestPass123"},
+            json={
+                "username": f"{SQLI_PAYLOADS[4]}_{__import__('time').time_ns()}",
+                "password": "TestPass123",
+            },
         )
         assert resp.status_code < 500
 

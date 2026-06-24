@@ -11,6 +11,7 @@ Usage:
         continue
     dedup.mark_seen(message_id)
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,7 +61,9 @@ class Deduplicator:
                 if client is not None:
                     return bool(client.sismember(self._redis_key, message_id))
             except Exception as e:
-                logger.warning(f"Redis dedup check failed, falling back to in-memory: {e}")
+                logger.warning(
+                    f"Redis dedup check failed, falling back to in-memory: {e}"
+                )
                 self._use_redis = False
 
         return message_id in self._seen
@@ -74,7 +77,9 @@ class Deduplicator:
                     client.sadd(self._redis_key, message_id)
                     client.expire(self._redis_key, self._ttl_seconds)
             except Exception as e:
-                logger.warning(f"Redis dedup mark_seen failed, falling back to in-memory: {e}")
+                logger.warning(
+                    f"Redis dedup mark_seen failed, falling back to in-memory: {e}"
+                )
                 self._use_redis = False
 
         if message_id in self._seen:

@@ -26,17 +26,18 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
 
 def get_conn() -> psycopg2.extensions.connection:
     """Check out a raw connection from the pool with retry logic.
-    
+
     Implements exponential backoff to handle temporary pool exhaustion.
-    
+
     Raises:
         psycopg2.pool.PoolError: If pool exhausted after retries.
     """
     import time
+
     pool = _get_pool()
     max_attempts = 3
     retry_delay = 0.1  # Start with 100ms
-    
+
     for attempt in range(max_attempts):
         try:
             return pool.getconn()

@@ -8,13 +8,12 @@ Serves the xgboost-model from /opt/ml/model/ and responds to
 Input:  text/csv (single row per line) or application/json
 Output: application/jsonlines
 """
+
 import json
 import os
-import sys
 from io import StringIO
 
 import flask
-import numpy as np
 import pandas as pd
 import xgboost as xgb
 
@@ -83,7 +82,11 @@ def invocations():
             predictions = model.predict(dmatrix)
         else:
             return flask.Response(
-                response=json.dumps({"error": f"unsupported content type: {content_type}. Use text/csv or application/json"}),
+                response=json.dumps(
+                    {
+                        "error": f"unsupported content type: {content_type}. Use text/csv or application/json"
+                    }
+                ),
                 status=400,
                 mimetype="application/json",
             )
