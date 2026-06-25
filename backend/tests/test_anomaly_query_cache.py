@@ -78,10 +78,10 @@ class TestAnomalyQueryCache:
         result = {"total": 5, "data": []}
         _cache_result({"severity": "HIGH"}, result)
 
-        mock_client.setex.assert_called_once()
-        call_args = mock_client.setex.call_args
+        mock_client.set.assert_called_once()
+        call_args = mock_client.set.call_args
         assert call_args[0][0].startswith("anomaly:list:")
-        assert call_args[0][1] == CACHE_TTL
+        assert call_args[1]["ex"] == CACHE_TTL
 
     @patch("backend.src.anomalies.anomalies_router.get_redis_client")
     def test_cache_result_noop_when_redis_down(self, mock_get_client):
