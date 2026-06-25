@@ -12,6 +12,19 @@ import os
 from pathlib import Path
 
 
+def pytest_configure(config) -> None:
+    """Register custom markers to suppress PytestUnknownMarkWarning."""
+    config.addinivalue_line(
+        "markers", "kafka: tests that require a running Kafka broker"
+    )
+    config.addinivalue_line(
+        "markers", "rag: tests that require the RAG pipeline (ChromaDB + LLM)"
+    )
+    config.addinivalue_line(
+        "markers", "chroma: tests that require a running ChromaDB instance"
+    )
+
+
 def pytest_sessionstart(session) -> None:
     repo_root = Path(__file__).resolve().parent
     repo_root_str = str(repo_root)
