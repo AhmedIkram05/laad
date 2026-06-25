@@ -15,7 +15,9 @@ import threading
 
 import httpx
 
-BASE_URL = "http://localhost:8000"
+import os
+
+BASE_URL = os.getenv("STRESS_TEST_BASE_URL", "http://localhost:8000")
 CONCURRENT_USERS = 10
 REQUEST_TIMEOUT = 10.0
 
