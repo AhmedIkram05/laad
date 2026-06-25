@@ -63,7 +63,7 @@ def _cache_result(params: dict, result: dict) -> None:
         return
     try:
         key = _get_cache_key(params)
-        client.setex(key, CACHE_TTL, json.dumps(result))
+        client.set(key, json.dumps(result), ex=CACHE_TTL)
     except Exception as e:
         logger.warning(f"Anomaly cache set failed: {e}")
 
