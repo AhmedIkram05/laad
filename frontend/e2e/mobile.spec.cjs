@@ -3,16 +3,14 @@ const { test, expect } = require("@playwright/test");
 const { loginAsAdmin } = require("./helpers.cjs");
 
 test.describe("Mobile Responsiveness", () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAsAdmin(page);
-  });
-
   test("dashboard renders on mobile viewport", async ({ page }) => {
-    // Set viewport to iPhone 12/13 size
+    // Set viewport to iPhone 12/13 size BEFORE login
+    // so the dashboard renders at mobile size without needing page.goto()
     await page.setViewportSize({ width: 390, height: 844 });
+    await loginAsAdmin(page);
 
-    await page.goto("/dashboard");
-    await page.waitForTimeout(2_000);
+    // Dashboard heading should be visible
+    await expect(page.locator("h1")).toContainText("Anomalies", { timeout: 10_000 });
 
     // Page should render without errors
     const body = page.locator("body");
@@ -24,13 +22,11 @@ test.describe("Mobile Responsiveness", () => {
   });
 
   test("tablet viewport renders layout correctly", async ({ page }) => {
-    // Set viewport to iPad size
+    // Set viewport to iPad size BEFORE login
     await page.setViewportSize({ width: 768, height: 1024 });
+    await loginAsAdmin(page);
 
-    await page.goto("/dashboard");
-    await page.waitForTimeout(2_000);
-
-    // Layout should render correctly on tablet
+    // Dashboard heading should be visible
     await expect(page.locator("h1")).toContainText("Anomalies", { timeout: 10_000 });
 
     // Make sure the main content area is visible
@@ -39,10 +35,9 @@ test.describe("Mobile Responsiveness", () => {
   });
 
   test("sidebar collapse works on mobile", async ({ page }) => {
+    // Set mobile viewport BEFORE login
     await page.setViewportSize({ width: 390, height: 844 });
-
-    await page.goto("/dashboard");
-    await page.waitForTimeout(2_000);
+    await loginAsAdmin(page);
 
     // Find and click the collapse toggle button
     const toggleButton = page.locator("button[aria-label='Collapse sidebar']");
