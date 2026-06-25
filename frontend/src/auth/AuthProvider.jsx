@@ -56,6 +56,7 @@ export function AuthProvider({ children }) {
     const login = (newToken) => {
         if (!newToken) return;
         localStorage.setItem("jwt", newToken);
+        setLoading(true); // Prevent ProtectedRoute from redirecting before /auth/me resolves
         setToken(newToken);
     };
 
