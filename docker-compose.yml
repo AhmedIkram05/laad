@@ -160,7 +160,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-atm_platform}
       - POSTGRES_USER=${POSTGRES_USER:-atm_user}
@@ -288,9 +288,13 @@ services:
       python -c 'from backend.src.database.init_db import init_db; init_db(force=True)' &&
       python -m pytest backend/tests/ -v
       --tb=short
+      --ignore=backend/tests/stress
       --cov=backend/src --cov=backend/generator --cov=backend/kafka
       --cov-report=term --cov-report=term-missing
-      --cov-report=xml:/app/backend/coverage.xml"
+      --cov-report=xml:/app/backend/coverage.xml &&
+      echo '--- Running stress tests ---' &&
+      python -c 'from backend.src.database.init_db import init_db; init_db(force=True)' &&
+      python -m pytest backend/tests/stress/ -v --tb=short"
     environment:
       - POSTGRES_HOST=postgres_test
       - POSTGRES_PORT=5432
@@ -303,7 +307,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_CACHE_TTL=300
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-test-secret-key-for-laad}
       - TEST_DATA_DIR=backend/custom_synthetic_data_sources
+      - STRESS_TEST_BASE_URL=http://backend:8000
     depends_on:
       postgres_test:
         condition: service_started

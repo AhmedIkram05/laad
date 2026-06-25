@@ -118,13 +118,15 @@ test-backend:
 	-docker compose stop postgres_test pytest 2>/dev/null; true
 	-docker compose rm -f postgres_test pytest 2>/dev/null; true
 	@echo "==> Starting backend test environment..."
+	POSTGRES_HOST=postgres_test POSTGRES_DB=atm_platform_test docker compose up --no-deps -d backend
+	docker compose up -d redis
 	docker compose --profile test up -d postgres_test
-	@echo "==> Waiting for test DB to be ready..."
-	@sleep 5
-	docker compose run --rm --build pytest
+	@echo "==> Waiting for test services to be ready..."
+	@sleep 8
+	-docker compose run --rm --build pytest
 	@echo "==> Stopping backend test environment..."
-	-docker compose stop postgres_test pytest 2>/dev/null; true
-	-docker compose rm -f postgres_test pytest 2>/dev/null; true
+	-docker compose stop postgres_test backend pytest redis 2>/dev/null; true
+	-docker compose rm -f postgres_test backend pytest redis 2>/dev/null; true
 	@echo ""
 	@echo "✓ Backend tests complete!"
 

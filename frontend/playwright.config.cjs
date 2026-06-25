@@ -17,8 +17,8 @@ module.exports = defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only (1 retry) */
   retries: process.env.CI ? 1 : 0,
-  /* 2 parallel workers on CI (ubuntu-latest has 2+ vCPUs) */
-  workers: process.env.CI ? 2 : undefined,
+  /* 2 parallel workers to avoid overwhelming the backend DB connection pool */
+  workers: process.env.CI ? 2 : 2,
   /* Reporter to use */
   reporter: [["list"], ["html", { outputFolder: "playwright-report" }]],
   /* Shared settings for all projects */
