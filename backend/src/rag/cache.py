@@ -42,7 +42,7 @@ def set_cached_response(query: str, response: dict) -> None:
         if client is None:
             return
         key = f"rag:response:{get_query_hash(query)}"
-        client.setex(key, config.cache_ttl, json.dumps(response))
+        client.set(key, json.dumps(response), ex=config.cache_ttl)
         logger.info(
             f"Cached response for query hash {get_query_hash(query)} (TTL={config.cache_ttl}s)"
         )

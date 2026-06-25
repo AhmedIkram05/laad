@@ -18,10 +18,7 @@ test.describe("Anomalies", () => {
   });
 
   test("can filter anomalies by severity", async ({ page }) => {
-    await page.goto("/dashboard");
-
-    // Wait for the page to load
-    await page.waitForTimeout(2_000);
+    // Already on /dashboard after loginAsAdmin — no page.goto() needed
 
     // Find a severity filter trigger (look for select elements)
     const selects = page.locator('[role="combobox"]');
@@ -36,10 +33,7 @@ test.describe("Anomalies", () => {
   });
 
   test("can toggle star on an anomaly", async ({ page }) => {
-    await page.goto("/dashboard");
-
-    // Wait for anomalies to load
-    await page.waitForTimeout(2_000);
+    // Already on /dashboard after loginAsAdmin — no page.goto() needed
 
     // Look for a star button on an anomaly card
     const starButton = page.locator("button").filter({ has: page.locator('[class*="star"]') }).first();

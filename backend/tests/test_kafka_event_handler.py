@@ -5,6 +5,10 @@ from unittest.mock import MagicMock, patch
 
 from backend.kafka.handlers.event_handler import handle_event
 
+import pytest
+
+pytestmark = pytest.mark.kafka
+
 
 class MockChromaBuffer:
     def __init__(self):

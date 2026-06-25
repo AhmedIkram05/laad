@@ -3,6 +3,10 @@
 from __future__ import annotations
 from backend.kafka.deduplicator import Deduplicator
 
+import pytest
+
+pytestmark = pytest.mark.kafka
+
 
 class TestDeduplicator:
     def test_new_message_not_duplicate(self):

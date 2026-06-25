@@ -101,7 +101,7 @@ def _blacklist_token(token: str, expires_at: datetime) -> None:
     token_hash = _get_token_hash(token)
     now = datetime.now(timezone.utc)
     ttl_seconds = max(int((expires_at - now).total_seconds()), 60)
-    client.setex(f"blacklist:{token_hash}", ttl_seconds, "1")
+    client.set(f"blacklist:{token_hash}", "1", ex=ttl_seconds)
     logger.info(f"Token blacklisted (TTL={ttl_seconds}s)")
 
 

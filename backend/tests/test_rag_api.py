@@ -4,6 +4,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
+pytestmark = pytest.mark.rag
+
 
 class TestRAGSchemas:
     """Test cases for RAG Pydantic schemas."""

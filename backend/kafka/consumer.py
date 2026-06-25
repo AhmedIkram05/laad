@@ -173,9 +173,14 @@ def _start_health_server() -> None:
         def log_message(self, fmt, *args) -> None:
             log.debug("Health server: %s", fmt % args)
 
-    server = HTTPServer(("0.0.0.0", 8081), _HealthHandler)
-    log.info("Health server listening on 0.0.0.0:8081")
-    server.serve_forever()
+    try:
+        server = HTTPServer(
+            ("0.0.0.0", int(os.getenv("KAFKA_HEALTH_PORT", "8081"))), _HealthHandler
+        )
+        log.info("Health server listening on 0.0.0.0:%d", server.server_port)
+        server.serve_forever()
+    except OSError as exc:
+        log.warning("Health server failed to start: %s", exc)
 
 
 def run_consumer() -> None:

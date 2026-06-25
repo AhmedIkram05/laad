@@ -1,9 +1,27 @@
 import os
 import sys
 import time
+import warnings
 
 import psycopg2
 import pytest
+
+
+def pytest_configure(config):
+    """Suppress StarletteDeprecationWarning about httpx vs httpx2.
+
+    This is a third-party issue in Starlette's testclient that FastAPI re-exports.
+    httpx2 is not a real package — the deprecation warning is a dead end.
+    StarletteDeprecationWarning inherits from UserWarning, NOT DeprecationWarning.
+    Must be done in pytest_configure (not module-level) to take effect before
+    test collection triggers the import chain.
+    """
+    warnings.filterwarnings(
+        "ignore",
+        message=".*starlette.testclient.*deprecated.*httpx2.*",
+        category=UserWarning,
+    )
+
 
 test_host = os.getenv("TEST_POSTGRES_HOST")
 if test_host is None:

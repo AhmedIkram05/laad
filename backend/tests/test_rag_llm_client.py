@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+pytestmark = pytest.mark.rag
+
 
 class TestRateLimiter:
     def test_not_rate_limited_initially(self):

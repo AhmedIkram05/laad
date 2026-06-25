@@ -150,7 +150,7 @@ jobs:
           python -m pytest backend/tests/ -v --tb=short \
             --ignore=backend/tests/stress \
             --ignore=backend/tests/integration \
-            -k "not chroma and not rag and not kafka" \
+            -m "not rag and not kafka and not chroma" \
             --cov=backend/src --cov-report=term-missing --cov-report=xml:coverage-backend.xml
 
       - name: Upload backend coverage

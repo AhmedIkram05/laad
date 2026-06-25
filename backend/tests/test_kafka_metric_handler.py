@@ -5,6 +5,10 @@ from unittest.mock import MagicMock, patch
 
 from backend.kafka.handlers.metric_handler import handle_metric
 
+import pytest
+
+pytestmark = pytest.mark.kafka
+
 
 class TestHandleMetric:
     def test_valid_minimal_metric_writes_to_db(self):

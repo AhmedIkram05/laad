@@ -3,6 +3,10 @@
 from unittest.mock import MagicMock, patch
 import json
 
+import pytest
+
+pytestmark = pytest.mark.rag
+
 
 class TestRedisCache:
     """Test cases for Redis caching functions."""
@@ -107,11 +111,11 @@ class TestRedisCache:
 
         set_cached_response("What is error A1?", response)
 
-        mock_client.setex.assert_called_once()
-        call_args = mock_client.setex.call_args
+        mock_client.set.assert_called_once()
+        call_args = mock_client.set.call_args
         assert call_args[0][0].startswith("rag:response:")
-        assert call_args[0][1] == 300
-        assert json.loads(call_args[0][2]) == response
+        assert call_args[1]["ex"] == 300
+        assert json.loads(call_args[0][1]) == response
 
     @patch("backend.src.rag.cache.get_redis_client")
     def test_set_cached_response_handles_error(self, mock_get_client):
