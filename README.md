@@ -218,7 +218,7 @@ flowchart TD
 |---|---|---|
 | **Scale** | Log sources | 7 simultaneous |
 | | ATMs monitored | 10 ATMs + 3 Servers |
-| | Messages processed | 930K+ events, 100+ msgs/sec live |
+| | Messages processed | 2.5M events, 100+ msgs/sec live |
 | | Tables / Views / Indexes | 10 + 3 + 14 |
 | | Docker services | 10 production + 3 test |
 | | Terraform resources | 118 across 10 modules |
@@ -414,8 +414,8 @@ PostgreSQL 16 (Alpine) with a lean data lake design - unified `events` and `metr
 | Table | Purpose | Key Columns | Row Count |
 |---|---|---|---|
 | `atms` | ATM device registry | `atm_id` (PK), `os_version`, `location_code` | Per-ATM |
-| `events` | Structured ATM event messages | `id` (PK, BIGSERIAL), `timestamp`, `atm_id` (FK), `event_type`, `severity`, `payload` (JSONB) | 930K+ |
-| `metrics` | Numeric time-series readings | `id` (PK, BIGSERIAL), `timestamp`, `entity_id`, `metric_name`, `metric_value`, `payload` (JSONB) | 930K+ |
+| `events` | Structured ATM event messages | `id` (PK, BIGSERIAL), `timestamp`, `atm_id` (FK), `event_type`, `severity`, `payload` (JSONB) | Per Request |
+| `metrics` | Numeric time-series readings | `id` (PK, BIGSERIAL), `timestamp`, `entity_id`, `metric_name`, `metric_value`, `payload` (JSONB) | Per Request |
 | `anomalies` | Detection engine results | `id` (PK), `detected_at`, `anomaly_type`, `atm_id` (FK), `model_confidence_score`, `severity`, `sources_involved` (JSONB), `is_active`, `is_starred` | By detection |
 | `ingestion_errors` | Failed message log | `id` (PK), `timestamp`, `source`, `error_detail`, `raw_input` | Trace-level |
 | `rag_queries` / `rag_feedback` | RAG history + calibration data | Full query + response + user rating | Per conversation |
