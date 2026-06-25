@@ -10,6 +10,8 @@ from backend.src.rag.uncertainty import (
     compute_retrieval_confidence,
 )
 
+pytestmark = pytest.mark.rag
+
 
 def _chunk(distance=0.2, atm_id="ATM-GB-0001", timestamp="2026-05-15T10:00:00Z"):
     """Helper to create a RetrievedChunk."""

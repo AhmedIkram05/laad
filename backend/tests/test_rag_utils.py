@@ -8,6 +8,10 @@ from backend.src.rag.utils import (
     QueryType,
 )
 
+import pytest
+
+pytestmark = pytest.mark.rag
+
 
 class TestExtractAtmIdFromQuery:
     """Tests for ATM ID extraction from queries."""

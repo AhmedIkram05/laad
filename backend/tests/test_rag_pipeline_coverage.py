@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+pytestmark = pytest.mark.rag
+
 
 def _make_mock_chunks(n=1):
     """Create n mock RetrievedChunk objects."""

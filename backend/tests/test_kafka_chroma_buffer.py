@@ -4,7 +4,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 from collections import defaultdict
 
+import pytest
+
 from backend.kafka.chroma_buffer import ChromaBuffer, format_event_text
+
+pytestmark = [pytest.mark.kafka, pytest.mark.chroma]
 
 
 class TestFormatEventText:

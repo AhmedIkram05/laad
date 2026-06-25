@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+pytestmark = pytest.mark.rag
+
 
 class TestClearCollection:
     """Test clear_collection method."""

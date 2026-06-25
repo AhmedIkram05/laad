@@ -3,6 +3,10 @@
 from unittest.mock import MagicMock, patch
 import json
 
+import pytest
+
+pytestmark = pytest.mark.rag
+
 
 class TestRedisCache:
     """Test cases for Redis caching functions."""

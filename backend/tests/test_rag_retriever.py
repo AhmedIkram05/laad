@@ -2,6 +2,10 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+pytestmark = pytest.mark.rag
+
 
 class TestRAGRetriever:
     """Test cases for RAGRetriever class."""

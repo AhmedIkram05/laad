@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from backend.src.rag.retriever import RetrievedChunk
 
+pytestmark = pytest.mark.rag
+
 
 @pytest.fixture
 def sample_chunks():

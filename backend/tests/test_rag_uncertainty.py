@@ -2,6 +2,8 @@
 
 import pytest
 
+pytestmark = pytest.mark.rag
+
 
 class TestRetrievalConfidence:
     """Test cases for retrieval-only confidence computation."""

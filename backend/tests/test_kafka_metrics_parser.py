@@ -1,8 +1,12 @@
 import json
 
+import pytest
+
 from backend.src.database.connection import get_conn, release_conn
 from backend.src.ingestion.parsers.kafka_metrics import KafkaMetricsParser
 from backend.tests.helpers import reset_test_db, sample_path
+
+pytestmark = pytest.mark.kafka
 
 
 def test_kafka_good_and_bad_rows():

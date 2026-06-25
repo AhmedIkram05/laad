@@ -9,6 +9,10 @@ from backend.src.rag.utils import (
     truncate_for_display,
 )
 
+import pytest
+
+pytestmark = pytest.mark.rag
+
 
 class TestSanitizeQuery:
     """Test sanitize_query function."""

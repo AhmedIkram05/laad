@@ -5,6 +5,10 @@ from unittest.mock import MagicMock, patch
 import sys
 from datetime import datetime, timezone
 
+import pytest
+
+pytestmark = pytest.mark.kafka
+
 _kafka_mock = MagicMock()
 sys.modules["kafka"] = _kafka_mock
 sys.modules["kafka.errors"] = _kafka_mock.errors
