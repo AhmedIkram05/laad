@@ -52,3 +52,5 @@ frontend/coverage
 # Playwright
 frontend/playwright-report/
 frontend/test-results/
+
+graphify-out
