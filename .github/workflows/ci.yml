@@ -57,7 +57,7 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          pip install ruff
+          pip install ruff==0.15.15
           ruff check backend/
 
       - name: Audit dependencies for CVEs
