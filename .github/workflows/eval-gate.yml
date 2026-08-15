@@ -8,7 +8,7 @@
 # stack is unreachable without it, so there is nothing to gate. Add the secret
 # to enable gating. Bump the timeout if the golden set grows.
 
-name: eval-gate
+name: RAG Eval
 
 on:
   pull_request:

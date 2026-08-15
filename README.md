@@ -31,6 +31,7 @@
 <a href="https://github.com/AhmedIkram05/laad/actions/workflows/ci.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://github.com/AhmedIkram05/laad/actions/workflows/cd.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/cd.yml/badge.svg" alt="CD"></a>
 <a href="https://github.com/AhmedIkram05/laad/actions/workflows/terraform.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/terraform.yml/badge.svg" alt="Terraform"></a>
+<a href="https://github.com/AhmedIkram05/laad/actions/workflows/eval-gate.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/eval-gate.yml/badge.svg" alt="RAG Eval"></a>
 <a href="https://codecov.io/gh/AhmedIkram05/laad"><img src="https://codecov.io/gh/AhmedIkram05/laad/branch/main/graph/badge.svg" alt="Codecov"></a>
 </p>
 
