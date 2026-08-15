@@ -1,4 +1,4 @@
-.PHONY: help all rebuild rebuild-backend rebuild-frontend clean logs train test test-backend test-frontend
+.PHONY: help all rebuild rebuild-backend rebuild-frontend clean logs train test test-backend test-frontend eval-ragas
 
 help:
 	@echo "LAAD Makefile — Essential commands"
@@ -153,6 +153,14 @@ test-e2e-quick:
 	docker compose run --rm playwright
 	@echo ""
 	@echo "✓ E2E tests complete!"
+
+# ── RAG Evaluation ────────────────────────────────────────────────────────────
+
+eval-ragas:
+	@echo "==> Running RAG evaluation (baseline/hybrid/agentic vs golden set)..."
+	docker compose run --rm pytest sh -c "PYTHONPATH=/app python -m backend.tests.eval.run_ragas $(FLAGS)"
+	@echo ""
+	@echo "✓ RAG evaluation complete! See backend/tests/eval/results.json"
 
 # ── IaC Compliance ─────────────────────────────────────────────────────────
 
