@@ -372,7 +372,7 @@ class RAGGenerator:
         return LLMResponse(
             text=text,
             raw_response={},
-            model=config.primary_model or "unknown",
+            model=config.llm_model or "unknown",
             finish_reason="STOP",
         )
 

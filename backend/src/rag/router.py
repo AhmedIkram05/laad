@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from backend.src.cache import get_redis_client
 from backend.src.rag.config import config
+from backend.src.rag.telemetry import record_trace
 
 from backend.src.database.connection import get_cursor
 from backend.src.rag.schemas import (
@@ -21,6 +22,8 @@ from backend.src.rag.schemas import (
     RAGStatsResponse,
     AnomalyStatsResponse,
     SourceChunk,
+    AgentQueryRequest,
+    AgentQueryResponse,
 )
 from backend.src.rag.retriever import get_retriever
 from backend.src.rag.generator import get_generator
@@ -31,6 +34,7 @@ from backend.src.rag.utils import (
     extract_atm_id_from_query,
     detect_query_intent,
     classify_query_type,
+    _extract_anomaly_type_from_query,
     QueryType,
 )
 from backend.src.auth.auth_router import get_current_user
@@ -294,6 +298,84 @@ async def query(
         )
 
 
+@router.post("/agent", response_model=AgentQueryResponse)
+async def agent_query(
+    request: AgentQueryRequest,
+    req: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """Run a query through the agentic loop (LLM-planned tools) or the hybrid
+    deterministic planner, then synthesize with the RAG generator.
+
+    Response mirrors POST /api/rag/query plus an additive `agent_trace`.
+    """
+    try:
+        user_key = current_user.get("sub", "anonymous")
+        _check_rate_limit(user_key)
+
+        sanitized_query = sanitize_query(request.query)
+        atm_id = request.atm_id or extract_atm_id_from_query(request.query)
+
+        # mode + atm_id are part of the cache key (D10)
+        cache_key = f"rag:agent:{request.mode}:{atm_id or 'none'}:{sanitized_query}"
+        cached = get_cached_response(cache_key)
+        if cached:
+            return AgentQueryResponse(**cached)
+
+        # Lazy import: agent.py pulls in langchain + MCP machinery at import time.
+        from backend.src.rag.agent import run_agent_query
+        from backend.src.rag.agent_types import AgentMode
+
+        result = await run_agent_query(
+            query=request.query,
+            atm_id=atm_id,
+            mode=AgentMode(request.mode),
+            top_k=request.top_k,
+        )
+
+        if result.get("error"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Agent query failed: {result['error']}",
+            )
+
+        if not result["sources"]:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No relevant logs found for your query. Try rephrasing or check if the data generator is running.",
+            )
+
+        user_id = _get_user_id_from_username(user_key)
+        query_id = _save_query_history(
+            user_id=user_id,
+            query=request.query,
+            answer=result["answer"],
+            uncertainty_score=result["uncertainty_score"],
+        )
+        if query_id is None:
+            query_id = _save_query_history_fallback(
+                query=request.query,
+                answer=result["answer"],
+                uncertainty_score=result["uncertainty_score"],
+            )
+        _save_agent_trace(query_id, result.get("agent_trace"))
+
+        if not request.include_trace:
+            result.pop("agent_trace", None)
+
+        set_cached_response(cache_key, result)
+        return AgentQueryResponse(**result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Agent query failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Agent query processing failed: {str(e)}",
+        )
+
+
 @router.post("/feedback", response_model=RAGFeedbackResponse)
 async def provide_feedback(
     request: RAGFeedbackRequest,
@@ -476,6 +558,11 @@ async def get_anomaly_stats(
         )
 
 
+def _save_agent_trace(query_id: Optional[int], trace) -> None:
+    """Persist per-request agent loop telemetry (D15) via telemetry.record_trace."""
+    record_trace(query_id, trace)
+
+
 def _get_user_id_from_username(username: str) -> Optional[int]:
     """Look up the database user ID from a username."""
     if not username:
@@ -575,31 +662,6 @@ def _get_query_by_id(query_id: int, user_id: Optional[int]) -> Optional[dict]:
             return dict(row) if row else None
     except Exception:
         return None
-
-
-def _extract_anomaly_type_from_query(query: str) -> Optional[str]:
-    """Extract anomaly type (A1-A7) from query text if mentioned."""
-    import re
-
-    match = re.search(r"\b(A[1-7])\b", query, re.IGNORECASE)
-    if match:
-        return match.group(1).upper()
-    anomaly_keywords = {
-        "network timeout": "A1",
-        "cassette": "A2",
-        "jvm memory": "A3",
-        "oom": "A3",
-        "restart": "A4",
-        "response time": "A5",
-        "os memory": "A6",
-        "malformed": "A7",
-        "out-of-order": "A7",
-    }
-    query_lower = query.lower()
-    for keyword, anomaly_type in anomaly_keywords.items():
-        if keyword in query_lower:
-            return anomaly_type
-    return None
 
 
 async def _handle_stats_query(

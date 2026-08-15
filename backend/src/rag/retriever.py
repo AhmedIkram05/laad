@@ -161,7 +161,13 @@ class RAGRetriever:
                 filter_parts.append({"atm_id": atm_id})
 
             if anomaly_type:
-                filter_parts.append({"_anomaly_tag": anomaly_type})
+                # A7 has sub-tags (A7_OUT_OF_ORDER, A7_MALFORMED) — match all of them.
+                if anomaly_type == "A7":
+                    filter_parts.append(
+                        {"_anomaly_tag": {"$in": ["A7", "A7_OUT_OF_ORDER", "A7_MALFORMED"]}}
+                    )
+                else:
+                    filter_parts.append({"_anomaly_tag": anomaly_type})
 
             if error_only:
                 severity_filter = {

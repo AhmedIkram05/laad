@@ -1,4 +1,4 @@
-"""Unified LLM client with fallback routing for multiple providers."""
+"""Unified LLM client for the W&B Serverless Inference provider (single provider)."""
 
 from __future__ import annotations
 
@@ -13,13 +13,6 @@ import requests
 from backend.src.rag.config import config
 
 logger = logging.getLogger(__name__)
-
-FREE_MODEL_CHAIN = [
-    "deepseek/deepseek-v3-0327:free",  # Latest DeepSeek V3
-    "meta-llama/llama-4-maverick:free",  # Llama 4 Maverick
-    "qwen/qwen3-235b-a22b:free",  # Qwen 3 (largest)
-    "deepseek/deepseek-r1:free",  # DeepSeek R1 (reasoning)
-]
 
 RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX_REQUESTS = 20
@@ -57,7 +50,7 @@ class RateLimiter:
         return max(0.0, (oldest + self.window_seconds) - time.time())
 
 
-_rate_limiter = RateLimiter()
+_rate_limiter = RateLimiter(max_requests=config.rate_limit_per_min)
 
 
 @dataclass
@@ -73,7 +66,7 @@ class LLMResponse:
 
 
 class LLMClient:
-    """Unified LLM client with fallback routing."""
+    """LLM client for the single W&B Serverless Inference provider."""
 
     def __init__(self):
         if not config.is_configured:
@@ -83,45 +76,18 @@ class LLMClient:
             self.providers = self._initialize_providers()
 
     def _initialize_providers(self) -> list[dict]:
-        """Initialize available providers in priority order: Ollama first, then OpenRouter"""
+        """Initialize the single W&B provider (LLM_API_KEY / WANDB_API_KEY)."""
         providers = []
 
-        if config.ollama_api_key:
+        if config.llm_api_key:
             providers.append(
                 {
-                    "name": "ollama",
-                    "model": config.ollama_model,
-                    "api_key": config.ollama_api_key,
-                    "base_url": config.ollama_base_url,
+                    "name": "llm",
+                    "model": config.llm_model,
+                    "api_key": config.llm_api_key,
+                    "base_url": config.llm_base_url,
                 }
             )
-            for fallback_model in config.ollama_fallback_models:
-                if fallback_model.strip():
-                    providers.append(
-                        {
-                            "name": "ollama",
-                            "model": fallback_model.strip(),
-                            "api_key": config.ollama_api_key,
-                            "base_url": config.ollama_base_url,
-                        }
-                    )
-
-        if config.openrouter_api_key:
-            primary = config.primary_model
-            if primary.startswith("openrouter/"):
-                primary = primary.replace("openrouter/", "")
-            providers.append(
-                {
-                    "name": "openrouter",
-                    "model": primary,
-                    "api_key": config.openrouter_api_key,
-                    "base_url": "https://openrouter.ai/api/v1",
-                }
-            )
-
-        fallback = config.fallback_model
-        if fallback.startswith("openrouter/"):
-            fallback = fallback.replace("openrouter/", "")
 
         if not providers:
             logger.warning(
@@ -140,13 +106,13 @@ class LLMClient:
         temperature: float = config.temperature,
         max_tokens: int = 2048,
     ) -> LLMResponse:
-        """Generate response with automatic fallback to next provider on failure."""
+        """Generate response with automatic retries on failure."""
         if not self.providers:
             raise RuntimeError(
-                "No LLM providers configured. Set at least one of OLLAMA_API_KEY or OPENROUTER_API_KEY environment variables."
+                "No LLM providers configured. Set at least one of LLM_API_KEY or WANDB_API_KEY environment variables."
             )
 
-        if _rate_limiter.is_rate_limited():
+        if config.rate_limit_per_min > 0 and _rate_limiter.is_rate_limited():
             wait = _rate_limiter.wait_time()
             raise RuntimeError(
                 f"Rate limit exceeded. Please wait {wait:.0f}s before retrying."
@@ -158,7 +124,7 @@ class LLMClient:
             rate_limit_retries = 0
             for attempt in range(MAX_RETRIES + 1):
                 try:
-                    response = self._call_provider(
+                    response = self._call_llm(
                         provider=provider,
                         prompt=prompt,
                         system_prompt=system_prompt,
@@ -210,7 +176,7 @@ class LLMClient:
 
         raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
-    def _call_provider(
+    def _call_llm(
         self,
         provider: dict,
         prompt: str,
@@ -218,91 +184,17 @@ class LLMClient:
         temperature: float,
         max_tokens: int,
     ) -> LLMResponse:
-        """Call a specific LLM provider."""
-        provider_name = provider["name"]
+        """Call W&B Serverless Inference (strict OpenAI-compatible API).
 
-        if provider_name == "ollama":
-            return self._call_ollama(
-                provider, prompt, system_prompt, temperature, max_tokens
-            )
-        elif provider_name == "openrouter":
-            return self._call_openrouter(
-                provider, prompt, system_prompt, temperature, max_tokens
-            )
-        else:
-            raise ValueError(f"Unknown provider: {provider_name}")
-
-    def _call_ollama(
-        self,
-        provider: dict,
-        prompt: str,
-        system_prompt: Optional[str],
-        temperature: float,
-        max_tokens: int,
-    ) -> LLMResponse:
-        """Call Ollama Cloud API."""
-        url = f"{provider['base_url']}/api/chat"
-
-        headers = {
-            "Authorization": f"Bearer {provider['api_key']}",
-            "Content-Type": "application/json",
-        }
-
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        payload = {
-            "model": provider["model"],
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-        }
-
-        response = requests.post(
-            url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT
-        )
-        response.raise_for_status()
-
-        data = response.json()
-
-        if "error" in data:
-            error_detail = data["error"].get("message", "Unknown error")
-            raise RuntimeError(f"Ollama API error: {error_detail}")
-
-        message = data.get("message", {})
-        text = message.get("content", "")
-
-        if not text:
-            raise RuntimeError(f"Ollama returned empty response: {data}")
-
-        return LLMResponse(
-            text=text,
-            raw_response=data,
-            model=provider["model"],
-            finish_reason=data.get("done_reason", "STOP"),
-            prompt_tokens=data.get("prompt_tokens"),
-            completion_tokens=data.get("eval_tokens"),
-        )
-
-    def _call_openrouter(
-        self,
-        provider: dict,
-        prompt: str,
-        system_prompt: Optional[str],
-        temperature: float,
-        max_tokens: int,
-    ) -> LLMResponse:
-        """Call OpenRouter API (OpenAI-compatible)."""
+        Minimal payload: only model/messages/temperature/max_tokens. The
+        provider rejects extra headers (HTTP-Referer/X-Title) and a models
+        fallback chain.
+        """
         url = f"{provider['base_url']}/chat/completions"
 
         headers = {
             "Authorization": f"Bearer {provider['api_key']}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://laad.local",
-            "X-Title": "LAAD ATM Diagnostic Assistant",
         }
 
         messages = []
@@ -317,13 +209,6 @@ class LLMClient:
             "max_tokens": max_tokens,
         }
 
-        # Use model fallback chain for automatic switching on rate limit
-        if provider["name"] == "openrouter" and "openrouter" in provider.get(
-            "base_url", ""
-        ):
-            payload["models"] = FREE_MODEL_CHAIN
-            logger.info(f"Using OpenRouter model fallback chain: {FREE_MODEL_CHAIN}")
-
         response = requests.post(
             url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT
         )
@@ -333,22 +218,19 @@ class LLMClient:
 
         if "error" in data:
             error_detail = data["error"].get("message", "Unknown error")
-            raise RuntimeError(f"OpenRouter API error: {error_detail}")
+            raise RuntimeError(f"LLM API error: {error_detail}")
 
         if not data.get("choices"):
-            raise RuntimeError(f"OpenRouter returned empty response: {data}")
+            raise RuntimeError(f"LLM returned empty response: {data}")
 
         choice = data["choices"][0]
         if not choice.get("message") or not choice["message"].get("content"):
-            raise RuntimeError("OpenRouter returned empty message content")
-
-        # Extract actual model used from response (OpenRouter tells us which model succeeded)
-        actual_model = data.get("model", provider["model"])
+            raise RuntimeError("LLM returned empty message content")
 
         return LLMResponse(
             text=choice["message"]["content"],
             raw_response=data,
-            model=actual_model,
+            model=data.get("model", provider["model"]),
             finish_reason=choice.get("finish_reason", "STOP"),
             prompt_tokens=data.get("usage", {}).get("prompt_tokens"),
             completion_tokens=data.get("usage", {}).get("completion_tokens"),
