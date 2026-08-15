@@ -1,8 +1,7 @@
 """Extended coverage tests for backend.src.rag.llm_client.
 
-Covers _call_openrouter(), FREE_MODEL_CHAIN injection, rate-limit retry
+Covers the W&B Serverless Inference provider (_call_llm), rate-limit retry
 with Retry-After header parsing, generic-exception retry with time.sleep,
-provider priority, openrouter/ prefix stripping, unknown provider,
 LLMResponse dataclass, get_llm_client singleton, and RateLimiter config.
 """
 
@@ -27,28 +26,28 @@ def _make_config(**overrides):
     """Return a MagicMock resembling backend.src.rag.config.config."""
     cfg = MagicMock()
     cfg.is_configured = overrides.get("is_configured", True)
-    cfg.ollama_api_key = overrides.get("ollama_api_key", "")
-    cfg.ollama_base_url = overrides.get("ollama_base_url", "https://ollama.com")
-    cfg.ollama_model = overrides.get("ollama_model", "gemma4:31b-cloud")
-    cfg.ollama_fallback_models = overrides.get("ollama_fallback_models", [])
-    cfg.primary_model = overrides.get("primary_model", "")
-    cfg.fallback_model = overrides.get("fallback_model", "")
-    cfg.openrouter_api_key = overrides.get("openrouter_api_key", "")
+    cfg.llm_api_key = overrides.get("llm_api_key", "test-key")
+    cfg.llm_model = overrides.get("llm_model", "google/gemma-4-31B-it")
+    cfg.llm_base_url = overrides.get(
+        "llm_base_url", "https://api.inference.wandb.ai/v1"
+    )
     cfg.temperature = overrides.get("temperature", 0.6)
+    cfg.rate_limit_per_min = overrides.get("rate_limit_per_min", 0)
     return cfg
 
 
-def _make_openrouter_provider(**overrides):
-    p = {
-        "name": "openrouter",
-        "model": overrides.get("model", "deepseek/deepseek-v3-0327:free"),
-        "api_key": overrides.get("api_key", "sk-or-test"),
-        "base_url": overrides.get("base_url", "https://openrouter.ai/api/v1"),
+def _make_llm_provider(**overrides):
+    return {
+        "name": "llm",
+        "model": overrides.get("model", "google/gemma-4-31B-it"),
+        "api_key": overrides.get("api_key", "sk-test"),
+        "base_url": overrides.get(
+            "base_url", "https://api.inference.wandb.ai/v1"
+        ),
     }
-    return p
 
 
-def _openrouter_success_response(text="Hello world", model=None):
+def _llm_success_response(text="Hello world", model=None):
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
@@ -58,14 +57,14 @@ def _openrouter_success_response(text="Hello world", model=None):
                 "finish_reason": "stop",
             }
         ],
-        "model": model or "deepseek/deepseek-v3-0327:free",
+        "model": model or "google/gemma-4-31B-it",
         "usage": {"prompt_tokens": 10, "completion_tokens": 20},
     }
     mock_resp.raise_for_status = MagicMock()
     return mock_resp
 
 
-def _openrouter_error_response(status_code=400):
+def _llm_error_response(status_code=400):
     mock_resp = MagicMock()
     mock_resp.status_code = status_code
     mock_resp.json.return_value = {
@@ -77,7 +76,7 @@ def _openrouter_error_response(status_code=400):
     return mock_resp, err
 
 
-def _openrouter_rate_limit_response(retry_after=None):
+def _llm_rate_limit_response(retry_after=None):
     mock_resp = MagicMock()
     mock_resp.status_code = 429
     mock_resp.json.return_value = {"error": {"message": "Rate limited"}}
@@ -180,91 +179,22 @@ class TestRateLimiterConfig:
 
 
 class TestLLMClientInit:
-    def test_ollama_first_in_providers(self):
+    def test_llm_provider_when_configured(self):
         cfg = _make_config(
-            ollama_api_key="ollama-key",
-            ollama_base_url="http://localhost:11434",
-            ollama_model="llama3",
-            ollama_fallback_models=[],
-            openrouter_api_key="or-key",
-            primary_model="openrouter/gpt-4",
+            llm_api_key="key",
+            llm_model="google/gemma-4-31B-it",
+            llm_base_url="https://api.inference.wandb.ai/v1",
         )
         with patch("backend.src.rag.llm_client.config", cfg):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
             names = [p["name"] for p in client.providers]
-            assert names[0] == "ollama"
-            assert "openrouter" in names
-            # Ollama should come before openrouter
-            assert names.index("ollama") < names.index("openrouter")
+            assert names == ["llm"]
+            assert client.providers[0]["model"] == "google/gemma-4-31B-it"
 
-    def test_openrouter_prefix_stripped_from_primary_model(self):
-        cfg = _make_config(
-            ollama_api_key="",
-            openrouter_api_key="or-key",
-            primary_model="openrouter/deepseek-v3:free",
-        )
-        with patch("backend.src.rag.llm_client.config", cfg):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient()
-            or_providers = [p for p in client.providers if p["name"] == "openrouter"]
-            assert len(or_providers) == 1
-            assert or_providers[0]["model"] == "deepseek-v3:free"
-
-    def test_openrouter_prefix_stripped_from_fallback_model(self):
-        cfg = _make_config(
-            ollama_api_key="",
-            openrouter_api_key="or-key",
-            primary_model="openrouter/some-model",
-            fallback_model="openrouter/fallback-model",
-        )
-        with patch("backend.src.rag.llm_client.config", cfg):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient()
-            # Should not raise — fallback_model is cleaned without error
-            assert len(client.providers) == 1
-
-    def test_ollama_fallback_models_added(self):
-        cfg = _make_config(
-            ollama_api_key="key",
-            ollama_model="main",
-            ollama_fallback_models=["fallback-a", "fallback-b"],
-            openrouter_api_key="",
-        )
-        with patch("backend.src.rag.llm_client.config", cfg):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient()
-            ollama_providers = [p for p in client.providers if p["name"] == "ollama"]
-            models = [p["model"] for p in ollama_providers]
-            assert "main" in models
-            assert "fallback-a" in models
-            assert "fallback-b" in models
-
-    def test_empty_fallback_model_string_ignored(self):
-        cfg = _make_config(
-            ollama_api_key="key",
-            ollama_model="main",
-            ollama_fallback_models=["", "  ", "valid"],
-            openrouter_api_key="",
-        )
-        with patch("backend.src.rag.llm_client.config", cfg):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient()
-            ollama_providers = [p for p in client.providers if p["name"] == "ollama"]
-            models = [p["model"] for p in ollama_providers]
-            assert models == ["main", "valid"]
-
-    def test_no_providers_warning(self):
-        cfg = _make_config(
-            is_configured=True,
-            ollama_api_key="",
-            openrouter_api_key="",
-        )
+    def test_no_providers_when_unconfigured(self):
+        cfg = _make_config(is_configured=False, llm_api_key="")
         with patch("backend.src.rag.llm_client.config", cfg):
             from backend.src.rag.llm_client import LLMClient
 
@@ -273,74 +203,28 @@ class TestLLMClientInit:
 
 
 # ---------------------------------------------------------------------------
-# _call_openrouter
+# _call_llm (W&B Serverless Inference provider)
 # ---------------------------------------------------------------------------
 
 
-class TestCallOpenrouter:
+class TestCallLLM:
     def test_success_response(self):
-        provider = _make_openrouter_provider()
-        mock_resp = _openrouter_success_response(text="Hi there")
+        provider = _make_llm_provider()
+        mock_resp = _llm_success_response(text="Hi there")
 
         with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient.__new__(LLMClient)
-            result = client._call_openrouter(provider, "prompt", None, 0.7, 100)
+            result = client._call_llm(provider, "prompt", None, 0.7, 100)
 
         assert result.text == "Hi there"
-        assert result.model == "deepseek/deepseek-v3-0327:free"
+        assert result.model == "google/gemma-4-31B-it"
         assert result.finish_reason == "stop"
 
-    def test_free_model_chain_injected(self):
-        from backend.src.rag.llm_client import FREE_MODEL_CHAIN
-
-        provider = _make_openrouter_provider()
-        mock_resp = _openrouter_success_response()
-
-        captured_payloads = []
-
-        def capture_post(url, headers=None, json=None, timeout=None):
-            captured_payloads.append(json)
-            return mock_resp
-
-        with patch(
-            "backend.src.rag.llm_client.requests.post", side_effect=capture_post
-        ):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient.__new__(LLMClient)
-            client._call_openrouter(provider, "test", None, 0.5, 256)
-
-        assert len(captured_payloads) == 1
-        assert "models" in captured_payloads[0]
-        assert captured_payloads[0]["models"] == FREE_MODEL_CHAIN
-
-    def test_free_model_chain_not_injected_for_non_openrouter(self):
-        provider = {
-            "name": "ollama",
-            "model": "llama3",
-            "api_key": "key",
-            "base_url": "http://localhost:11434",
-        }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "message": {"content": "Hello"},
-        }
-        mock_resp.raise_for_status = MagicMock()
-
-        with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient.__new__(LLMClient)
-            # _call_ollama is what ollama uses, but test _call_provider dispatch
-            result = client._call_provider(provider, "test", None, 0.5, 100)
-        assert result is not None
-
     def test_with_system_prompt(self):
-        provider = _make_openrouter_provider()
-        mock_resp = _openrouter_success_response()
+        provider = _make_llm_provider()
+        mock_resp = _llm_success_response()
 
         captured = []
 
@@ -354,14 +238,14 @@ class TestCallOpenrouter:
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient.__new__(LLMClient)
-            client._call_openrouter(provider, "user prompt", "system msg", 0.3, 512)
+            client._call_llm(provider, "user prompt", "system msg", 0.3, 512)
 
         messages = captured[0]["messages"]
         assert messages[0] == {"role": "system", "content": "system msg"}
         assert messages[1] == {"role": "user", "content": "user prompt"}
 
     def test_api_error_raises_runtime_error(self):
-        provider = _make_openrouter_provider()
+        provider = _make_llm_provider()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"error": {"message": "Model not found"}}
@@ -371,11 +255,11 @@ class TestCallOpenrouter:
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient.__new__(LLMClient)
-            with pytest.raises(RuntimeError, match="OpenRouter API error"):
-                client._call_openrouter(provider, "test", None, 0.7, 100)
+            with pytest.raises(RuntimeError, match="LLM API error"):
+                client._call_llm(provider, "test", None, 0.7, 100)
 
     def test_empty_choices_raises_runtime_error(self):
-        provider = _make_openrouter_provider()
+        provider = _make_llm_provider()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"choices": []}
@@ -386,10 +270,10 @@ class TestCallOpenrouter:
 
             client = LLMClient.__new__(LLMClient)
             with pytest.raises(RuntimeError, match="empty response"):
-                client._call_openrouter(provider, "test", None, 0.7, 100)
+                client._call_llm(provider, "test", None, 0.7, 100)
 
     def test_empty_message_content_raises_runtime_error(self):
-        provider = _make_openrouter_provider()
+        provider = _make_llm_provider()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
@@ -402,22 +286,22 @@ class TestCallOpenrouter:
 
             client = LLMClient.__new__(LLMClient)
             with pytest.raises(RuntimeError, match="empty message content"):
-                client._call_openrouter(provider, "test", None, 0.7, 100)
+                client._call_llm(provider, "test", None, 0.7, 100)
 
     def test_actual_model_extracted_from_response(self):
-        provider = _make_openrouter_provider(model="fallback-model")
-        mock_resp = _openrouter_success_response(model="deepseek/deepseek-r1:free")
+        provider = _make_llm_provider(model="fallback-model")
+        mock_resp = _llm_success_response(model="google/gemma-4-31B-it")
 
         with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient.__new__(LLMClient)
-            result = client._call_openrouter(provider, "test", None, 0.7, 100)
+            result = client._call_llm(provider, "test", None, 0.7, 100)
 
-        assert result.model == "deepseek/deepseek-r1:free"
+        assert result.model == "google/gemma-4-31B-it"
 
     def test_http_error_propagates(self):
-        provider = _make_openrouter_provider()
+        provider = _make_llm_provider()
         mock_resp = MagicMock()
         mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError(
             response=MagicMock(status_code=500)
@@ -429,40 +313,20 @@ class TestCallOpenrouter:
 
             client = LLMClient.__new__(LLMClient)
             with pytest.raises(requests.exceptions.HTTPError):
-                client._call_openrouter(provider, "test", None, 0.7, 100)
+                client._call_llm(provider, "test", None, 0.7, 100)
 
     def test_prompt_tokens_and_completion_tokens_extracted(self):
-        provider = _make_openrouter_provider()
-        mock_resp = _openrouter_success_response()
+        provider = _make_llm_provider()
+        mock_resp = _llm_success_response()
 
         with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient.__new__(LLMClient)
-            result = client._call_openrouter(provider, "test", None, 0.7, 100)
+            result = client._call_llm(provider, "test", None, 0.7, 100)
 
         assert result.prompt_tokens == 10
         assert result.completion_tokens == 20
-
-
-# ---------------------------------------------------------------------------
-# Unknown provider
-# ---------------------------------------------------------------------------
-
-
-class TestCallProviderUnknown:
-    def test_unknown_provider_returns_none(self):
-        from backend.src.rag.llm_client import LLMClient
-
-        client = LLMClient.__new__(LLMClient)
-        with pytest.raises(ValueError, match="Unknown provider"):
-            client._call_provider(
-                {"name": "azure", "model": "gpt-4", "api_key": "k", "base_url": "u"},
-                "test",
-                None,
-                0.7,
-                100,
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +336,7 @@ class TestCallProviderUnknown:
 
 class TestGenerateRateLimited:
     def test_generate_raises_when_rate_limited(self):
-        cfg = _make_config(ollama_api_key="key")
+        cfg = _make_config(llm_api_key="key", rate_limit_per_min=20)
         with patch("backend.src.rag.llm_client.config", cfg):
             from backend.src.rag.llm_client import LLMClient
 
@@ -483,7 +347,7 @@ class TestGenerateRateLimited:
                 with pytest.raises(RuntimeError, match="Rate limit exceeded"):
                     client.generate("test")
 
-    def test_generate_returns_none_when_no_providers(self):
+    def test_generate_raises_when_no_providers(self):
         cfg = _make_config(is_configured=False)
         with patch("backend.src.rag.llm_client.config", cfg):
             from backend.src.rag.llm_client import LLMClient
@@ -500,11 +364,9 @@ class TestGenerateRateLimited:
 
 class TestRetryRateLimit:
     def test_rate_limit_retry_with_retry_after_header(self):
-        cfg = _make_config(ollama_api_key="", openrouter_api_key="or-key")
-        rate_limit_resp, rate_limit_err = _openrouter_rate_limit_response(
-            retry_after=10
-        )
-        success_resp = _openrouter_success_response(text="OK")
+        cfg = _make_config(llm_api_key="key")
+        rate_limit_resp, rate_limit_err = _llm_rate_limit_response(retry_after=10)
+        success_resp = _llm_success_response(text="OK")
 
         call_count = 0
 
@@ -532,11 +394,11 @@ class TestRetryRateLimit:
         mock_sleep.assert_called_with(11)
 
     def test_rate_limit_retry_with_invalid_retry_after_header(self):
-        cfg = _make_config(ollama_api_key="", openrouter_api_key="or-key")
-        rate_limit_resp, rate_limit_err = _openrouter_rate_limit_response(
+        cfg = _make_config(llm_api_key="key")
+        rate_limit_resp, rate_limit_err = _llm_rate_limit_response(
             retry_after="invalid"
         )
-        success_resp = _openrouter_success_response(text="OK")
+        success_resp = _llm_success_response(text="OK")
 
         call_count = 0
 
@@ -562,48 +424,6 @@ class TestRetryRateLimit:
         # Invalid header → defaults to 5, sleep(5+1)=sleep(6)
         mock_sleep.assert_called_with(6)
 
-    def test_rate_limit_retry_exhausted_breaks_to_next_provider(self):
-        """After MAX_RATE_LIMIT_RETRIES, should break and try next provider or fail."""
-        cfg = _make_config(
-            ollama_api_key="ollama-key",
-            ollama_base_url="http://localhost:11434",
-            ollama_model="llama3",
-            ollama_fallback_models=[],
-            openrouter_api_key="or-key",
-        )
-        rate_limit_resp, rate_limit_err = _openrouter_rate_limit_response(retry_after=1)
-
-        with patch("backend.src.rag.llm_client.config", cfg):
-            with patch("backend.src.rag.llm_client.time.sleep"):
-                ollama_resp = MagicMock()
-                ollama_resp.status_code = 200
-                ollama_resp.json.return_value = {
-                    "message": {"content": "OK from ollama"},
-                    "done_reason": "stop",
-                }
-                ollama_resp.raise_for_status = MagicMock()
-
-                call_count = {"or": 0}
-
-                def side_effect(*args, **kwargs):
-                    url = args[0] if args else kwargs.get("url", "")
-                    if "openrouter" in str(url):
-                        call_count["or"] += 1
-                        rate_limit_resp.raise_for_status.side_effect = rate_limit_err
-                        return rate_limit_resp
-                    return ollama_resp
-
-                with patch(
-                    "backend.src.rag.llm_client.requests.post", side_effect=side_effect
-                ):
-                    from backend.src.rag.llm_client import LLMClient
-
-                    client = LLMClient()
-                    # Should eventually succeed from ollama after rate-limit retries exhausted on openrouter
-                    result = client.generate("test")
-
-                    assert result is not None
-
 
 # ---------------------------------------------------------------------------
 # Generic exception retry with time.sleep
@@ -612,10 +432,10 @@ class TestRetryRateLimit:
 
 class TestGenericExceptionRetry:
     def test_generic_exception_retries_with_sleep(self):
-        cfg = _make_config(ollama_api_key="", openrouter_api_key="or-key")
+        cfg = _make_config(llm_api_key="key")
 
         call_count = 0
-        success_resp = _openrouter_success_response(text="Recovered")
+        success_resp = _llm_success_response(text="Recovered")
 
         def side_effect(*args, **kwargs):
             nonlocal call_count
@@ -640,10 +460,7 @@ class TestGenericExceptionRetry:
         assert mock_sleep.call_count == 2
 
     def test_generic_exception_exhausts_retries_raises(self):
-        cfg = _make_config(
-            ollama_api_key="",
-            openrouter_api_key="or-key",
-        )
+        cfg = _make_config(llm_api_key="key")
 
         def always_fail(*args, **kwargs):
             raise ValueError("Always fails")
@@ -667,7 +484,7 @@ class TestGenericExceptionRetry:
 
 class TestTimeoutRetry:
     def test_timeout_retries_then_raises(self):
-        cfg = _make_config(ollama_api_key="", openrouter_api_key="or-key")
+        cfg = _make_config(llm_api_key="key")
 
         with patch("backend.src.rag.llm_client.config", cfg):
             with patch("backend.src.rag.llm_client.time.sleep"):
@@ -716,112 +533,3 @@ class TestGetLLMSingleton:
         result = mod.get_llm_client()
         assert result is existing
         mod._llm_client = None
-
-
-# ---------------------------------------------------------------------------
-# Ollama-specific paths
-# ---------------------------------------------------------------------------
-
-
-class TestCallOllamaExtended:
-    def test_ollama_empty_content_raises(self):
-        provider = {
-            "name": "ollama",
-            "model": "llama3",
-            "api_key": "key",
-            "base_url": "http://localhost:11434",
-        }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"message": {"content": ""}}
-        mock_resp.raise_for_status = MagicMock()
-
-        with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient.__new__(LLMClient)
-            with pytest.raises(RuntimeError, match="empty response"):
-                client._call_ollama(provider, "test", None, 0.7, 100)
-
-    def test_ollama_error_in_response_body(self):
-        provider = {
-            "name": "ollama",
-            "model": "llama3",
-            "api_key": "key",
-            "base_url": "http://localhost:11434",
-        }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "error": {"message": "Model not found"},
-        }
-        mock_resp.raise_for_status = MagicMock()
-
-        with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient.__new__(LLMClient)
-            with pytest.raises(RuntimeError, match="Ollama API error"):
-                client._call_ollama(provider, "test", None, 0.7, 100)
-
-    def test_ollama_with_system_prompt(self):
-        provider = {
-            "name": "ollama",
-            "model": "llama3",
-            "api_key": "key",
-            "base_url": "http://localhost:11434",
-        }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "message": {"content": "Hello"},
-            "done_reason": "stop",
-        }
-        mock_resp.raise_for_status = MagicMock()
-
-        captured = []
-
-        def capture_post(url, headers=None, json=None, timeout=None):
-            captured.append(json)
-            return mock_resp
-
-        with patch(
-            "backend.src.rag.llm_client.requests.post", side_effect=capture_post
-        ):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient.__new__(LLMClient)
-            client._call_ollama(provider, "user msg", "system msg", 0.7, 100)
-
-        messages = captured[0]["messages"]
-        assert messages[0] == {"role": "system", "content": "system msg"}
-        assert messages[1] == {"role": "user", "content": "user msg"}
-
-    def test_ollama_response_fields(self):
-        provider = {
-            "name": "ollama",
-            "model": "llama3",
-            "api_key": "key",
-            "base_url": "http://localhost:11434",
-        }
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "message": {"content": "Reply"},
-            "done_reason": "stop",
-            "prompt_tokens": 50,
-            "eval_tokens": 100,
-        }
-        mock_resp.raise_for_status = MagicMock()
-
-        with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
-            from backend.src.rag.llm_client import LLMClient
-
-            client = LLMClient.__new__(LLMClient)
-            result = client._call_ollama(provider, "test", None, 0.7, 100)
-
-        assert result.text == "Reply"
-        assert result.model == "llama3"
-        assert result.finish_reason == "stop"
-        assert result.prompt_tokens == 50
-        assert result.completion_tokens == 100

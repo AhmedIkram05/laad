@@ -24,8 +24,8 @@ class TestRAGConfig:
             assert config.self_consistency_samples == 3
             assert config.temperature == 0.6
             assert config.chunk_truncate_length == 800
-            assert config.ollama_model == "gemma4:31b-cloud"
-            assert config.ollama_fallback_models == ["nemotron-3-supercloud"]
+            assert config.llm_base_url == "https://api.inference.wandb.ai/v1"
+            assert config.llm_model == "google/gemma-4-31B-it"
             assert config.redis_host == "localhost"
             assert config.redis_port == 6379
             assert config.cache_ttl == 300
@@ -40,7 +40,7 @@ class TestRAGConfig:
                 "REDIS_HOST": "myredis",
                 "REDIS_PORT": "6380",
                 "REDIS_CACHE_TTL": "600",
-                "OLLAMA_MODEL": "llama3",
+                "LLM_MODEL": "test-model",
             },
             clear=True,
         ):
@@ -55,7 +55,7 @@ class TestRAGConfig:
             assert config.redis_host == "myredis"
             assert config.redis_port == 6380
             assert config.cache_ttl == 600
-            assert config.ollama_model == "llama3"
+            assert config.llm_model == "test-model"
 
     def test_is_configured_false_no_keys(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -66,7 +66,7 @@ class TestRAGConfig:
             config = cfg.RAGConfig()
             assert config.is_configured is False
 
-    @pytest.mark.parametrize("key", ["OPENROUTER_API_KEY", "OLLAMA_API_KEY"])
+    @pytest.mark.parametrize("key", ["LLM_API_KEY", "WANDB_API_KEY"])
     def test_is_configured_with_any_key(self, key):
         with patch.dict(os.environ, {key: "test-key"}, clear=True):
             from importlib import reload
