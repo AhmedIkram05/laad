@@ -129,11 +129,11 @@
 
 | Parameter | Default | Description |
 |---|---|---|
-| `OLLAMA_API_KEY` | (required) | Ollama Cloud API key |
-| `OLLAMA_BASE_URL` | https://ollama.com | API base URL |
-| `OLLAMA_MODEL` | gemma4:31b-cloud | Primary model |
-| `OLLAMA_FALLBACK_MODELS` | nemotron-3-supercloud | Fallback models |
-| `OPENROUTER_API_KEY` | (optional) | Emergency fallback |
+| `LLM_API_KEY` | (required) | W&B Serverless Inference API key (or `WANDB_API_KEY`) |
+| `LLM_BASE_URL` | https://api.inference.wandb.ai/v1 | W&B Serverless Inference endpoint |
+| `LLM_MODEL` | google/gemma-4-31B-it | Model for all RAG LLM calls |
+| `RAG_JUDGE_MODEL` | Qwen/Qwen3-30B-A3B-Instruct-2507 | Eval-only judge model (RAGAS scoring) |
+| `RAG_RATE_LIMIT` | 20 | Client-side LLM rate limit per minute (0 = off) |
 | `RAG_TOP_K` | 10 | Retrieved chunks |
 | `RAG_CHUNK_TRUNCATE` | 800 | Chars per chunk |
 | `RAG_ERROR_ONLY` | true | Filter ERROR/FATAL |
@@ -154,6 +154,7 @@
 | Kafka | 9092 | 9092 |
 | ChromaDB | 8001 | 8000 |
 | Ollama | 11435 | 11434 |
+| MCP Server | 8002 | 8001 |
 | Backend API | 8000 | 8000 |
 | MLflow | 5001 | 5000 |
 
