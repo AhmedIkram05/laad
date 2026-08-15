@@ -1,0 +1,62 @@
+# RAG eval gate — plan §7.6 / D14.
+#
+# Runs the RAGAS evaluation on PRs and the default branch, compares against the
+# committed baseline (docs/eval/baseline.json), fails the check on regression,
+# and uploads the per-run results as an artifact.
+#
+# Neutral (green) when no WANDB_API_KEY secret exists — the LLM + embedding
+# stack is unreachable without it, so there is nothing to gate. Add the secret
+# to enable gating. Bump the timeout if the golden set grows.
+
+name: eval-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: eval-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail-closed setup (no WANDB_API_KEY -> neutral)
+        if: env.WANDB_API_KEY == ''
+        env:
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+        run: echo "No WANDB_API_KEY secret; skipping RAG eval gate." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start eval services
+        if: env.WANDB_API_KEY != ''
+        env:
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+        run: |
+          docker compose --profile test up -d \
+            postgres_test chromadb redis ollama ollama-init mcp-server
+          docker compose run --rm backend \
+            python -m backend.tests.eval.seed
+
+      - name: Run RAG eval against committed baseline
+        if: env.WANDB_API_KEY != ''
+        env:
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+        run: |
+          make eval-ragas FLAGS="--ci"
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.sha }}
+          path: |
+            backend/tests/eval/results.json
+            docs/eval/baseline.json
+            eval_results/
+          if-no-files-found: warn
