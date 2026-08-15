@@ -54,3 +54,8 @@ frontend/playwright-report/
 frontend/test-results/
 
 graphify-out
+
+# RAG eval artifacts (regenerated per run; baseline.json is committed)
+backend/tests/eval/cached_results.json
+backend/tests/eval/results.json
+eval_results/
