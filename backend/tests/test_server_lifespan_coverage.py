@@ -65,7 +65,7 @@ class TestLifespan:
                 mock_scheduler.add_job.assert_called_once()
             mock_scheduler.shutdown.assert_called_once()
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
 
     def test_lifespan_skips_retrain_in_production(self, monkeypatch):
         """When LAAD_ENV=production, _check_and_retrain_on_startup is NOT called."""
@@ -88,7 +88,7 @@ class TestLifespan:
             async with server_module.lifespan(server_module.app):
                 pass
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
         mock_retrain.assert_not_called()
 
     def test_lifespan_calls_retrain_when_not_production(self, monkeypatch):
@@ -112,7 +112,7 @@ class TestLifespan:
             async with server_module.lifespan(server_module.app):
                 pass
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
         mock_retrain.assert_called_once()
 
     def test_lifespan_handles_db_init_failure(self, monkeypatch):
@@ -134,7 +134,7 @@ class TestLifespan:
                 async with server_module.lifespan(server_module.app):
                     pass
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
         mock_scheduler.start.assert_not_called()
 
 
@@ -470,7 +470,7 @@ class TestLifespanSchedulerConfig:
                 assert call_args[1]["id"] == "cleanup"
                 assert call_args[1]["misfire_grace_time"] == 60
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())
 
     def test_scheduler_shutdown_called_after_yield(self, monkeypatch):
         """scheduler.shutdown() is called exactly once when lifespan exits."""
@@ -488,4 +488,4 @@ class TestLifespanSchedulerConfig:
                 mock_scheduler.shutdown.assert_not_called()
             mock_scheduler.shutdown.assert_called_once()
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        asyncio.run(_run())

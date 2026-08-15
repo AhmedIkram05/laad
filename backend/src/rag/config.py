@@ -13,23 +13,14 @@ class RAGConfig:
     """Configuration for RAG diagnostic assistant."""
 
     def __init__(self):
-        self.openrouter_api_key: Optional[str] = os.getenv("OPENROUTER_API_KEY")
-
-        self.ollama_api_key: Optional[str] = os.getenv("OLLAMA_API_KEY")
-        self.ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
-        self.ollama_model: str = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
-        self.ollama_fallback_models: list[str] = [
-            m.strip()
-            for m in os.getenv("OLLAMA_FALLBACK_MODELS", "nemotron-3-supercloud").split(
-                ","
-            )
-            if m.strip()
-        ]
-
-        self.primary_model: str = os.getenv("RAG_PRIMARY_MODEL", "gemma4:31b-cloud")
-        self.fallback_model: str = os.getenv(
-            "RAG_FALLBACK_MODEL", "nemotron-3-supercloud"
+        # W&B Serverless Inference (single provider for all LLM calls)
+        self.llm_base_url: str = os.getenv(
+            "LLM_BASE_URL", "https://api.inference.wandb.ai/v1"
         )
+        self.llm_api_key: Optional[str] = os.getenv("LLM_API_KEY") or os.getenv(
+            "WANDB_API_KEY"
+        )
+        self.llm_model: str = os.getenv("LLM_MODEL", "google/gemma-4-31B-it")
 
         self.chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
         try:
@@ -79,6 +70,15 @@ class RAGConfig:
             self.cross_encoder_model: str = os.getenv(
                 "RAG_CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-2-v2"
             )
+            self.agent_max_rounds: int = int(os.getenv("AGENT_MAX_ROUNDS", "2"))
+            self.agent_max_retries: int = int(os.getenv("AGENT_MAX_RETRIES", "1"))
+            self.agent_grounding_retry_threshold: float = float(
+                os.getenv("AGENT_GROUNDING_RETRY_THRESHOLD", "0.6")
+            )
+            self.agent_max_llm_calls: int = int(os.getenv("AGENT_MAX_LLM_CALLS", "24"))
+            self.hybrid_top_k: int = int(os.getenv("RAG_HYBRID_TOP_K", "5"))
+            # 0 disables the client-side global rate limiter (eval runs).
+            self.rate_limit_per_min: int = int(os.getenv("RAG_RATE_LIMIT", "20"))
         except (ValueError, TypeError):
             logger.warning("Invalid numeric config value, using defaults")
             self.retrieval_top_k = 10
@@ -105,6 +105,12 @@ class RAGConfig:
             self.self_consistency_enabled = True
             self.cross_encoder_enabled = True
             self.cross_encoder_model = "cross-encoder/ms-marco-MiniLM-L-2-v2"
+            self.agent_max_rounds = 2
+            self.agent_max_retries = 1
+            self.agent_grounding_retry_threshold = 0.6
+            self.agent_max_llm_calls = 24
+            self.hybrid_top_k = 5
+            self.rate_limit_per_min = 20
 
         self.redis_host: str = os.getenv("REDIS_HOST", "localhost")
         try:
@@ -114,11 +120,13 @@ class RAGConfig:
             self.redis_port = 6379
         self.cache_ttl: int = int(os.getenv("REDIS_CACHE_TTL", "300"))
 
+        self.otel_jsonl: Optional[str] = os.getenv("OTEL_JSONL") or None
+
         self._check_configured()
 
     def _check_configured(self) -> None:
         """Log warning if RAG is not fully configured."""
-        if not (self.ollama_api_key or self.openrouter_api_key):
+        if not (self.llm_api_key):
             logger.warning(
                 "No LLM API keys set - RAG diagnostic assistant will not be available"
             )
@@ -126,7 +134,7 @@ class RAGConfig:
     @property
     def is_configured(self) -> bool:
         """Check if RAG is configured with at least one API key."""
-        return bool(self.ollama_api_key or self.openrouter_api_key)
+        return bool(self.llm_api_key)
 
     @property
     def is_production(self) -> bool:

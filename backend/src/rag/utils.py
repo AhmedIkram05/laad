@@ -250,3 +250,28 @@ def truncate_for_display(text: str, max_lines: int = 5) -> str:
     if len(lines) <= max_lines:
         return text
     return "\n".join(lines[:max_lines]) + f"\n... ({len(lines) - max_lines} more lines)"
+
+
+def _extract_anomaly_type_from_query(query: str) -> Optional[str]:
+    """Extract anomaly type (A1-A7) from query text if mentioned."""
+    import re
+
+    match = re.search(r"\b(A[1-7])\b", query, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    anomaly_keywords = {
+        "network timeout": "A1",
+        "cassette": "A2",
+        "jvm memory": "A3",
+        "oom": "A3",
+        "restart": "A4",
+        "response time": "A5",
+        "os memory": "A6",
+        "malformed": "A7",
+        "out-of-order": "A7",
+    }
+    query_lower = query.lower()
+    for keyword, anomaly_type in anomaly_keywords.items():
+        if keyword in query_lower:
+            return anomaly_type
+    return None

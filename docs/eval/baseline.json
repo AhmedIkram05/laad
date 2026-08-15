@@ -1,0 +1,23 @@
+{
+  "baseline": {
+    "_n": 20.0,
+    "context_recall": 0.5333333333333333,
+    "faithfulness": 0.9821428571428571,
+    "llm_context_precision_with_reference": 0.7113888888371945,
+    "answer_relevancy": 0.6494606897212478
+  },
+  "hybrid": {
+    "_n": 20.0,
+    "context_recall": 0.35,
+    "faithfulness": 0.9079545454545455,
+    "llm_context_precision_with_reference": 0.6447222221910696,
+    "answer_relevancy": 0.601813470115985
+  },
+  "agentic": {
+    "_n": 20.0,
+    "context_recall": 0.7083333333333333,
+    "faithfulness": 0.9399149869738104,
+    "llm_context_precision_with_reference": 0.8741830064941994,
+    "answer_relevancy": 0.8008108939158631
+  }
+}

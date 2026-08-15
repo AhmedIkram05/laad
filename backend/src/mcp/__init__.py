@@ -1,0 +1,1 @@
+"""MCP server exposing LAAD's RAG + structured data tools to agents."""

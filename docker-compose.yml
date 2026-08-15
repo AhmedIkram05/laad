@@ -170,13 +170,12 @@ services:
       - GIT_COMMIT_SHA=${GIT_COMMIT_SHA:-}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:31b-cloud}
-      - RAG_PRIMARY_MODEL=${RAG_PRIMARY_MODEL:-gemma4:31b-cloud}
-      - RAG_FALLBACK_MODEL=${RAG_FALLBACK_MODEL:-nemotron-3-supercloud}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.inference.wandb.ai/v1}
+      - LLM_API_KEY=${WANDB_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-google/gemma-4-31B-it}
+      - MCP_SERVER_URL=http://mcp-server:8001/sse
       - RAG_TOP_K=${RAG_TOP_K:-3}
-      - RAG_SAMPLES=${RAG_SAMPLES:-1}
+      - RAG_SAMPLES=${RAG_SAMPLES:-3}
       - RAG_TEMPERATURE=${RAG_TEMPERATURE:-0.6}
       - CONF_HIGH=${CONF_HIGH:-0.8}
       - CONF_MEDIUM=${CONF_MEDIUM:-0.5}
@@ -184,8 +183,6 @@ services:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-300}
-      - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
       - TEST_POSTGRES_HOST=postgres_test
       - TEST_POSTGRES_PORT=5432
       - TEST_POSTGRES_DB=atm_platform_test
@@ -207,6 +204,42 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./data:/app/data
+
+  mcp-server:
+    build: ./backend
+    command: python -m backend.src.mcp.server --transport sse
+    ports:
+      # Host port 8001 is taken by chromadb (8001:8000); SSE stays on container
+      # port 8001, so internal MCP_SERVER_URL=http://mcp-server:8001/sse is unchanged.
+      - "8002:8001"
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.inference.wandb.ai/v1}
+      - LLM_API_KEY=${WANDB_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-google/gemma-4-31B-it}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-atm_platform}
+      - POSTGRES_USER=${POSTGRES_USER:-atm_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+    depends_on:
+      chromadb:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; s=socket.create_connection((\"localhost\", 8001), 2); s.close()' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend
 
   generator:
     build: ./backend
@@ -310,9 +343,42 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-test-secret-key-for-laad}
       - TEST_DATA_DIR=backend/custom_synthetic_data_sources
       - STRESS_TEST_BASE_URL=http://backend:8000
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.inference.wandb.ai/v1}
+      - LLM_API_KEY=${WANDB_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-google/gemma-4-31B-it}
+      - MCP_SERVER_URL=http://mcp-server:8001/sse
+      - RAG_TOP_K=${RAG_TOP_K:-3}
+      - RAG_SAMPLES=${RAG_SAMPLES:-3}
+      - RAG_TEMPERATURE=${RAG_TEMPERATURE:-0.6}
+      - RAG_REFLEXION=${RAG_REFLEXION:-true}
+      - RAG_SELF_CONSISTENCY=${RAG_SELF_CONSISTENCY:-true}
+      - RAG_CITATION_GROUNDING=${RAG_CITATION_GROUNDING:-true}
+      - RAG_CROSS_ENCODER=${RAG_CROSS_ENCODER:-true}
+      - RAG_ERROR_ONLY=${RAG_ERROR_ONLY:-true}
+      - RAG_CHUNK_TRUNCATE=${RAG_CHUNK_TRUNCATE:-800}
+      - RAG_HYBRID_TOP_K=${RAG_HYBRID_TOP_K:-5}
+      # 0 disables the global client-side rate limiter: eval hits the LLM
+      # hundreds of times per run and 20 req/min was throttling it to death.
+      - RAG_RATE_LIMIT=${RAG_RATE_LIMIT:-0}
+      # Eval-only judge model for the RAGAS scoring phase (plan §2.1): a cheap
+      # fast model judges; queries keep using LLM_MODEL so deltas stay
+      # retrieval-only. Must exist on W&B Serverless Inference (verified via
+      # GET /v1/models) — Phi-4-mini-instruct does NOT.
+      - RAG_JUDGE_MODEL=${RAG_JUDGE_MODEL:-Qwen/Qwen3-30B-A3B-Instruct-2507}
     depends_on:
       postgres_test:
         condition: service_started
+      redis:
+        condition: service_started
+      chromadb:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app/backend
       - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts

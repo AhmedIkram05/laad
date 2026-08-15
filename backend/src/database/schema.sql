@@ -106,6 +106,22 @@ CREATE TABLE IF NOT EXISTS rag_calibration (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 11. rag_agent_traces (Per-request telemetry for the agentic/hybrid loop)
+CREATE TABLE IF NOT EXISTS rag_agent_traces (
+    id BIGSERIAL PRIMARY KEY,
+    query_id BIGINT REFERENCES rag_queries(id),
+    mode TEXT NOT NULL,
+    rounds INTEGER NOT NULL DEFAULT 0,
+    model_calls INTEGER NOT NULL DEFAULT 0,
+    tool_calls JSONB NOT NULL DEFAULT '[]',
+    latencies JSONB NOT NULL DEFAULT '{}',
+    selected_tools JSONB NOT NULL DEFAULT '[]',
+    retries INTEGER NOT NULL DEFAULT 0,
+    retry_trigger DOUBLE PRECISION,
+    model_calls_truncated BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_events_correlation ON events(correlation_id);
@@ -120,6 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_anomalies_active_time ON anomalies(is_active, det
 CREATE INDEX IF NOT EXISTS idx_anomalies_correlation ON anomalies(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_anomalies_type_time ON anomalies(anomaly_type, detected_at);
 CREATE INDEX IF NOT EXISTS idx_rag_queries_user ON rag_queries(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_rag_agent_traces_query ON rag_agent_traces(query_id);
 CREATE INDEX IF NOT EXISTS idx_rag_feedback_query ON rag_feedback(query_id);
 
 -- Views

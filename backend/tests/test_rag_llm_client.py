@@ -60,23 +60,20 @@ class TestLLMClient:
             client = LLMClient()
             assert len(client.providers) == 0
 
-    def test_initialize_with_ollama(self):
+    def test_initialize_with_llm(self):
         config_mock = MagicMock()
         config_mock.is_configured = True
-        config_mock.OLLAMA_BASE_URL = "http://localhost:11434"
-        config_mock.OLLAMA_API_KEY = "test-key"
-        config_mock.OLLAMA_MODEL = "gemma4:31b-cloud"
-        config_mock.OLLAMA_FALLBACK_MODELS = ["nemotron-3:latest"]
-        config_mock.RAG_PRIMARY_MODEL = ""
-        config_mock.RAG_FALLBACK_MODEL = ""
+        config_mock.llm_api_key = "test-key"
+        config_mock.llm_model = "google/gemma-4-31B-it"
+        config_mock.llm_base_url = "https://api.inference.wandb.ai/v1"
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
-            assert len(client.providers) > 0
-            # First provider should be Ollama
-            assert client.providers[0]["name"] == "ollama"
+            assert len(client.providers) == 1
+            # The only provider should be the W&B llm provider
+            assert client.providers[0]["name"] == "llm"
 
     def test_generate_raises_when_no_providers(self):
         config_mock = MagicMock()
@@ -91,13 +88,11 @@ class TestLLMClient:
 
 
 class TestCallProvider:
-    def test_call_ollama_success(self):
+    def test_call_llm_success(self):
         config_mock = MagicMock()
-        config_mock.OLLAMA_BASE_URL = "http://localhost:11434"
-        config_mock.OLLAMA_API_KEY = "key"
-        config_mock.OLLAMA_MODEL = "model"
-        config_mock.RAG_PRIMARY_MODEL = ""
-        config_mock.RAG_FALLBACK_MODEL = ""
+        config_mock.llm_api_key = "key"
+        config_mock.llm_model = "model"
+        config_mock.llm_base_url = "https://api.inference.wandb.ai/v1"
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
@@ -107,18 +102,18 @@ class TestCallProvider:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = {
-                "message": {"content": "Hello"},
+                "choices": [{"message": {"content": "Hello"}, "finish_reason": "STOP"}],
                 "model": "gemma4",
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
             }
 
             with patch("requests.post", return_value=mock_response):
-                result = client._call_provider(
+                result = client._call_llm(
                     {
-                        "name": "ollama",
+                        "name": "llm",
                         "model": "model",
-                        "base_url": "http://localhost:11434",
+                        "base_url": "https://api.inference.wandb.ai/v1",
                         "api_key": "key",
-                        "api_type": "ollama",
                     },
                     "test prompt",
                     None,
@@ -127,14 +122,13 @@ class TestCallProvider:
                 )
                 assert result is not None
                 assert result.text == "Hello"
+                assert result.model == "gemma4"
 
-    def test_call_ollama_http_error_retries(self):
+    def test_call_llm_http_error_retries(self):
         config_mock = MagicMock()
-        config_mock.OLLAMA_BASE_URL = "http://localhost:11434"
-        config_mock.OLLAMA_API_KEY = "key"
-        config_mock.OLLAMA_MODEL = "model"
-        config_mock.RAG_PRIMARY_MODEL = ""
-        config_mock.RAG_FALLBACK_MODEL = ""
+        config_mock.llm_api_key = "key"
+        config_mock.llm_model = "model"
+        config_mock.llm_base_url = "https://api.inference.wandb.ai/v1"
 
         with patch("backend.src.rag.llm_client.config", config_mock):
             from backend.src.rag.llm_client import LLMClient
@@ -150,13 +144,12 @@ class TestCallProvider:
 
             with patch("requests.post", return_value=mock_response):
                 with pytest.raises(requests.exceptions.HTTPError):
-                    client._call_provider(
+                    client._call_llm(
                         {
-                            "name": "ollama",
+                            "name": "llm",
                             "model": "model",
-                            "base_url": "http://localhost:11434",
+                            "base_url": "https://api.inference.wandb.ai/v1",
                             "api_key": "key",
-                            "api_type": "ollama",
                         },
                         "test",
                         None,

@@ -57,11 +57,11 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          pip install ruff
+          pip install ruff==0.15.15
           ruff check backend/
 
       - name: Audit dependencies for CVEs
-        run: pip install pip-audit && pip-audit -r backend/requirements.txt --desc on --ignore-vuln CVE-2026-45829
+        run: pip install pip-audit && pip-audit -r backend/requirements.txt --desc on --ignore-vuln CVE-2026-45829 --ignore-vuln PYSEC-2026-3046 --ignore-vuln PYSEC-2026-2447 --ignore-vuln PYSEC-2026-3552  # PYSEC-2026-3046: ragas SSRF in multi_modal_faithfulness util, module not imported, no patched release; PYSEC-2026-2447: diskcache pickle RCE requires attacker write access to app-controlled cache dir, no patched release; PYSEC-2026-3552: cryptography pkcs7 S/MIME oracle, mlflow 3.x pins cryptography<50, S/MIME unused
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0

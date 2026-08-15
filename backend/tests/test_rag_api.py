@@ -269,3 +269,162 @@ class TestRAGRouter:
             )
             assert resp.status_code == 429
             assert "Rate limit exceeded" in resp.json()["detail"]
+
+
+class TestAgentEndpoint:
+    """Smoke tests for POST /api/rag/agent."""
+
+    @pytest.fixture(autouse=True)
+    def mock_mlflow(self):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": MagicMock(),
+                "mlflow.sklearn": MagicMock(),
+                "mlflow.xgboost": MagicMock(),
+            },
+        ):
+            yield
+
+    @pytest.fixture
+    def client(self):
+        from backend.src.api.server import app
+
+        return TestClient(app)
+
+    def _reset_rate_limit(self):
+        from backend.src.rag import router as rag_router
+
+        rag_router._query_timestamps.clear()
+
+    def _agent_result(self, sources=None, **overrides):
+        result = {
+            "answer": "Answer based on retrieved evidence.",
+            "sources": [
+                {
+                    "text": "Network timeout at ATM-GB-0001",
+                    "chunk_id": "row:query_anomalies:0",
+                    "atm_id": "ATM-GB-0001",
+                    "timestamp": "2026-05-15T10:00:00Z",
+                    "confidence_score": 0.9,
+                }
+            ],
+            "uncertainty_score": 0.85,
+            "confidence_level": "high",
+            "is_uncertain": False,
+            "recommendation": "Auto-respond",
+            "model_used": "test-model",
+            "self_consistency_score": 0.85,
+            "verbalized_confidence": None,
+            "grounding_score": 0.9,
+            "generation_variance": None,
+            "cross_encoder_used": False,
+            "was_revised": False,
+            "critique_text": None,
+            "latencies": {"planning_s": 0.1, "tools_s": 0.2, "generation_s": 0.3, "reflexion_s": 0.0, "total": 0.6},
+        }
+        if sources is not None:
+            result["sources"] = sources
+        result["agent_trace"] = {
+                "mode": "hybrid",
+                "tool_calls": [
+                    {"tool": "search_knowledge", "ok": True, "duration_s": 0.1, "error": None}
+                ],
+                "rounds": 1,
+                "model_calls": 0,
+                "latencies": {},
+                "selected_tools": ["search_knowledge"],
+                "retries": 0,
+                "retry_trigger": None,
+                "model_calls_truncated": False,
+            }
+        result.update(overrides)
+        return result
+
+    @patch("backend.src.rag.router.get_redis_client", return_value=None)
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.set_cached_response")
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.agent.run_agent_query")
+    def test_agent_success_returns_trace_and_caches(
+        self, mock_run, mock_get_cache, mock_set_cache, mock_user_id, mock_redis, client
+    ):
+
+        self._reset_rate_limit()
+        mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
+        mock_run.return_value = self._agent_result()
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        resp = client.post(
+            "/api/rag/agent",
+            json={"query": "troubleshoot ATM-GB-0001", "mode": "hybrid"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["answer"] == "Answer based on retrieved evidence."
+        assert body["agent_trace"]["selected_tools"] == ["search_knowledge"]
+        assert body["agent_trace"]["mode"] == "hybrid"
+        # cache key includes mode + atm_id
+        key = mock_set_cache.call_args[0][0]
+        assert key == "rag:agent:hybrid:ATM-GB-0001:troubleshoot ATM-GB-0001"
+        # run_agent_query received the parsed mode + extracted atm_id
+        _, kwargs = mock_run.call_args
+        assert kwargs["mode"].value == "hybrid"
+        assert kwargs["atm_id"] == "ATM-GB-0001"
+
+    @patch("backend.src.rag.router.get_redis_client", return_value=None)
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.agent.run_agent_query")
+    def test_agent_404_when_no_sources(
+        self, mock_run, mock_get_cache, mock_user_id, mock_redis, client
+    ):
+
+        self._reset_rate_limit()
+        mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
+        mock_run.return_value = self._agent_result(sources=[])
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        resp = client.post(
+            "/api/rag/agent",
+            json={"query": "nothing here"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+
+    @patch("backend.src.rag.router.get_redis_client", return_value=None)
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.agent.run_agent_query")
+    def test_agent_500_on_internal_error(
+        self, mock_run, mock_get_cache, mock_user_id, mock_redis, client
+    ):
+
+        self._reset_rate_limit()
+        mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
+        mock_run.return_value = {"error": "boom"}
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        resp = client.post(
+            "/api/rag/agent",
+            json={"query": "boom"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 500
+        assert "Agent query failed" in resp.json()["detail"]

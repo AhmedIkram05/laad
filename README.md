@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Anomaly Detection & Diagnostics Platform (LAAD)
 
-> A production-grade ATM log aggregation, multi-layer anomaly detection, and AI-assisted diagnostics platform - from Kafka ingestion through 3-layer ML/statistical/heuristic detection to a React dashboard and Agentic RAG assistant - deployed on AWS ECS Fargate with SageMaker inference.
+> A production-grade ATM log aggregation, multi-layer anomaly detection, and AI-assisted diagnostics platform - from Kafka ingestion through 3-layer ML/statistical/heuristic detection to a React dashboard and Agentic Hybrid RAG assistant - deployed on AWS ECS Fargate with SageMaker inference.
 
 <p align="center">
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python"></a>
@@ -31,6 +31,7 @@
 <a href="https://github.com/AhmedIkram05/laad/actions/workflows/ci.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="https://github.com/AhmedIkram05/laad/actions/workflows/cd.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/cd.yml/badge.svg" alt="CD"></a>
 <a href="https://github.com/AhmedIkram05/laad/actions/workflows/terraform.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/terraform.yml/badge.svg" alt="Terraform"></a>
+<a href="https://github.com/AhmedIkram05/laad/actions/workflows/eval-gate.yml"><img src="https://github.com/AhmedIkram05/laad/actions/workflows/eval-gate.yml/badge.svg" alt="RAG Eval"></a>
 <a href="https://codecov.io/gh/AhmedIkram05/laad"><img src="https://codecov.io/gh/AhmedIkram05/laad/branch/main/graph/badge.svg" alt="Codecov"></a>
 </p>
 
@@ -48,7 +49,7 @@
   - [Database Design](#database-design)
   - [3-Layer Anomaly Detection Engine](#3-layer-anomaly-detection-engine)
   - [ML Training & MLOps](#ml-training--mlops)
-  - [Agentic RAG Diagnostic Assistant](#agentic-rag-diagnostic-assistant)
+  - [Agentic Hybrid RAG Diagnostic Assistant](#agentic-hybrid-rag-diagnostic-assistant)
   - [Redis Infrastructure](#redis-infrastructure-8-patterns)
   - [Frontend Architecture](#frontend-architecture)
 - [AWS Deployment & Infrastructure](#aws-deployment--infrastructure)
@@ -127,7 +128,7 @@ flowchart TD
   subgraph Serving ["Serving Layer"]
     API["FastAPI REST API<br/>30 endpoints, 6 routers"]
     UI["React 19 + Vite 8<br/>9 pages, shadcn/ui, Chart.js"]
-    RAG["Agentic RAG<br/>Cross-encoder + Reflexion<br/>4-signal confidence fusion"]
+    RAG["Agentic Hybrid RAG<br/>MCP tools + Reflexion<br/>4-signal confidence fusion"]
   end
 
   subgraph MLOps ["MLOps - AWS"]
@@ -192,7 +193,7 @@ flowchart TD
   class SM,CC sagemaker;
 ```
 
-**Pipeline flow:** 7 log sources → continuous Kafka producer (gzip, acks=all) → 2 topics (3 partitions each) → consumer deduplicates (Redis SET + 10K LRU), parses via 7 source-specific parsers, dual-writes to PostgreSQL + ChromaDB, routes failures to Redis Stream DLQ with exponential backoff. A 3-layer detection engine runs every 30s against time-windowed data. FastAPI serves [30 endpoints](docs/api-reference.md) consumed by the React dashboard and Agentic RAG assistant. An XGBoost model deployed on AWS SageMaker provides live cross-check inference.
+**Pipeline flow:** 7 log sources → continuous Kafka producer (gzip, acks=all) → 2 topics (3 partitions each) → consumer deduplicates (Redis SET + 10K LRU), parses via 7 source-specific parsers, dual-writes to PostgreSQL + ChromaDB, routes failures to Redis Stream DLQ with exponential backoff. A 3-layer detection engine runs every 30s against time-windowed data. FastAPI serves [30 endpoints](docs/api-reference.md) consumed by the React dashboard and Agentic Hybrid RAG assistant. An XGBoost model deployed on AWS SageMaker provides live cross-check inference.
 
 ---
 
@@ -207,8 +208,8 @@ flowchart TD
 | **Deployment** | Terraform (10 modules, 118 resources) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 75 Terraform test assertions |
 | **Data Storage** | PostgreSQL 16 with JSONB + unified events/metrics tables | Adding a log source = new parser - no schema changes, no detector modifications |
 | **Distributed Coordination** | 8 Redis patterns from a single connection pool | Rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics - all gracefully degrade |
-| **Container Strategy** | Multi-stage Docker + health check cascading | 10 services, 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
-| **Testing** | pytest (10 tiers) + vitest + Playwright + Terraform test + checkov | 1,402 tests across all layers, CI-gated at every PR |
+| **Container Strategy** | Multi-stage Docker + health check cascading | 17 services (13 production, 4 test), 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
+| **Testing** | pytest (10 tiers) + vitest + Playwright + Terraform test + checkov | 1,438 tests across all layers, CI-gated at every PR |
 
 ---
 
@@ -220,7 +221,7 @@ flowchart TD
 | | ATMs monitored | 10 ATMs + 3 Servers |
 | | Messages processed | 2.5M events, 100+ msgs/sec live |
 | | Tables / Views / Indexes | 10 + 3 + 14 |
-| | Docker services | 10 production + 3 test |
+| | Docker services | 13 production + 4 test |
 | | Terraform resources | 118 across 10 modules |
 | **ML & Detection** | Anomaly types | 7 known (A1-A7) + UNKNOWN |
 | | Detection layers | 3 (ML_ENSEMBLE + ZSCORE + HEURISTIC) + SageMaker cross-check |
@@ -231,9 +232,9 @@ flowchart TD
 | **Infrastructure** | API endpoints | 30 across 6 routers |
 | | Frontend pages | 9 (React 19 + Vite 8 + Tailwind v4) |
 | | Redis patterns | 8 distinct |
-| | LLM providers | 3 (Ollama Cloud → Fallback → OpenRouter) |
-| **Testing** | Total tests | 1,402 |
-| | Backend (pytest) | 923 across 10 tiers |
+| | LLM providers | 1 (W&B Serverless Inference) |
+| **Testing** | Total tests | 1,438 |
+| | Backend (pytest) | 959 across 10 tiers |
 | | Frontend (vitest) | 394 across 41 suites |
 | | E2E (Playwright) | 10 across 5 specs |
 | | Terraform assertions | 75 across 9 modules |
@@ -266,7 +267,7 @@ Multi-AZ VPC with ECS Fargate, Kafka on EC2, RDS PostgreSQL for MLflow, SageMake
 
 ![CI pipeline](docs/demos/ci.png) | ![CD pipeline](docs/demos/cd.png)
 ---|---
-CI - Python lint, checkov, pytest (923), vitest (394), Playwright E2E (10) | CD - Terraform plan → apply → ECS rolling update on merge to main
+CI - Python lint, checkov, pytest (959), vitest (394), Playwright E2E (10) | CD - Terraform plan → apply → ECS rolling update on merge to main
 
 ![CD-SHOULD-DEPLOY gate](docs/demos/cd-should-deploy.png) | ![Terraform apply](docs/demos/terraform.png)
 ---|---
@@ -284,11 +285,11 @@ CD-SHOULD-DEPLOY - path-based filter skips infra when only docs change | Terrafo
 
 > **3-Layer Detection Engine** - ML_ENSEMBLE → ZSCORE → HEURISTIC pipeline: scored anomalies appear in the UI with type label (A1-A7 or UNKNOWN), severity (CRITICAL/HIGH/MAJOR), detector origin, model confidence score, and structured explanation.
 
-### Agentic RAG Diagnostic Assistant
+### Agentic Hybrid RAG Diagnostic Assistant
 
-![Agentic RAG diagnostic assistant animation showing a conversation with confidence breakdown and citation grounding](docs/demos/rag-assistant.gif)
+![Agentic Hybrid RAG diagnostic assistant animation showing a conversation with confidence breakdown and citation grounding](docs/demos/rag-assistant.gif)
 
-> **Agentic RAG** - End-to-end diagnostic conversation: ChromaDB retrieval → cross-encoder reranking → LLM response with verbalized confidence → reflexion (self-critique) → final answer with source citations.
+> **Agentic Hybrid RAG** - End-to-end diagnostic conversation: ChromaDB retrieval → cross-encoder reranking → LLM response with verbalized confidence → reflexion (self-critique) → final answer with source citations.
 
 ### Real-Time Analytics Dashboard
 
@@ -778,57 +779,59 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 
 ---
 
-### Agentic RAG Diagnostic Assistant
+### Agentic Hybrid RAG Diagnostic Assistant
 
-An agentic RAG system with 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) and multi-signal confidence fusion. Uses Ollama Cloud as primary LLM provider with OpenRouter emergency fallback. Designed for diagnostic conversations around ATM anomalies - users ask about specific anomaly IDs, entities, time ranges, or symptoms.
+An agentic hybrid RAG system: a LangGraph agent over 12 MCP tools routes retrieval between vector search, structured metric/anomaly queries, and the knowledge base, then the generator applies 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) with multi-signal confidence fusion. Exposed via `POST /api/rag/agent` in two modes — `hybrid` (deterministic tool selection) and `agentic` (free-form agent routing with grounding-gated re-retrieval). Uses a single env-driven OpenAI-compatible LLM provider — W&B Serverless Inference by default (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) — for all LLM calls (agent, generator, self-consistency, reflexion, RAGAS judge), so evaluation deltas are retrieval-only. Designed for diagnostic conversations around ATM anomalies - users ask about specific anomaly IDs, entities, time ranges, or symptoms.
 
 **Why ChromaDB over Pinecone?** Self-hosted in Docker - no per-vector API costs, 50K+ docs fit in RAM, log data never leaves the network. Local Ollama embedding (`nomic-embed-text`, 768-dim) eliminates network round-trip.
 
 ```mermaid
 flowchart TD
-  subgraph Routing ["Query Routing"]
+  subgraph API ["RAG API"]
     Q["User Query"]
-    CLASS["classify_query_type()<br/>stats / diagnostic / troubleshooting / general"]
-    ROUTE{"Type?"}
+    AGENT["POST /api/rag/agent<br/>AgentMode: hybrid | agentic<br/>guard: rate limit → sanitize → cache"]
+  end
+
+  subgraph Graph ["LangGraph StateGraph (backend/src/rag/agent.py)"]
+    SEL["Tool Selection<br/>parallel-first: search_knowledge always<br/>+ at most one structured tool"]
+    EXEC["Execute MCP Tools<br/>max 2 rounds<br/>backstop SystemMessage"]
+    GEN["Generator<br/>LLM_MODEL over fused evidence"]
+  end
+
+  subgraph Tools ["MCP Tools (12)"]
+    KNOW["Vector<br/>search_knowledge<br/>Knowledge<br/>get_anomaly_class_info<br/>get_rag_collection_stats"]
+    STRUC["Structured<br/>query_anomalies · get_anomaly<br/>get_machine_history · get_atm_metrics<br/>get_statistics · search_events<br/>get_error_context · get_atm_info<br/>compare_atms"]
   end
 
   subgraph Retrieval ["Retrieval Pipeline"]
-    SAN["Prompt Injection Filter<br/>5 dangerous patterns"]
     CDB[("ChromaDB<br/>atm_logs collection<br/>cosine similarity")]
-    TOPK["Top-K retrieval<br/>k=10 chunks"]
     FILTER["Metadata Filter<br/>anomaly type, atm_id, severity<br/>temporal boost (6h decay)"]
     CE["Cross-Encoder Reranking<br/>ms-marco-MiniLM-L-2-v2<br/>joint query+chunk scoring"]
   end
 
-  subgraph Agentic ["4-Stage Agentic Loop"]
+  subgraph Reasoning ["4-Stage Reasoning"]
     SC["Self-Consistency<br/>3 parallel samples @ temp=0.7<br/>3-gram Jaccard pairwise similarity"]
     VC["Verbalized Confidence<br/>LLM self-rating 0-1"]
     REFLEX["Reflexion (Self-Critique)<br/>Critique @ temp=0.2<br/>Regenerate @ temp=0.3"]
-    CG["Citation Grounding<br/>Regex entity extraction<br/>> verify in source chunks"]
-  end
-
-  subgraph LLM ["LLM Providers (3 providers)"]
-    OLLAMA["Ollama Cloud (primary)<br/>gemma4:31b-cloud"]
-    FB["Ollama Fallback<br/>nemotron-3-supercloud"]
-    EMERG["OpenRouter (emergency)<br/>3 free model chain"]
-    DEGRADE["Context-aware Degradation<br/>structured log extraction"]
+    CG["Citation Grounding<br/>Regex entity extraction<br/>verified against source chunks"]
   end
 
   subgraph Fusion ["Multi-Signal Confidence Fusion"]
-    RETR["Retrieval<br/>30% weight"]
-    CONS["Self-Consistency<br/>25% weight"]
-    VERB["Verbalized<br/>25% weight"]
-    GRND["Grounding<br/>20% weight"]
     FUSE["Fused: 0.30*ret + 0.25*cons + 0.25*verb + 0.20*gnd"]
     LEVEL["HIGH >= 0.8<br/>MEDIUM >= 0.5<br/>LOW < 0.5"]
   end
 
-  Q --> CLASS --> ROUTE
-  ROUTE -->|"stats"| DB["PostgreSQL COUNT/GROUP BY"]
-  ROUTE -->|"other"| SAN --> CDB --> TOPK --> FILTER --> CE
-  CE --> OLLAMA --> FB --> EMERG --> DEGRADE
-  OLLAMA & FB & EMERG & DEGRADE --> SC --> VC --> REFLEX --> CG
-  CG --> RETR & CONS & VERB & GRND --> FUSE --> LEVEL
+  subgraph LLM ["LLM Provider (W&B Serverless Inference)"]
+    WANDB["LLM_BASE_URL=https://api.inference.wandb.ai/v1<br/>LLM_MODEL=google/gemma-4-31B-it<br/>single model for all calls"]
+    DEGRADE["Context-aware Degradation<br/>structured log extraction"]
+  end
+
+  Q --> AGENT --> SEL --> EXEC --> Tools
+  EXEC --> CDB --> FILTER --> CE --> GEN
+  GEN --> SC --> VC --> REFLEX --> CG --> FUSE --> LEVEL
+  WANDB --> DEGRADE
+  WANDB -.-> GEN
+  CG -. "agentic: grounding < 0.6, retries left" .-> SEL
 ```
 
 **Chunking & Embedding Strategy:**
@@ -845,19 +848,18 @@ The ChromaDB ingestion pipeline processes each ATM event through LangChain's `Se
 
 **Query Processing Pipeline:**
 
-1. **Query Classification** - `classify_query_type()` categorises the user message as `stats`, `diagnostic`, `troubleshooting`, or `general`
-   - `stats` → direct PostgreSQL query (aggregated counts over anomalies/events) - bypasses LLM entirely. Example: "How many A1 anomalies in the last hour?"
-   - Other types → full RAG pipeline with vector search
-2. **Prompt Injection Filter** - 5 dangerous patterns are checked before any LLM call: SQL injection, prompt leakage, role-play manipulation, system prompt override, and special token injection. Matches are silently rejected.
-3. **Retrieval** - ChromaDB cosine similarity search (k=10) with metadata filter from extracted query entities. Temporal metadata gets an exponential decay boost (6h half-life) - more recent chunks score higher in similarity.
-4. **Cross-Encoder Reranking** - `ms-marco-MiniLM-L-2-v2` jointly scores each (query, chunk) pair, producing relevance scores +5-15% more accurate than cosine similarity alone. Top-3 chunks proceed to the LLM.
-5. **LLM Generation** - The primary response is generated by the first available provider in the chain.
-6. **4-Stage Agentic Loop** - Runs on the primary response:
+1. **Agentic routing** - `POST /api/rag/agent` selects `AgentMode` (`hybrid` = deterministic tool choice, `agentic` = free-form). The LangGraph agent plans tool calls in parallel-first fashion: call `search_knowledge` always, plus at most one structured tool in the same response. (The legacy `classify_query_type()` keyword router and its PostgreSQL short-circuit were removed by the retrofit.)
+2. **Tool execution** - Up to 2 rounds via the 12-tool MCP toolset (`search_knowledge`, 9 structured tools, 2 knowledge tools). Structured results are rendered into row-chunks (`row:{tool}:{index}`) in the evidence pool; a backstop `SystemMessage` stops iteration after the round cap. Agent LLM calls are capped (`agent_max_llm_calls`), after which the best-so-far answer is returned with `model_calls_truncated=true` - never an error.
+3. **Grounding-gated re-retrieval** (agentic only, D13) - if the post-generation grounding score is < 0.6 and retries remain, the agent re-enters the graph with the reflexion critique, skipping tools that already returned evidence.
+4. **Retrieval** - ChromaDB cosine similarity search (k=10) with metadata filter from extracted query entities. Temporal metadata gets an exponential decay boost (6h half-life) - more recent chunks score higher in similarity.
+5. **Cross-Encoder Reranking** - `ms-marco-MiniLM-L-2-v2` jointly scores each (query, chunk) pair, producing relevance scores +5-15% more accurate than cosine similarity alone. Top-3 chunks proceed to the LLM.
+6. **LLM Generation** - The response is generated by the configured LLM provider (`LLM_MODEL`) over the fused evidence (vector chunks + rendered structured rows).
+7. **4-Stage Reasoning** - Runs on the generated response:
    - **Self-Consistency**: 3 parallel LLM samples at temp=0.7, compared via 3-gram Jaccard pairwise similarity. High agreement = higher confidence.
    - **Verbalized Confidence**: LLM self-rates its confidence (0-1 scale) with explicit reasoning for the rating.
    - **Reflexion (Self-Critique)**: A critique pass at temp=0.2 evaluates the response for factual support. If unsupported claims are found, a regeneration pass at temp=0.3 produces a corrected version.
    - **Citation Grounding**: Regex entity extraction (anomaly IDs, ATM IDs, metric names) → cross-checked against source chunks. Ungrounded entities reduce the grounding signal.
-7. **Multi-Signal Confidence Fusion** - Combines 4 independent signals into a single score:
+8. **Multi-Signal Confidence Fusion** - Combines 4 independent signals into a single score:
 
 | Signal | Weight | Source | Computation |
 |---|---|---|---|
@@ -872,29 +874,51 @@ Fused score = `0.30 × ret + 0.25 × cons + 0.25 × verb + 0.20 × gnd`. Missing
 
 Every 20 user feedback samples (thumbs up/down), the calibrator fits a Platt scaling model (logistic regression on fused scores vs binary feedback). Calibration is applied when Expected Calibration Error (ECE) exceeds 0.10. This ensures the confidence score remains empirically calibrated as the system processes more data.
 
-**LLM Provider Chain:**
+**LLM Provider:**
 
-| Priority | Provider | Model | Fallback Trigger |
-|---|---|---|---|
-| 1 (Primary) | Ollama Cloud | `gemma4:31b-cloud` | HTTP error, timeout > 15s |
-| 2 (Fallback) | Ollama Cloud | `nemotron-3-supercloud` | Same as primary |
-| 3 (Emergency) | OpenRouter | Chain of 3 free models | Both Ollama Cloud providers fail |
-| 4 (Degradation) | Local extraction | Structured log extraction (no LLM) | All providers down |
+A single env-driven OpenAI-compatible provider. OpenRouter and Ollama Cloud are no longer functional as LLM providers and were removed (not kept as fallback). Provider configuration is a `.env` edit, never a code change.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `LLM_API_KEY` | (required) | W&B Serverless Inference API key (or `WANDB_API_KEY`) |
+| `LLM_BASE_URL` | https://api.inference.wandb.ai/v1 | W&B Serverless Inference endpoint |
+| `LLM_MODEL` | google/gemma-4-31B-it | Model for all RAG LLM calls |
+| `RAG_JUDGE_MODEL` | Qwen/Qwen3-30B-A3B-Instruct-2507 | Eval-only judge model (RAGAS scoring) |
+
+Embeddings remain local: `chroma_buffer` / `kafka-consumer` embed via Ollama `nomic-embed-text` (`OLLAMA_BASE_URL`), so log data never leaves the network. On total LLM outage the system degrades to structured log extraction (no LLM) rather than returning a generic error.
+
+**Agentic API (`POST /api/rag/agent`):**
+
+Request `AgentQueryRequest { query, mode (hybrid|agentic), atm_id? }`, response `AgentQueryResponse { answer, sources, confidence, citations, trace_id, ... }`. Request guards, in order: rate limit (per `RAG_RATE_LIMIT`) → sanitization (unsafe tokens replaced with `[FILTERED]`, never a 400) → Redis cache (`rag:agent:{mode}:{atm_id|none}:{sanitized_query}`, 300s TTL). Every run persists a trace (`rag_agent_traces` table) recording tool calls, rounds, model calls, latency, and selected tools for observability and eval. The legacy `POST /api/rag/query` remains as the non-agent baseline.
+
+**Evaluation & CI:**
+
+RAGAS 0.4.x evaluation over a 50-query golden set (5 categories × 10: semantic, structured, hybrid, multi-step, adversarial; 82% human-reviewed) across three systems — `baseline` (fixed retrieval, no agent), `hybrid` (agent, deterministic tools), `agentic` (agent + reflexion/self-consistency/grounding + D13 re-retrieval) — scored on `context_recall`, `faithfulness`, `llm_context_precision_with_reference`, `answer_relevancy`. `make eval-ragas` runs the harness (`FLAGS` passthrough: `--fast`, `--limit N`, `--refresh-baseline`, `--baseline`); `python -m backend.tests.eval.report` renders global/per-category tables, agent metrics (tool-selection accuracy, retrieval efficiency, retry rate, est. cost/query), the adversarial pass/fail matrix, and cost-vs-quality. A guardrail suite (G1-G17) covers rate limit, sanitization, cache-key scoping, truncation backstop, and no-answer paths. The CI gate (`.github/workflows/eval-gate.yml`) runs the eval on PRs and `main`, compares against the committed `docs/eval/baseline.json` (fails on faithfulness < 0.5, context_recall < 0.3, or any drop > 0.05), and uploads `eval_results/`; it is neutral (green) without a `WANDB_API_KEY` secret.
+
+**Results (committed baseline, `docs/eval/baseline.json` — 20 queries per system):**
+
+| System | context_recall | faithfulness | context_precision (w/ reference) | answer_relevancy |
+|---|---|---|---|---|
+| `baseline` (fixed retrieval, no agent) | 0.533 | 0.982 | 0.711 | 0.650 |
+| `hybrid` (agent, deterministic tools) | 0.350 | 0.908 | 0.645 | 0.602 |
+| `agentic` (free routing + D13 re-retrieval) | **0.708** | 0.940 | **0.874** | **0.801** |
+
+All three systems share one LLM (`LLM_MODEL`), so the deltas are retrieval-only. The agentic system's adaptive tool routing plus grounding-gated re-retrieval roughly **doubles context_recall over the deterministic hybrid** (0.708 vs 0.350) and achieves the best context precision (0.874); faithfulness stays ≥ 0.908 across all systems, confirming answers remain evidence-grounded.
 
 **Latency Breakdown:**
 
 | Stage | Uncached | Cached (300s TTL) |
 |---|---|---|
-| Query classification | <50ms | <50ms |
+| Agent tool selection + execution (1-2 rounds) | +2-8s | - |
 | ChromaDB retrieval | ~200ms | ~200ms |
 | Cross-encoder reranking | ~150ms | - |
 | LLM generation (first sample) | 5-8s | - |
 | Self-consistency (2 additional) | 2-5s (parallel) | - |
 | Reflexion | 2-4s | - |
 | Citation grounding | <100ms | - |
-| **Total** | **11-23s** | **<100ms** |
+| **Total** | **11-23s (baseline), +2-8s agentic** | **<100ms** |
 
-Self-consistency runs via `ThreadPoolExecutor` - 2 additional samples in parallel with the primary response. The first sample is reused as the primary response, so the user sees the initial answer immediately while confidence fusion completes in the background.
+Self-consistency runs via `ThreadPoolExecutor` - 2 additional samples in parallel with the primary response. The first sample is reused as the primary response, so the user sees the initial answer immediately while confidence fusion completes in the background. Latency figures are pre-retrofit measurements; the RAGAS quality scores above come from the committed eval baseline. For re-measured agent latency from persisted traces, run `python -m backend.tests.eval.report`.
 
 ---
 
@@ -1117,7 +1141,7 @@ flowchart TD
     end
 
     subgraph CI_CD ["GitHub Actions"]
-        CI_PIPE["ci.yml<br/>1,402 tests + checkov<br/>pytest + vitest + TF"]
+        CI_PIPE["ci.yml<br/>1,438 tests + checkov<br/>pytest + vitest + TF"]
         CD_PIPE["cd.yml<br/>Terraform plan/apply<br/>ECS rolling update"]
         CD_GATE["cd-should-deploy.yml<br/>Path-based gate<br/>Skip on docs only"]
     end
@@ -1197,7 +1221,7 @@ flowchart TD
 
 ### Key Infrastructure Decisions
 
-- **All 10 production services + 3 test services** with health check cascading: backend API depends on PostgreSQL + Redis, consumer depends on Kafka + Redis + ChromaDB, frontend depends on API.
+- **All 13 production services + 4 test services** with health check cascading: backend API depends on PostgreSQL + Redis, consumer depends on Kafka + Redis + ChromaDB, frontend depends on API.
 - **7 named Docker volumes** for persistent data: PostgreSQL app data, PostgreSQL test data, ChromaDB index files, Ollama model cache, Kafka data, ZooKeeper-equivalent KRaft metadata, MLflow artifacts.
 - **Profile-based Compose separation** via `profiles: ["ml", "test"]` - production services start with `make all`, ML services with `make ml`, test services via `make test`.
 - **Kafka (KRaft)** runs without ZooKeeper - eliminates an entire cluster dependency, simplifies deployment, reduces resource usage. 7-day retention with gzip compression for cost-effective storage.
@@ -1222,16 +1246,16 @@ Key architectural decisions that shaped the platform, beyond what the Engineerin
 | **4-signal confidence fusion over single confidence** | LLM-only confidence, retrieval-only score | No single signal is reliable enough to trust alone. Retrieval can miss relevant chunks. LLM verbalized confidence is systematically overconfident. Self-consistency is expensive. Grounding is sparse. Fusing all 4 with Platt calibration produces calibrated confidence that degrades gracefully when any signal is missing. |
 | **SageMaker cross-check (not primary inference)** | SageMaker as primary, local model only | Local model inference is ~30ms (in-process joblib load). SageMaker adds ~100ms + network latency + cost ($0.046/hr for ml.t2.medium). Using SageMaker as a cross-check gives independent cloud-side validation of each prediction without making the system dependent on cloud availability. |
 | **PostgreSQL unified events/metrics (not separate databases)** | TimescaleDB for metrics, separate event store | PostgreSQL with proper indexing handles 100+ msg/sec with sub-100ms queries. The unified `v_unified_analysis` view provides the time-window semantics TimescaleDB hypertables enforce, without adding an extension dependency. If throughput grows 10×, adding `PARTITION BY RANGE` is a single DDL statement away. |
-| **Manual offset commits (not auto-commit)** | `enable.auto.commit=True` | Auto-commit can commit offsets before handler writes succeed → message loss on crash. Manual commits after handler success guarantee at-least-once delivery. Combined with hybrid dedup (Redis SET + LRU), the system achieves exactly-once semantics. |
+| **Manual offset commits (not auto-commit)** | `enable.auto.commit=True` | Auto-commit can commit offsets before handler writes succeed → message loss on crash. Manual commits after handler success guarantee at-least-once delivery; an in-memory 10k-LRU idempotency filter keyed by `message_id` approximates effectively-once within its window. Exactly-once would require Kafka transactions. |
 | **No ZooKeeper (pure KRaft)** | ZooKeeper-based Kafka | Eliminates an entire cluster dependency - fewer containers, less memory, simpler deployment, faster startup. KRaft metadata quorum handles controller election and metadata management without a separate system. |
 | **Platt calibration for RAG confidence** | Fixed thresholds only | LLM confidence is systematically miscalibrated. Platt scaling (logistic regression on 20 feedback samples) learns the mapping from fused scores to true correctness probability. ECE < 0.10 threshold triggers recalibration - ensures the system stays calibrated as data distribution shifts over time. |
-| **OLLAMA Cloud primary + OpenRouter fallback (not single provider)** | Single LLM provider (Ollama Cloud only) | 3-provider chain with context-aware degradation ensures the RAG system never returns a generic error. Each fallback degrades gracefully: smaller model → reduced context → structured extraction without LLM. Self-consistency and reflexion work at any tier. |
+| **Single LLM provider (W&B Serverless Inference)** | Ollama Cloud primary + OpenRouter fallback | One env-driven OpenAI-compatible endpoint (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) serves all LLM calls — the agent, generator, self-consistency, reflexion, and the RAGAS judge — so RAGAS deltas are retrieval-only. OpenRouter/Ollama-Cloud providers are dead and removed (not kept as fallback); a provider change is a `.env` edit, never a code change. On total outage the system degrades to structured log extraction (no LLM). |
 
 ---
 
 ## Testing & Quality
 
-**1,402 tests** across all layers - backend, frontend, E2E, and infrastructure - gated at every PR by GitHub Actions CI.
+**1,438 tests** across all layers - backend, frontend, E2E, and infrastructure - gated at every PR by GitHub Actions CI.
 
 **CI/CD Pipeline Flow:**
 
@@ -1245,7 +1269,7 @@ flowchart TD
     end
 
     subgraph BACKEND_TESTS ["Backend (pytest)"]
-        UNIT["Unit: 680+ tests<br/>pytest-cov<br/>mock Redis + Kafka"]
+        UNIT["Unit: 600+ tests<br/>pytest-cov<br/>mock Redis + Kafka"]
         INTEG["Integration: 40+ tests<br/>Real PostgreSQL<br/>Real Kafka fixtures"]
         SECURITY["Security: 26 tests<br/>SQL injection<br/>JWT tampering<br/>Auth bypass"]
         ML_RAG["ML + RAG: 170+ tests<br/>Model loading<br/>Feature extraction<br/>RAG pipeline"]
@@ -1298,7 +1322,7 @@ flowchart TD
 
 | Suite | Tests | Tools | CI Gate |
 |---|---|---|---|
-| Backend unit + integration | 923 | pytest (10 tiers), pytest-cov, mock Redis/Kafka | ✅ Required |
+| Backend unit + integration | 959 | pytest (10 tiers), pytest-cov, mock Redis/Kafka | ✅ Required |
 | Frontend component | 394 | vitest 4, @testing-library/react 16 | ✅ Required |
 | Playwright E2E | 10 | Playwright Chromium | ✅ Required |
 | Terraform IaC | 75 | terraform test (9 modules) | ✅ On terraform/ changes |
@@ -1307,8 +1331,8 @@ flowchart TD
 | IaC compliance | 5 | checkov (inline skips, baseline clean) | ✅ In CI lint job |
 
 ```bash
-make test              # Full test suite (1,402 tests)
-make test-backend      # Backend: 923 (pytest: 915 non-stress + 8 stress)
+make test              # Full test suite (1,438 tests)
+make test-backend      # Backend: 959 (pytest: 951 non-stress + 8 stress)
 make test-frontend     # Frontend: 394 (vitest 4)
 make test-e2e          # Playwright E2E (10 tests)
 make test-terraform    # Terraform test (75 IaC assertions)
@@ -1321,7 +1345,7 @@ make test-terraform    # Terraform test (75 IaC assertions)
 | Frontend test files | 41 suite files |
 | Terraform modules tested | 9 (VPC, ECR, Secrets, Monitoring, Kafka, RDS, IAM, ECS, Frontend) |
 
-### Backend Test Suite - 923 tests across 10 tiers
+### Backend Test Suite - 959 tests across 10 tiers
 
 ![Backend test suite output showing 915 non-stress tests passing with 82% coverage](docs/demos/pytest-output.png)
 
@@ -1389,7 +1413,7 @@ Services run on:
 
 Built for **NCR Atleos** as part of CS32002 Industrial Team Project, University of Dundee. See the [Project Report](docs/Project-Report.pdf) for the complete academic submission.
 
-> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion and calibration, the comprehensive test suite (923 backend + 394 frontend + 10 E2E + 75 Terraform = 1,402 tests), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
+> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion and calibration, the comprehensive test suite (959 backend + 394 frontend + 10 E2E + 75 Terraform = 1,438 tests), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
 
 ---
 
