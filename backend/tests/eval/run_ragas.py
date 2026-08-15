@@ -64,25 +64,25 @@ _stub.ChatVertexAI = type("ChatVertexAI", (), {})
 sys.modules.setdefault("langchain_community.chat_models.vertexai", _stub)
 # --------------------------------------------------------------------------
 
-from ragas import evaluate
-from ragas.dataset_schema import EvaluationDataset
-from ragas.embeddings.base import LangchainEmbeddingsWrapper
-from ragas.llms.base import llm_factory
-from ragas.metrics import (
+from ragas import evaluate  # noqa: E402  (after the ChatVertexAI shim above)
+from ragas.dataset_schema import EvaluationDataset  # noqa: E402
+from ragas.embeddings.base import LangchainEmbeddingsWrapper  # noqa: E402
+from ragas.llms.base import llm_factory  # noqa: E402
+from ragas.metrics import (  # noqa: E402
     LLMContextPrecisionWithReference,
     LLMContextRecall,
     AnswerRelevancy,
     Faithfulness,
 )
-from langchain_ollama import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings  # noqa: E402
 
-from backend.src.rag.config import config
-from openai import OpenAI
+from backend.src.rag.config import config  # noqa: E402
+from openai import OpenAI  # noqa: E402
 
 # ragas 0.4.x llm_factory requires a client instance (text-only mode removed).
 _judge_client = OpenAI(api_key=config.llm_api_key, base_url=config.llm_base_url)
-from backend.src.rag.agent_types import AgentMode
-from backend.tests.eval.systems import (
+from backend.src.rag.agent_types import AgentMode  # noqa: E402
+from backend.tests.eval.systems import (  # noqa: E402
     GOLDEN_SET_PATH,
     SYSTEMS,
     SystemResult,
