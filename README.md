@@ -205,11 +205,11 @@ flowchart TD
 | **Messaging** | Apache Kafka (KRaft) with gzip, acks=all, 7-day retention | Decouples ingestion from processing - zero data loss on restart, offset replay for backfill |
 | **RAG Pipeline** | LangChain + ChromaDB + cross-encoder reranking + 4-signal confidence fusion | Self-hosted vector store keeps data private; 4-signal fusion prevents hallucinated responses |
 | **MLOps** | MLflow v3 on AWS (RDS + S3) with champion aliases | Full experiment lineage, auto-retrain on corruption, 7 artifacts tracked per MLflow 3.x API |
-| **Deployment** | Terraform (10 modules, 118 resources) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 104 Terraform test assertions |
+| **Deployment** | Terraform (10 modules, 118 resources) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 75 Terraform test assertions |
 | **Data Storage** | PostgreSQL 16 with JSONB + unified events/metrics tables | Adding a log source = new parser - no schema changes, no detector modifications |
 | **Distributed Coordination** | 8 Redis patterns from a single connection pool | Rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics - all gracefully degrade |
-| **Container Strategy** | Multi-stage Docker + health check cascading | 10 services, 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
-| **Testing** | pytest (10 tiers) + vitest + Playwright + Terraform test + checkov | 1,393 tests across all layers, CI-gated at every PR |
+| **Container Strategy** | Multi-stage Docker + health check cascading | 17 services (13 production, 4 test), 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
+| **Testing** | pytest (10 tiers) + vitest + Playwright + Terraform test + checkov | 1,438 tests across all layers, CI-gated at every PR |
 
 ---
 
@@ -221,7 +221,7 @@ flowchart TD
 | | ATMs monitored | 10 ATMs + 3 Servers |
 | | Messages processed | 2.5M events, 100+ msgs/sec live |
 | | Tables / Views / Indexes | 10 + 3 + 14 |
-| | Docker services | 10 production + 3 test |
+| | Docker services | 13 production + 4 test |
 | | Terraform resources | 118 across 10 modules |
 | **ML & Detection** | Anomaly types | 7 known (A1-A7) + UNKNOWN |
 | | Detection layers | 3 (ML_ENSEMBLE + ZSCORE + HEURISTIC) + SageMaker cross-check |
@@ -233,7 +233,7 @@ flowchart TD
 | | Frontend pages | 9 (React 19 + Vite 8 + Tailwind v4) |
 | | Redis patterns | 8 distinct |
 | | LLM providers | 1 (W&B Serverless Inference) |
-| **Testing** | Total tests | 1,393 |
+| **Testing** | Total tests | 1,438 |
 | | Backend (pytest) | 959 across 10 tiers |
 | | Frontend (vitest) | 394 across 41 suites |
 | | E2E (Playwright) | 10 across 5 specs |
@@ -1141,7 +1141,7 @@ flowchart TD
     end
 
     subgraph CI_CD ["GitHub Actions"]
-        CI_PIPE["ci.yml<br/>1,393 tests + checkov<br/>pytest + vitest + TF"]
+        CI_PIPE["ci.yml<br/>1,438 tests + checkov<br/>pytest + vitest + TF"]
         CD_PIPE["cd.yml<br/>Terraform plan/apply<br/>ECS rolling update"]
         CD_GATE["cd-should-deploy.yml<br/>Path-based gate<br/>Skip on docs only"]
     end
@@ -1221,7 +1221,7 @@ flowchart TD
 
 ### Key Infrastructure Decisions
 
-- **All 10 production services + 3 test services** with health check cascading: backend API depends on PostgreSQL + Redis, consumer depends on Kafka + Redis + ChromaDB, frontend depends on API.
+- **All 13 production services + 4 test services** with health check cascading: backend API depends on PostgreSQL + Redis, consumer depends on Kafka + Redis + ChromaDB, frontend depends on API.
 - **7 named Docker volumes** for persistent data: PostgreSQL app data, PostgreSQL test data, ChromaDB index files, Ollama model cache, Kafka data, ZooKeeper-equivalent KRaft metadata, MLflow artifacts.
 - **Profile-based Compose separation** via `profiles: ["ml", "test"]` - production services start with `make all`, ML services with `make ml`, test services via `make test`.
 - **Kafka (KRaft)** runs without ZooKeeper - eliminates an entire cluster dependency, simplifies deployment, reduces resource usage. 7-day retention with gzip compression for cost-effective storage.
@@ -1246,7 +1246,7 @@ Key architectural decisions that shaped the platform, beyond what the Engineerin
 | **4-signal confidence fusion over single confidence** | LLM-only confidence, retrieval-only score | No single signal is reliable enough to trust alone. Retrieval can miss relevant chunks. LLM verbalized confidence is systematically overconfident. Self-consistency is expensive. Grounding is sparse. Fusing all 4 with Platt calibration produces calibrated confidence that degrades gracefully when any signal is missing. |
 | **SageMaker cross-check (not primary inference)** | SageMaker as primary, local model only | Local model inference is ~30ms (in-process joblib load). SageMaker adds ~100ms + network latency + cost ($0.046/hr for ml.t2.medium). Using SageMaker as a cross-check gives independent cloud-side validation of each prediction without making the system dependent on cloud availability. |
 | **PostgreSQL unified events/metrics (not separate databases)** | TimescaleDB for metrics, separate event store | PostgreSQL with proper indexing handles 100+ msg/sec with sub-100ms queries. The unified `v_unified_analysis` view provides the time-window semantics TimescaleDB hypertables enforce, without adding an extension dependency. If throughput grows 10×, adding `PARTITION BY RANGE` is a single DDL statement away. |
-| **Manual offset commits (not auto-commit)** | `enable.auto.commit=True` | Auto-commit can commit offsets before handler writes succeed → message loss on crash. Manual commits after handler success guarantee at-least-once delivery. Combined with hybrid dedup (Redis SET + LRU), the system achieves exactly-once semantics. |
+| **Manual offset commits (not auto-commit)** | `enable.auto.commit=True` | Auto-commit can commit offsets before handler writes succeed → message loss on crash. Manual commits after handler success guarantee at-least-once delivery; an in-memory 10k-LRU idempotency filter keyed by `message_id` approximates effectively-once within its window. Exactly-once would require Kafka transactions. |
 | **No ZooKeeper (pure KRaft)** | ZooKeeper-based Kafka | Eliminates an entire cluster dependency - fewer containers, less memory, simpler deployment, faster startup. KRaft metadata quorum handles controller election and metadata management without a separate system. |
 | **Platt calibration for RAG confidence** | Fixed thresholds only | LLM confidence is systematically miscalibrated. Platt scaling (logistic regression on 20 feedback samples) learns the mapping from fused scores to true correctness probability. ECE < 0.10 threshold triggers recalibration - ensures the system stays calibrated as data distribution shifts over time. |
 | **Single LLM provider (W&B Serverless Inference)** | Ollama Cloud primary + OpenRouter fallback | One env-driven OpenAI-compatible endpoint (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) serves all LLM calls — the agent, generator, self-consistency, reflexion, and the RAGAS judge — so RAGAS deltas are retrieval-only. OpenRouter/Ollama-Cloud providers are dead and removed (not kept as fallback); a provider change is a `.env` edit, never a code change. On total outage the system degrades to structured log extraction (no LLM). |
@@ -1255,7 +1255,7 @@ Key architectural decisions that shaped the platform, beyond what the Engineerin
 
 ## Testing & Quality
 
-**1,393 tests** across all layers - backend, frontend, E2E, and infrastructure - gated at every PR by GitHub Actions CI.
+**1,438 tests** across all layers - backend, frontend, E2E, and infrastructure - gated at every PR by GitHub Actions CI.
 
 **CI/CD Pipeline Flow:**
 
@@ -1331,7 +1331,7 @@ flowchart TD
 | IaC compliance | 5 | checkov (inline skips, baseline clean) | ✅ In CI lint job |
 
 ```bash
-make test              # Full test suite (1,393 tests)
+make test              # Full test suite (1,438 tests)
 make test-backend      # Backend: 959 (pytest: 951 non-stress + 8 stress)
 make test-frontend     # Frontend: 394 (vitest 4)
 make test-e2e          # Playwright E2E (10 tests)
@@ -1413,7 +1413,7 @@ Services run on:
 
 Built for **NCR Atleos** as part of CS32002 Industrial Team Project, University of Dundee. See the [Project Report](docs/Project-Report.pdf) for the complete academic submission.
 
-> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion and calibration, the comprehensive test suite (959 backend + 394 frontend + 10 E2E + 30 Terraform = 1,393 tests), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
+> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion and calibration, the comprehensive test suite (959 backend + 394 frontend + 10 E2E + 75 Terraform = 1,438 tests), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
 
 ---
 
