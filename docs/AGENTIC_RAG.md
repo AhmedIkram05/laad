@@ -62,26 +62,26 @@ The MCP server is a real, network-reachable service (not a library call) —
 any MCP client can attach to it directly:
 
 ```bash
-docker compose up -d mcp-server          # starts SSE transport on port 8001 (container)
+docker compose up -d mcp-server          # starts Streamable HTTP transport on port 8001 (container)
 ```
 
 - The compose service publishes **host port 8002** → container 8001 (host 8001
   is taken by chromadb's `8001:8000` mapping), so external clients connect to
-  `http://localhost:8002/sse`.
+  `http://localhost:8002/mcp`.
 - Internal consumers (`backend`, `pytest` services) use
-  `MCP_SERVER_URL=http://mcp-server:8001/sse` over the compose network —
+  `MCP_SERVER_URL=http://mcp-server:8001/mcp` over the compose network —
   unchanged.
 - To inspect the tools interactively:
 
   ```bash
-  npx @modelcontextprotocol/inspector http://localhost:8002/sse
+  npx @modelcontextprotocol/inspector http://localhost:8002/mcp
   # or point any MCP client (Claude Desktop, Codex, ...) at the same URL
   ```
 
 - Healthcheck: `python -c 'import socket; socket.create_connection(("localhost", 8001), 2)'`
   (container-side).
 
-`adapter.get_langchain_tools()` uses the SSE transport whenever
+`adapter.get_langchain_tools()` uses the Streamable HTTP transport whenever
 `MCP_SERVER_URL` is set; without it (unit tests, `--smoke`), it falls back to
 an in-process session against the same `FastMCP` instance.
 

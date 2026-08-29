@@ -10,6 +10,7 @@
 <a href="https://kafka.apache.org/"><img src="https://img.shields.io/badge/Kafka-231F20?style=for-the-badge&labelColor=000000&logo=apachekafka"></a>
 <a href="https://redis.io/"><img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&labelColor=000000&logo=redis"></a>
 <a href="https://www.chromadb.com/"><img src="https://img.shields.io/badge/ChromaDB-000000?style=for-the-badge&labelColor=5F3DC8"></a>
+<a href="https://docs.ragas.io/"><img src="https://img.shields.io/badge/RAGAS-0078D4?style=for-the-badge&labelColor=000000"></a>
 <a href="https://nginx.org/"><img src="https://img.shields.io/badge/Nginx-009639?style=for-the-badge&labelColor=000000&logo=nginx"></a>
 <a href="https://xgboost.ai/"><img src="https://img.shields.io/badge/XGBoost-0052CC?style=for-the-badge&labelColor=000000"></a>
 <a href="https://scikit-learn.org/"><img src="https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&labelColor=000000&logo=scikitlearn"></a>

@@ -1,11 +1,10 @@
-"""LAAD MCP server: exposes RAG + structured data tools to agents via SSE/stdio.
+"""LAAD MCP server: exposes RAG + structured data tools to agents via Streamable HTTP/stdio.
 
-Run standalone:  python -m backend.src.mcp.server --transport sse
+Run standalone:  python -m backend.src.mcp.server --transport http
 """
 from __future__ import annotations
 
 import argparse
-import asyncio
 
 from mcp.server.fastmcp import FastMCP
 
@@ -18,14 +17,10 @@ for _tool in ALL_TOOLS:
 
 
 def main() -> None:
-    # host/port are constructor args on FastMCP (run_sse_async only takes mount_path).
     parser = argparse.ArgumentParser(description="LAAD MCP server")
-    parser.add_argument("--transport", choices=["sse", "stdio"], default="sse")
+    parser.add_argument("--transport", choices=["http", "stdio"], default="http")
     args = parser.parse_args()
-    if args.transport == "sse":
-        asyncio.run(mcp.run_sse_async())
-    else:
-        asyncio.run(mcp.run_stdio_async())
+    mcp.run(transport="streamable-http" if args.transport == "http" else "stdio")
 
 
 if __name__ == "__main__":
