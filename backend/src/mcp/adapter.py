@@ -1,7 +1,7 @@
 """Adapter: expose the LAAD MCP server's tools to LangChain/LangGraph.
 
 Transport resolution:
-  - MCP_SERVER_URL set (compose prod): connect over the wire via sse_client.
+  - MCP_SERVER_URL set (compose prod): connect over the wire via streamable_http_client.
   - MCP_SERVER_URL unset/empty (tests, local dev): in-process connection
     through mcp.shared.memory — same ClientSession API, no network.
 
@@ -13,7 +13,7 @@ import os
 
 from langchain_mcp_adapters.tools import convert_mcp_tool_to_langchain_tool
 from mcp import ClientSession
-from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from backend.src.mcp.server import mcp as _mcp
@@ -30,8 +30,8 @@ async def get_langchain_tools() -> list:
         return _shared[1]
     url = os.getenv("MCP_SERVER_URL", "")
     if url:
-        cm = sse_client(url)
-        read, write = await cm.__aenter__()
+        cm = streamable_http_client(url)
+        read, write, _ = await cm.__aenter__()
         session = await ClientSession(read, write).__aenter__()
     else:
         cm = create_connected_server_and_client_session(_mcp._mcp_server)

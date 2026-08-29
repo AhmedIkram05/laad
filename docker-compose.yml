@@ -173,7 +173,7 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-https://api.inference.wandb.ai/v1}
       - LLM_API_KEY=${WANDB_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-google/gemma-4-31B-it}
-      - MCP_SERVER_URL=http://mcp-server:8001/sse
+      - MCP_SERVER_URL=http://mcp-server:8001/mcp
       - RAG_TOP_K=${RAG_TOP_K:-3}
       - RAG_SAMPLES=${RAG_SAMPLES:-3}
       - RAG_TEMPERATURE=${RAG_TEMPERATURE:-0.6}
@@ -207,10 +207,10 @@ services:
 
   mcp-server:
     build: ./backend
-    command: python -m backend.src.mcp.server --transport sse
+    command: python -m backend.src.mcp.server --transport http
     ports:
-      # Host port 8001 is taken by chromadb (8001:8000); SSE stays on container
-      # port 8001, so internal MCP_SERVER_URL=http://mcp-server:8001/sse is unchanged.
+      # Host port 8001 is taken by chromadb (8001:8000); the server stays on
+      # container port 8001, so internal MCP_SERVER_URL=http://mcp-server:8001/mcp is unchanged.
       - "8002:8001"
     environment:
       - CHROMA_HOST=chromadb
@@ -349,7 +349,7 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-https://api.inference.wandb.ai/v1}
       - LLM_API_KEY=${WANDB_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-google/gemma-4-31B-it}
-      - MCP_SERVER_URL=http://mcp-server:8001/sse
+      - MCP_SERVER_URL=http://mcp-server:8001/mcp
       - RAG_TOP_K=${RAG_TOP_K:-3}
       - RAG_SAMPLES=${RAG_SAMPLES:-3}
       - RAG_TEMPERATURE=${RAG_TEMPERATURE:-0.6}
