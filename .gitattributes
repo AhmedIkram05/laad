@@ -1,0 +1,6 @@
+# Linguist: ensure SQL is tracked (Postgres schema + migrations)
+*.sql linguist-language=SQL
+
+# Docs / demos are not code
+docs/** linguist-documentation=true
+frontend/dist/** linguist-generated=true
