@@ -169,3 +169,21 @@ checkov:
 	python3 scripts/checkov-compliance.py
 	@echo ""
 	@echo "✓ checkov compliance checks complete!"
+
+# ── Upload Coverage ─────────────────────────────────────────────────────────
+
+# Push full-suite coverage.xml (produced by `make test-backend`) to Codecov for
+# the current HEAD. Merges with CI's fast uploads, so the badge reflects true
+# coverage. Requires: export CODECOV_TOKEN=<repo upload token> and a pushed commit.
+coverage-upload:
+	@command -v codecov >/dev/null 2>&1 || (echo "==> Installing Codecov CLI..." && curl -sL --retry 3 --retry-all-errors https://cli.codecov.io/latest/macos/codecov -o /usr/local/bin/codecov && chmod +x /usr/local/bin/codecov)
+	@test -f backend/coverage.xml || (echo "!! backend/coverage.xml missing — run make test-backend first" && exit 1)
+	@test -n "$(CODECOV_TOKEN)" || (echo "!! CODECOV_TOKEN not set" && exit 1)
+	@echo "==> Uploading coverage for $$(git rev-parse --short HEAD)..."
+	@sed 's|/app/backend|backend|g' backend/coverage.xml > /tmp/coverage-clean.xml
+	@codecov create-commit -t "$(CODECOV_TOKEN)" --git-service github -C $$(git rev-parse HEAD) -B $$(git rev-parse --abbrev-ref HEAD) && \
+	codecov create-report -t "$(CODECOV_TOKEN)" -C $$(git rev-parse HEAD) && \
+	codecov do-upload -t "$(CODECOV_TOKEN)" -C $$(git rev-parse HEAD) -F backend -f /tmp/coverage-clean.xml
+	@rm -f /tmp/coverage-clean.xml
+	@echo ""
+	@echo "✓ Coverage uploaded! Badge updates in a few minutes."
