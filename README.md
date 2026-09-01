@@ -36,11 +36,9 @@
 <a href="https://codecov.io/gh/AhmedIkram05/laad"><img src="https://codecov.io/gh/AhmedIkram05/laad/branch/main/graph/badge.svg" alt="Codecov"></a>
 </p>
 
-**This is my work.** The CS32002 Industrial Project (for NCR Atleos) team submission [foundation](docs/README-full.md#team) was rule-based detection and a single-script generator writing straight to the database. The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,438-test suite, the 30-endpoint API, and the entire AWS estate were designed, built, and deployed by me - Ahmed Ikram - as an independent post-submission extension.
-
 ![Detected anomalies across ATM and server systems, prioritised by criticality score](docs/demos/detection-engine.gif)
 
-## How it fits together
+## How It Fits Together
 
 ```mermaid
 flowchart LR
@@ -69,6 +67,27 @@ flowchart LR
 | **React dashboard** | 9 pages, KPI cards polling every 5s, Chart.js analytics, served via CloudFront in production |
 | **Agentic RAG** | LangGraph assistant with 12 MCP tools and 4-stage reasoning over the same unified data |
 | **SageMaker** | `laad-xgb-champion` (XGBoost 1.7-1, `ml.t2.medium`): 8-class softmax in ~100ms, live-validating detector output |
+
+## Why It's Interesting
+
+| Highlight | Why It Matters |
+| --- | --- |
+| **Effectively-once Kafka, without Kafka transactions** | Manual offset commits + a 10K-LRU idempotency filter keyed by `message_id` give at-least-once delivery with effectively-once semantics inside the window. [Deep dive](docs/README-full.md#kafka-message-bus) |
+| **A confidence system that knows when it's wrong** | Four signals fused and Platt-calibrated; when calibration error drifts above ECE 0.10 it auto-triggers recalibration - the assistant degrades gracefully instead of faking certainty. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) |
+| **Two models that answer two different questions** | XGBoost classifies the 8 known anomaly classes; the Isolation Forest sidecar separately flags "something is off, but it's not one of the known shapes" - a distinction most anomaly projects skip. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1) |
+| **SageMaker as a cross-check, not a crutch** | Local inference in ~30ms keeps detection independent of the cloud; SageMaker (~100ms) adds an external second opinion per prediction without ever becoming a hard dependency. |
+
+## Key Metrics
+
+| Metric | Value |
+| --- | --- |
+| Anomaly detection | XGBoost 8-class CV **99.8%** (±0.1%, 868K rows) · Isolation Forest **97.3%** precision, F1 0.70 |
+| RAG quality (RAGAS) | faithfulness **0.940** · precision **0.874** · relevancy **0.801** |
+| Throughput | **~100 msgs/sec** sustained on one consumer · **2.5M+** events processed |
+| API surface | **30 endpoints** across 6 routers |
+| Tests gating every PR | **1,438** (959 pytest · 394 vitest · 10 Playwright · 75 Terraform) + 26 security checks |
+| Infrastructure | **10 Terraform modules / 118 resources** on AWS: ECS Fargate, RDS, SageMaker, CloudFront, VPC |
+| Inference latency | local ~30ms · SageMaker cross-check ~100ms |
 
 ## AI - detection & diagnostics
 
@@ -114,18 +133,21 @@ flowchart LR
 
   ![Analytics dashboard: 56.9K events, 41 anomalies, 8 types detected](docs/demos/analytics.gif)
 
-## Trade-offs that mattered
+## Trade-offs That Mattered
 
 | Decision | Alternative | Why it won |
 | --- | --- | --- |
 | **3 detection layers, not ML-only** | ML-only, heuristic-only | Independent failure modes: ML catches the 8 known classes, Z-score catches drift, heuristics are the always-on net |
+| **XGBoost + Isolation Forest ensemble** | Single XGBoost, LSTM | XGBoost scores the 8 known classes; the unsupervised sidecar catches novelty outside them - "known anomaly" vs "something's wrong" |
 | **4-signal confidence fusion + Platt calibration** | LLM verbalised or retrieval-only confidence | Any single signal misleads; fusion with calibration degrades gracefully and resists hallucination |
 | **Kafka (KRaft) + manual offset commits** | Redis Pub/Sub, auto-commit | Disk persistence and offset replay; auto-commit risks message loss on crash |
+| **Self-hosted ChromaDB + local embeddings** | Pinecone, Weaviate | No per-vector API costs, log data never leaves the network, 768-dim embeddings via local Ollama |
+| **Unified PostgreSQL (no TimescaleDB)** | TimescaleDB for metrics | 100+ msg/s under 100ms queries without extension lock-in; `PARTITION BY RANGE` is one DDL away if throughput grows 10× |
 | **Entire AWS estate in Terraform** | Console/manual provisioning | Rebuildable in one run, state locked + versioned, 75 assertions in CI |
 
 All 11 recorded decisions with the full reasoning: [Design Decisions](docs/README-full.md#design-decisions)
 
-## Getting started
+## Quick Start
 
 ```bash
 git clone https://github.com/AhmedIkram05/laad.git && cd laad
@@ -140,8 +162,12 @@ Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `
 - **Everything, in full** - the complete 1,425-line document, preserved verbatim: [docs/README-full.md](docs/README-full.md)
 - [API reference](docs/api-reference.md) · [Configuration](docs/configuration.md) · [Anomaly detection guide](docs/anomaly_detection_guide.md) · [RAG evaluation](docs/eval/) · [Demos & media](docs/README-full.md#demos) · [Data dictionary](docs/Data%20Dictionary/) · [Academic project report](docs/Project-Report.pdf)
 
-## Related
+## About This Project
 
-- [DevSync](https://github.com/AhmedIkram05/DevSync) - project tracker, 541 automated tests (Go + React + PostgreSQL + GitHub OAuth)
-- [W3C-ETL-Pipeline](https://github.com/AhmedIkram05/W3C-ETL-Pipeline) - parallel Airflow ETL with Power BI analytics
-- [StockLens](https://github.com/AhmedIkram05/StockLens) - FinTech mobile app with OCR pipeline and ML forecasting
+Started as the CS32002 Industrial Team Project at the University of Dundee, built for **NCR Atleos** (team foundation: rule-based detection and a single-script generator). The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,438-test suite, the 30-endpoint API, and the entire AWS estate above were designed, built, and deployed by **Ahmed Ikram** as an independent post-submission extension. [Team breakdown](docs/README-full.md#team)
+
+## Related Projects
+
+- [DevSync](https://github.com/AhmedIkram05/DevSync) - full-stack project tracker with real-time collaboration and GitHub OAuth integration
+- [W3C-ETL-Pipeline](https://github.com/AhmedIkram05/W3C-ETL-Pipeline) - serverless Azure ETL: W3C web logs through Databricks DLT → dbt → Power BI
+- [StockLens](https://github.com/AhmedIkram05/StockLens) - FinTech mobile app: OCR receipt scanning, portfolio analytics, LSTM forecasting, self-built MCP server

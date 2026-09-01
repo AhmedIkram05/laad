@@ -1420,6 +1420,6 @@ Built for **NCR Atleos** as part of CS32002 Industrial Team Project, University 
 
 ## Related Projects
 
-- [DevSync - Project Tracker with GitHub Integration](https://github.com/AhmedIkram05/DevSync) - full-stack cloud app with 541 automated tests (Go + React + PostgreSQL + GitHub OAuth)
+- [DevSync](https://github.com/AhmedIkram05/DevSync) - full-stack project tracker with real-time collaboration and GitHub OAuth integration
 - [W3C Web Logs ETL Pipeline](https://github.com/AhmedIkram05/W3C-ETL-Pipeline) - parallel Airflow ETL with Power BI analytics (Python + Airflow + PostgreSQL + Power BI)
 - [StockLens FinTech App](https://github.com/AhmedIkram05/StockLens) - full-stack mobile app with OCR pipeline and ML forecasting (React Native + Python + MongoDB + MLflow)
