@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Anomaly Detection & Diagnostics Platform (LAAD)
 
-> A production-grade ATM log aggregation, multi-layer anomaly detection, and AI-assisted diagnostics platform - from Kafka ingestion through 3-layer ML/statistical/heuristic detection to a React dashboard and Agentic Hybrid RAG assistant - deployed on AWS ECS Fargate with SageMaker inference.
+> An ATM log aggregation, multi-layer anomaly detection, and AI-assisted diagnostics platform - from Kafka ingestion through 3-layer ML/statistical/heuristic detection to a React dashboard and Agentic Hybrid RAG assistant - deployed on AWS ECS Fargate with SageMaker inference.
 
 <p align="center">
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python"></a>
@@ -209,7 +209,7 @@ flowchart TD
 | **Deployment** | Terraform (10 modules, 118 resources) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 75 Terraform test assertions |
 | **Data Storage** | PostgreSQL 16 with JSONB + unified events/metrics tables | Adding a log source = new parser - no schema changes, no detector modifications |
 | **Distributed Coordination** | 8 Redis patterns from a single connection pool | Rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics - all gracefully degrade |
-| **Container Strategy** | Multi-stage Docker + health check cascading | 17 services (13 production, 4 test), 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
+| **Container Strategy** | Multi-stage Docker + health check cascading | 17 services (13 app, 4 test), 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
 | **Testing** | pytest (10 tiers) + vitest + Playwright + Terraform test + checkov | 1,438 tests across all layers, CI-gated at every PR |
 
 ---
@@ -222,7 +222,7 @@ flowchart TD
 | | ATMs monitored | 10 ATMs + 3 Servers |
 | | Messages processed | 2.5M events, 100+ msgs/sec live |
 | | Tables / Views / Indexes | 10 + 3 + 14 |
-| | Docker services | 13 production + 4 test |
+| | Docker services | 13 app + 4 test |
 | | Terraform resources | 118 across 10 modules |
 | **ML & Detection** | Anomaly types | 7 known (A1-A7) + UNKNOWN |
 | | Detection layers | 3 (ML_ENSEMBLE + ZSCORE + HEURISTIC) + SageMaker cross-check |
@@ -356,7 +356,7 @@ Apache Kafka (KRaft mode, no ZooKeeper) serves as the central message bus, decou
 1. **Poll** - `consumer.poll(timeout_ms=1000)` fetches up to 500 records from assigned partitions
 2. **Deserialize** - Each record is parsed from UTF-8 JSON. Malformed messages route immediately to the Dead Letter Queue
 3. **Hybrid Deduplication** - Each `message_id` (UUID4) is checked against Redis SET (1h TTL) and an in-memory 10K LRU OrderedDict. If found in either → skip. If new → add to both and proceed
-4. **Topic Routing** - `atm-events` → `event_handler.py` (parses 7 event types — see [Data Dictionary](docs/Data Dictionary/) for schema definitions, writes to PostgreSQL `events` table + ChromaDB buffer). `atm-metrics` → `metric_handler.py` (writes to PostgreSQL `metrics` table)
+4. **Topic Routing** - `atm-events` → `event_handler.py` (parses 7 event types - see [Data Dictionary](docs/Data Dictionary/) for schema definitions, writes to PostgreSQL `events` table + ChromaDB buffer). `atm-metrics` → `metric_handler.py` (writes to PostgreSQL `metrics` table)
 5. **Manual Commit** - Only after both handler writes succeed. If the handler fails, the consumer does NOT commit, and the message is reprocessed on next poll
 6. **Dead Letter Queue** - Failed messages (max 3 retries, 5s→10s→20s exponential backoff) are stored in a Redis Stream for manual inspection and replay
 
@@ -774,7 +774,7 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 2. **Registration** → Models registered as `atm-xgb-classifier` and `atm-isolation-forest` in MLflow Model Registry
 3. **Champion Alias** → Best-performing run gets `champion` alias (MLflow 3.x API - replaces deprecated stage-based promotion)
 4. **Artifact Storage** → Model binaries stored in S3 bucket (`laad-mlflow-artifacts`), versioned automatically
-5. **Loading** → Production code loads via `mlflow.pyfunc.load_model()` or direct `joblib` download from S3
+5. **Loading** → Model serving loads via `mlflow.pyfunc.load_model()` or direct `joblib` download from S3
 6. **Auto-Retrain** → On startup, if artifacts are missing or corrupted, the system auto-launches retraining with the same pipeline
 7. **Git Integration** → Every training run is tagged with the Git commit SHA for full reproducibility
 
@@ -782,7 +782,7 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 
 ### Agentic Hybrid RAG Diagnostic Assistant
 
-An agentic hybrid RAG system: a LangGraph agent over 12 MCP tools routes retrieval between vector search, structured metric/anomaly queries, and the knowledge base, then the generator applies 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) with multi-signal confidence fusion. Exposed via `POST /api/rag/agent` in two modes — `hybrid` (deterministic tool selection) and `agentic` (free-form agent routing with grounding-gated re-retrieval). Uses a single env-driven OpenAI-compatible LLM provider — W&B Serverless Inference by default (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) — for all LLM calls (agent, generator, self-consistency, reflexion, RAGAS judge), so evaluation deltas are retrieval-only. Designed for diagnostic conversations around ATM anomalies - users ask about specific anomaly IDs, entities, time ranges, or symptoms.
+An agentic hybrid RAG system: a LangGraph agent over 12 MCP tools routes retrieval between vector search, structured metric/anomaly queries, and the knowledge base, then the generator applies 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) with multi-signal confidence fusion. Exposed via `POST /api/rag/agent` in two modes - `hybrid` (deterministic tool selection) and `agentic` (free-form agent routing with grounding-gated re-retrieval). Uses a single env-driven OpenAI-compatible LLM provider - W&B Serverless Inference by default (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) - for all LLM calls (agent, generator, self-consistency, reflexion, RAGAS judge), so evaluation deltas are retrieval-only. Designed for diagnostic conversations around ATM anomalies - users ask about specific anomaly IDs, entities, time ranges, or symptoms.
 
 **Why ChromaDB over Pinecone?** Self-hosted in Docker - no per-vector API costs, 50K+ docs fit in RAM, log data never leaves the network. Local Ollama embedding (`nomic-embed-text`, 768-dim) eliminates network round-trip.
 
@@ -894,9 +894,9 @@ Request `AgentQueryRequest { query, mode (hybrid|agentic), atm_id? }`, response 
 
 **Evaluation & CI:**
 
-RAGAS 0.4.x evaluation over a 50-query golden set (5 categories × 10: semantic, structured, hybrid, multi-step, adversarial; 82% human-reviewed) across three systems — `baseline` (fixed retrieval, no agent), `hybrid` (agent, deterministic tools), `agentic` (agent + reflexion/self-consistency/grounding + D13 re-retrieval) — scored on `context_recall`, `faithfulness`, `llm_context_precision_with_reference`, `answer_relevancy`. `make eval-ragas` runs the harness (`FLAGS` passthrough: `--fast`, `--limit N`, `--refresh-baseline`, `--baseline`); `python -m backend.tests.eval.report` renders global/per-category tables, agent metrics (tool-selection accuracy, retrieval efficiency, retry rate, est. cost/query), the adversarial pass/fail matrix, and cost-vs-quality. A guardrail suite (G1-G17) covers rate limit, sanitization, cache-key scoping, truncation backstop, and no-answer paths. The CI gate (`.github/workflows/eval-gate.yml`) runs the eval on PRs and `main`, compares against the committed `docs/eval/baseline.json` (fails on faithfulness < 0.5, context_recall < 0.3, or any drop > 0.05), and uploads `eval_results/`; it is neutral (green) without a `WANDB_API_KEY` secret.
+RAGAS 0.4.x evaluation over a 50-query golden set (5 categories × 10: semantic, structured, hybrid, multi-step, adversarial; 82% human-reviewed) across three systems - `baseline` (fixed retrieval, no agent), `hybrid` (agent, deterministic tools), `agentic` (agent + reflexion/self-consistency/grounding + D13 re-retrieval) - scored on `context_recall`, `faithfulness`, `llm_context_precision_with_reference`, `answer_relevancy`. `make eval-ragas` runs the harness (`FLAGS` passthrough: `--fast`, `--limit N`, `--refresh-baseline`, `--baseline`); `python -m backend.tests.eval.report` renders global/per-category tables, agent metrics (tool-selection accuracy, retrieval efficiency, retry rate, est. cost/query), the adversarial pass/fail matrix, and cost-vs-quality. A guardrail suite (G1-G17) covers rate limit, sanitization, cache-key scoping, truncation backstop, and no-answer paths. The CI gate (`.github/workflows/eval-gate.yml`) runs the eval on PRs and `main`, compares against the committed `docs/eval/baseline.json` (fails on faithfulness < 0.5, context_recall < 0.3, or any drop > 0.05), and uploads `eval_results/`; it is neutral (green) without a `WANDB_API_KEY` secret.
 
-**Results (committed baseline, `docs/eval/baseline.json` — 20 queries per system):**
+**Results (committed baseline, `docs/eval/baseline.json` - 20 queries per system):**
 
 | System | context_recall | faithfulness | context_precision (w/ reference) | answer_relevancy |
 |---|---|---|---|---|
@@ -1000,7 +1000,7 @@ flowchart TD
 
 ### Frontend Architecture
 
-A production-grade React 19 SPA with Vite 8, Tailwind CSS v4 (beta), Chart.js, and 17 shadcn/ui components - served via multi-stage Docker (Node.js builder → nginx alpine, ~25MB final image).
+A React 19 SPA with Vite 8, Tailwind CSS v4 (beta), Chart.js, and 17 shadcn/ui components - served via multi-stage Docker (Node.js builder → nginx alpine, ~25MB final image).
 
 **Page & Component Hierarchy:**
 
@@ -1196,7 +1196,7 @@ flowchart TD
 | **Networking** | VPC (10.0.0.0/16), 2 public subnets, 2 private subnets, Internet Gateway, NAT Gateway, 2 AZs | All application traffic isolated in private subnets, outbound via NAT Gateway. Public subnets only for ALB and NAT Gateway. |
 | **Container Orchestration** | ECS Fargate cluster (2 services: API + Consumer), each with 2 desired tasks across AZs | Rolling update deployments, health check grace period, CloudWatch log groups per task. No EC2 nodes to manage. |
 | **Kafka + Supporting** | EC2 instance in private subnet hosting Kafka (KRaft), Redis 7, ChromaDB, Ollama | Single EC2 hosts 4 services. Kafka persists events with 7-day retention; Redis provides 8 distributed patterns; ChromaDB stores vector embeddings for RAG. |
-| **Databases** | RDS PostgreSQL 18.4 (MLflow tracking backend) + PostgreSQL 16 Docker (app database) | App DB on EC2 for cost optimisation, MLflow on RDS for production reliability with automated backups. 10 tables + 3 views + 14 indexes. |
+| **Databases** | RDS PostgreSQL 18.4 (MLflow tracking backend) + PostgreSQL 16 Docker (app database) | App DB on EC2 for cost optimisation, MLflow on RDS for reliability with automated backups. 10 tables + 3 views + 14 indexes. |
 | **Storage** | 3 S3 buckets: frontend hosting (static assets), MLflow artifacts (model binaries), Terraform state (infrastructure state) | Frontend bucket serves React app via CloudFront. MLflow artifacts bucket stores model files (XGBoost, Isolation Forest, scalers, encoders). Terraform state bucket is versioned with DynamoDB locking. |
 | **ML Inference** | SageMaker endpoint `laad-xgb-champion` on ml.t2.medium | XGBoost 1.7-1 container, 49-feature model, 8-class softmax probabilities (`multi:softprob`), ~100ms inference. CloudWatch logs enabled, model deployed from MLflow artifact store via automated upload script. |
 | **CDN** | CloudFront distribution backed by S3 origin | Edge caching for React frontend, HTTPS enforcement, custom error pages. Argo-powered CDN with origin shield. |
@@ -1222,11 +1222,11 @@ flowchart TD
 
 ### Key Infrastructure Decisions
 
-- **All 13 production services + 4 test services** with health check cascading: backend API depends on PostgreSQL + Redis, consumer depends on Kafka + Redis + ChromaDB, frontend depends on API.
+- **All 13 app services + 4 test services** with health check cascading: backend API depends on PostgreSQL + Redis, consumer depends on Kafka + Redis + ChromaDB, frontend depends on API.
 - **7 named Docker volumes** for persistent data: PostgreSQL app data, PostgreSQL test data, ChromaDB index files, Ollama model cache, Kafka data, ZooKeeper-equivalent KRaft metadata, MLflow artifacts.
-- **Profile-based Compose separation** via `profiles: ["ml", "test"]` - production services start with `make all`, ML services with `make ml`, test services via `make test`.
+- **Profile-based Compose separation** via `profiles: ["ml", "test"]` - app services start with `make all`, ML services with `make ml`, test services via `make test`.
 - **Kafka (KRaft)** runs without ZooKeeper - eliminates an entire cluster dependency, simplifies deployment, reduces resource usage. 7-day retention with gzip compression for cost-effective storage.
-- **Secrets injection** via AWS Secrets Manager → ECS task definition `secrets` block - 8 secrets mapped as environment variables at container start. No `.env` files in production.
+- **Secrets injection** via AWS Secrets Manager → ECS task definition `secrets` block - 8 secrets mapped as environment variables at container start. No `.env` files in ECS.
 - **CI/CD auth** via GitHub Actions OIDC (`AssumeRoleWithWebIdentity`) - no long-lived AWS credentials in CI. Terraform state locked via DynamoDB, versioned via S3.
 - **SageMaker cross-check** validated with `InvokeEndpoint` returning 8-class softmax probabilities. Model saved in JSON format (not UBJSON) to maintain compatibility with SageMaker XGBoost 1.7-1 container.
 - **Auto-retrain on startup** when model artifacts are missing or corrupted - MLflow champion alias always points to latest valid model.
@@ -1250,7 +1250,7 @@ Key architectural decisions that shaped the platform, beyond what the Engineerin
 | **Manual offset commits (not auto-commit)** | `enable.auto.commit=True` | Auto-commit can commit offsets before handler writes succeed → message loss on crash. Manual commits after handler success guarantee at-least-once delivery; an in-memory 10k-LRU idempotency filter keyed by `message_id` approximates effectively-once within its window. Exactly-once would require Kafka transactions. |
 | **No ZooKeeper (pure KRaft)** | ZooKeeper-based Kafka | Eliminates an entire cluster dependency - fewer containers, less memory, simpler deployment, faster startup. KRaft metadata quorum handles controller election and metadata management without a separate system. |
 | **Platt calibration for RAG confidence** | Fixed thresholds only | LLM confidence is systematically miscalibrated. Platt scaling (logistic regression on 20 feedback samples) learns the mapping from fused scores to true correctness probability. ECE < 0.10 threshold triggers recalibration - ensures the system stays calibrated as data distribution shifts over time. |
-| **Single LLM provider (W&B Serverless Inference)** | Ollama Cloud primary + OpenRouter fallback | One env-driven OpenAI-compatible endpoint (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) serves all LLM calls — the agent, generator, self-consistency, reflexion, and the RAGAS judge — so RAGAS deltas are retrieval-only. OpenRouter/Ollama-Cloud providers are dead and removed (not kept as fallback); a provider change is a `.env` edit, never a code change. On total outage the system degrades to structured log extraction (no LLM). |
+| **Single LLM provider (W&B Serverless Inference)** | Ollama Cloud primary + OpenRouter fallback | One env-driven OpenAI-compatible endpoint (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) serves all LLM calls - the agent, generator, self-consistency, reflexion, and the RAGAS judge - so RAGAS deltas are retrieval-only. OpenRouter/Ollama-Cloud providers are dead and removed (not kept as fallback); a provider change is a `.env` edit, never a code change. On total outage the system degrades to structured log extraction (no LLM). |
 
 ---
 
@@ -1391,7 +1391,7 @@ Default credentials: username=`admin`, password=`admin`
 
 > For a full reference of all configuration parameters (generator, Kafka, Redis, ML, RAG, Docker), see the [Configuration Reference](docs/configuration.md).
 
-**Production-like frontend deployment:** Multi-stage Docker build (Node.js builder → nginx alpine, no Node.js at runtime), all assets minified + hashed filenames, nginx reverse proxy replicates Vite's `/api/*` rewrite logic.
+**Frontend deployment:** Multi-stage Docker build (Node.js builder → nginx alpine, no Node.js at runtime), all assets minified + hashed filenames, nginx reverse proxy replicates Vite's `/api/*` rewrite logic.
 
 Services run on:
 
