@@ -42,19 +42,38 @@
 
 ```mermaid
 flowchart LR
-  S[7 log sources] --> K["Kafka (KRaft)"]
-  K --> D[3-layer detection]
-  K --> P[(PostgreSQL + ChromaDB)]
-  D --> A[FastAPI · 30 endpoints]
+  subgraph SRC["Sources"]
+    S[7 log sources]
+  end
+  subgraph STREAM["Streaming + state"]
+    K["Kafka (KRaft)"]
+    R[(Redis<br/>dedup + DLQ)]
+  end
+  subgraph DETECT["Detection + storage"]
+    D[3-layer detection]
+    M[SageMaker cross-check]
+    P[(PostgreSQL + ChromaDB)]
+  end
+  subgraph SERVE["Serving"]
+    A[FastAPI · 30 endpoints]
+    CF[CloudFront]
+    F[React dashboard]
+    G[Agentic RAG assistant]
+  end
+  S --> K
+  K --> D
+  K --> P
+  K --> R
+  M --> D
+  D --> A
   P --> A
-  M[SageMaker cross-check] --> D
-  A --> F[React dashboard]
-  A --> R[Agentic RAG assistant]
+  A --> CF --> F
+  A --> G
 ```
 
 7 log sources → Kafka (gzip, acks=all) → deduplicated, parsed, dual-written to PostgreSQL + ChromaDB. A 3-layer detector runs every 30s with live SageMaker cross-check; FastAPI serves the dashboard and the RAG assistant. Full 30-node topology: [System Architecture](docs/README-full.md#system-architecture).
 
-**Every piece, in one line:**
+## Every Piece, in One Line
 
 | Component | What it does |
 | --- | --- |
