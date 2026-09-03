@@ -1,4 +1,5 @@
 """Curated knowledge + collection-info tools (deterministic, no DB)."""
+
 from __future__ import annotations
 
 from backend.src.rag.retriever import get_retriever

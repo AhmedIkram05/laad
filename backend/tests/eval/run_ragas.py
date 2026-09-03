@@ -9,6 +9,7 @@ Usage (inside the pytest container, after seeding):
                                            [--refresh-baseline]
                                            [--out results.json]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,18 +42,33 @@ if "--fast" in sys.argv or "--smoke" in sys.argv:
 # --smoke wiring check: a hard-coded mini-set (no golden set dependency) that
 # exercises all three systems and asserts a score dict (plan §7.5).
 _SMOKE_QUERIES = [
-    {"id": "smoke-semantic", "query": "What is the status of ATM-GB-0001?",
-     "reference_answer": "ATM-GB-0001 is operational.",
-     "expected_tools": ["search_knowledge"], "atm_id": "ATM-GB-0001",
-     "query_type": "diagnostic", "category": "semantic"},
-    {"id": "smoke-structured", "query": "Show the top memory consumers in the last hour.",
-     "reference_answer": "Top consumers listed.",
-     "expected_tools": ["query_anomalies"], "atm_id": None,
-     "query_type": "stats", "category": "structured"},
-    {"id": "smoke-hybrid", "query": "Are there anomalies around ATM-GB-0002?",
-     "reference_answer": "Anomalies found.",
-     "expected_tools": ["search_knowledge", "query_anomalies"],
-     "atm_id": "ATM-GB-0002", "query_type": "diagnostic", "category": "hybrid"},
+    {
+        "id": "smoke-semantic",
+        "query": "What is the status of ATM-GB-0001?",
+        "reference_answer": "ATM-GB-0001 is operational.",
+        "expected_tools": ["search_knowledge"],
+        "atm_id": "ATM-GB-0001",
+        "query_type": "diagnostic",
+        "category": "semantic",
+    },
+    {
+        "id": "smoke-structured",
+        "query": "Show the top memory consumers in the last hour.",
+        "reference_answer": "Top consumers listed.",
+        "expected_tools": ["query_anomalies"],
+        "atm_id": None,
+        "query_type": "stats",
+        "category": "structured",
+    },
+    {
+        "id": "smoke-hybrid",
+        "query": "Are there anomalies around ATM-GB-0002?",
+        "reference_answer": "Anomalies found.",
+        "expected_tools": ["search_knowledge", "query_anomalies"],
+        "atm_id": "ATM-GB-0002",
+        "query_type": "diagnostic",
+        "category": "hybrid",
+    },
 ]
 
 # --- ragas import shim ---------------------------------------------------
@@ -113,6 +129,8 @@ _CACHE_SIGNATURE_KEYS = (
 def _cache_signature() -> str:
     env = {k: os.getenv(k) for k in _CACHE_SIGNATURE_KEYS}
     return hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()[:12]
+
+
 METRICS = [
     ("context_recall", LLMContextRecall()),
     ("faithfulness", Faithfulness()),
@@ -207,7 +225,10 @@ def score_system(results):
         ]
         per_metric[name] = float(sum(vals)) / len(vals) if vals else None
     per_metric["_n"] = len(rows)
-    return per_metric, rows  # rows: per-sample score dicts (report per-category + kappa)
+    return (
+        per_metric,
+        rows,
+    )  # rows: per-sample score dicts (report per-category + kappa)
 
 
 # Scoring is ~4 judge calls per row (some metrics make 2) — 150 rows × 3
@@ -321,7 +342,11 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
-    golden = _SMOKE_QUERIES if args.smoke else json.loads(GOLDEN_SET_PATH.read_text())["queries"]
+    golden = (
+        _SMOKE_QUERIES
+        if args.smoke
+        else json.loads(GOLDEN_SET_PATH.read_text())["queries"]
+    )
     if args.limit:
         golden = golden[: args.limit]
     if args.categories and not args.smoke:

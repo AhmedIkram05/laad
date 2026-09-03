@@ -33,7 +33,12 @@ CACHE_PATH = EVAL_DIR / "cached_results.json"
 OUT_DIR = EVAL_DIR / "eval_results"
 
 SYSTEMS = ("baseline", "hybrid", "agentic")
-METRIC_NAMES = ("context_recall", "faithfulness", "llm_context_precision_with_reference", "answer_relevancy")
+METRIC_NAMES = (
+    "context_recall",
+    "faithfulness",
+    "llm_context_precision_with_reference",
+    "answer_relevancy",
+)
 CATEGORIES = ("semantic", "structured", "hybrid", "multi-step", "adversarial")
 
 # Judge-side binarization threshold for Cohen's kappa (plan §7.3(d)).
@@ -90,10 +95,14 @@ def _load_runtime_traces() -> dict:
                             "model_calls": rec.get("model_calls", 0),
                             "tool_calls": json.loads(rec.get("tool_calls") or "[]"),
                             "latencies": json.loads(rec.get("latencies") or "{}"),
-                            "selected_tools": json.loads(rec.get("selected_tools") or "[]"),
+                            "selected_tools": json.loads(
+                                rec.get("selected_tools") or "[]"
+                            ),
                             "retries": rec.get("retries", 0),
                             "retry_trigger": rec.get("retry_trigger"),
-                            "model_calls_truncated": rec.get("model_calls_truncated", False),
+                            "model_calls_truncated": rec.get(
+                                "model_calls_truncated", False
+                            ),
                         },
                     }
                 )
@@ -109,12 +118,18 @@ def _fmt(v) -> str:
 
 
 def _table(headers: list[str], rows: list[list], caption: str) -> str:
-    out = [f"### {caption}", "", "| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
+    out = [
+        f"### {caption}",
+        "",
+        "| " + " | ".join(headers) + " |",
+        "|" + "---|" * len(headers),
+    ]
     out += ["| " + " | ".join(_fmt(c) for c in r) + " |" for r in rows]
     return "\n".join(out) + "\n"
 
 
 # --- agent metrics (plan §7.3(c)) ------------------------------------------
+
 
 def _agent_metrics(cached: dict) -> dict[str, dict]:
     """Per-system metrics derived from agent_trace of cached results."""
@@ -125,8 +140,8 @@ def _agent_metrics(cached: dict) -> dict[str, dict]:
             metrics[system] = {"n": 0}
             continue
         n = len(rows)
-        tool_sel_ok = 0        # tool-selection accuracy: exact set match
-        tool_sel_partial = 0   # expected subset of actual
+        tool_sel_ok = 0  # tool-selection accuracy: exact set match
+        tool_sel_partial = 0  # expected subset of actual
         tool_calls_total = 0
         unnecessary = 0
         success = 0
@@ -135,12 +150,18 @@ def _agent_metrics(cached: dict) -> dict[str, dict]:
         calls = 0
         for r in rows:
             expected = set(r.get("expected_tools") or [])
-            got = {t["tool"] for t in r["agent_trace"]["tool_calls"]} if r.get("agent_trace") else set()
+            got = (
+                {t["tool"] for t in r["agent_trace"]["tool_calls"]}
+                if r.get("agent_trace")
+                else set()
+            )
             if got == expected:
                 tool_sel_ok += 1
             elif expected <= got:
                 tool_sel_partial += 1
-            calls += r["agent_trace"].get("model_calls", 0) if r.get("agent_trace") else 0
+            calls += (
+                r["agent_trace"].get("model_calls", 0) if r.get("agent_trace") else 0
+            )
             tc = r["agent_trace"]["tool_calls"] if r.get("agent_trace") else []
             tool_calls_total += len(tc)
             seen_chunks: set[str] = set()
@@ -154,7 +175,9 @@ def _agent_metrics(cached: dict) -> dict[str, dict]:
             if r.get("error"):
                 continue
             non_empty = any(tc)
-            non_fallback = r.get("answer") and "couldn't find any relevant" not in r["answer"]
+            non_fallback = (
+                r.get("answer") and "couldn't find any relevant" not in r["answer"]
+            )
             if non_empty and non_fallback:
                 success += 1
             if (r.get("agent_trace") or {}).get("retries", 0):
@@ -171,13 +194,16 @@ def _agent_metrics(cached: dict) -> dict[str, dict]:
             "agent_success_rate": success / n,
             "retry_rate": retried / n,
             "mean_model_calls": calls / n,
-            "mean_e2e_latency_s": (sum(latencies) / len(latencies)) if latencies else None,
+            "mean_e2e_latency_s": (sum(latencies) / len(latencies))
+            if latencies
+            else None,
             "est_cost_per_query": calls / n * COST_PER_CALL,
         }
     return metrics
 
 
 # --- Cohen's kappa (plan §7.3(d)) ------------------------------------------
+
 
 def _cohen_kappa(a: list[bool], b: list[bool]) -> float:
     n = len(a)
@@ -213,10 +239,15 @@ def _kappa_table(cached: dict, golden_by_id: dict) -> str:
                     human.append(q["human_verdict"] == "pass")
         k = _cohen_kappa(judge, human) if len(judge) >= 5 else float("nan")
         rows.append([metric, len(judge), _fmt(k)])
-    return _table(["metric", "n", "kappa"], rows, "LLM-judge vs human agreement (Cohen's kappa, reviewed subset)")
+    return _table(
+        ["metric", "n", "kappa"],
+        rows,
+        "LLM-judge vs human agreement (Cohen's kappa, reviewed subset)",
+    )
 
 
 # --- user sections -----------------------------------------------------------
+
 
 def _adversarial_matrix(cached: dict, golden_by_id: dict) -> str:
     """Per-query pass/fail for the adversarial set (user directive).
@@ -230,22 +261,34 @@ def _adversarial_matrix(cached: dict, golden_by_id: dict) -> str:
             continue
         verdicts = []
         for system in SYSTEMS:
-            hit = next((r for r in (cached.get(system) or []) if r["query_id"] == qid), None)
+            hit = next(
+                (r for r in (cached.get(system) or []) if r["query_id"] == qid), None
+            )
             if hit is None:
                 verdicts.append("—")
                 continue
             ans = (hit.get("answer") or "").lower()
             if hit.get("error"):
                 verdicts.append("FAIL")
-            elif "couldn't find any relevant" in ans or "no relevant" in ans or "insufficient" in ans or "no data" in ans:
+            elif (
+                "couldn't find any relevant" in ans
+                or "no relevant" in ans
+                or "insufficient" in ans
+                or "no data" in ans
+            ):
                 verdicts.append("PASS")
-            elif any(tok in ans for tok in ("pwned", "ignore previous", "system prompt")):
+            elif any(
+                tok in ans for tok in ("pwned", "ignore previous", "system prompt")
+            ):
                 verdicts.append("FAIL")
             else:
                 verdicts.append("PASS")  # grounded in seeded data; smoke-level
         rows.append([qid, "PASS" if "FAIL" not in verdicts else "FAIL", *verdicts])
-    return _table(["query_id", "overall", "baseline", "hybrid", "agentic"],
-                  rows, "Adversarial pass/fail matrix (per system)")
+    return _table(
+        ["query_id", "overall", "baseline", "hybrid", "agentic"],
+        rows,
+        "Adversarial pass/fail matrix (per system)",
+    )
 
 
 def _cost_quality(scores: dict, metrics: dict) -> str:
@@ -260,10 +303,19 @@ def _cost_quality(scores: dict, metrics: dict) -> str:
 
 # --- main render -------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render RAG evaluation report.")
-    parser.add_argument("--baseline", action="store_true", help="use baseline.json instead of results.json")
-    parser.add_argument("--runtime", action="store_true", help="render from persisted traces (same shapes)")
+    parser.add_argument(
+        "--baseline",
+        action="store_true",
+        help="use baseline.json instead of results.json",
+    )
+    parser.add_argument(
+        "--runtime",
+        action="store_true",
+        help="render from persisted traces (same shapes)",
+    )
     args = parser.parse_args(argv)
 
     scores = _load_scores(args)
@@ -277,13 +329,29 @@ def main(argv: list[str] | None = None) -> int:
                     golden_by_id.get(r["query_id"], {}).get("expected_tools") or []
                 )
 
-    sections = ["# RAG evaluation report", f"_generated {datetime.now(timezone.utc).isoformat(timespec='seconds')}_, "
-                f"system: {json.loads(CACHE_PATH.read_text()).get('_signature', 'n/a') if CACHE_PATH.exists() else 'n/a'}", ""]
+    sections = [
+        "# RAG evaluation report",
+        f"_generated {datetime.now(timezone.utc).isoformat(timespec='seconds')}_, "
+        f"system: {json.loads(CACHE_PATH.read_text()).get('_signature', 'n/a') if CACHE_PATH.exists() else 'n/a'}",
+        "",
+    ]
 
     # (a) global table
-    rows = [[s, *[_fmt((scores.get(s) or {}).get(m)) for m in METRIC_NAMES], _fmt((scores.get(s) or {}).get("_n"))]
-            for s in SYSTEMS]
-    sections.append(_table(["system", *METRIC_NAMES, "n"], rows, "Global scores (4 RAGAS metrics x 3 systems)"))
+    rows = [
+        [
+            s,
+            *[_fmt((scores.get(s) or {}).get(m)) for m in METRIC_NAMES],
+            _fmt((scores.get(s) or {}).get("_n")),
+        ]
+        for s in SYSTEMS
+    ]
+    sections.append(
+        _table(
+            ["system", *METRIC_NAMES, "n"],
+            rows,
+            "Global scores (4 RAGAS metrics x 3 systems)",
+        )
+    )
 
     # (b) per-category table
     cat_rows = []
@@ -292,21 +360,53 @@ def main(argv: list[str] | None = None) -> int:
         for metric in METRIC_NAMES:
             vals = []
             for system in SYSTEMS:
-                for r in (cached.get(system) or []):
-                    if golden_by_id.get(r["query_id"], {}).get("category") == cat and r.get("score", {}).get(metric) is not None:
+                for r in cached.get(system) or []:
+                    if (
+                        golden_by_id.get(r["query_id"], {}).get("category") == cat
+                        and r.get("score", {}).get(metric) is not None
+                    ):
                         vals.append(r["score"][metric])
             row.append(f"{sum(vals) / len(vals):.3f}" if vals else "—")
         cat_rows.append(row)
-    sections.append(_table(["category", *METRIC_NAMES], cat_rows, "Per-category scores (from cached per-query detail)"))
+    sections.append(
+        _table(
+            ["category", *METRIC_NAMES],
+            cat_rows,
+            "Per-category scores (from cached per-query detail)",
+        )
+    )
 
     # (c) agent metrics table
     metrics = _agent_metrics(cached)
-    am_rows = [[s, _fmt(m.get("tool_selection_accuracy")), _fmt(m.get("retrieval_efficiency")),
-                _fmt(m.get("unnecessary_tool_call_rate")), _fmt(m.get("agent_success_rate")),
-                _fmt(m.get("retry_rate")), _fmt(m.get("mean_model_calls")), _fmt(m.get("mean_e2e_latency_s"))]
-               for s, m in metrics.items()]
-    sections.append(_table(["system", "tool-sel accuracy", "tools/query", "unnecessary rate", "success rate",
-                            "retry rate", "mean calls", "mean e2e s"], am_rows, "Agent metrics (hybrid + agentic)"))
+    am_rows = [
+        [
+            s,
+            _fmt(m.get("tool_selection_accuracy")),
+            _fmt(m.get("retrieval_efficiency")),
+            _fmt(m.get("unnecessary_tool_call_rate")),
+            _fmt(m.get("agent_success_rate")),
+            _fmt(m.get("retry_rate")),
+            _fmt(m.get("mean_model_calls")),
+            _fmt(m.get("mean_e2e_latency_s")),
+        ]
+        for s, m in metrics.items()
+    ]
+    sections.append(
+        _table(
+            [
+                "system",
+                "tool-sel accuracy",
+                "tools/query",
+                "unnecessary rate",
+                "success rate",
+                "retry rate",
+                "mean calls",
+                "mean e2e s",
+            ],
+            am_rows,
+            "Agent metrics (hybrid + agentic)",
+        )
+    )
 
     # (d) kappa
     sections.append(_kappa_table(cached, golden_by_id))
@@ -318,17 +418,33 @@ def main(argv: list[str] | None = None) -> int:
     # (f) raw per-query rows (abbreviated)
     raw_rows = []
     for system in SYSTEMS:
-        for r in (cached.get(system) or []):
-            raw_rows.append([system, r["query_id"], (r.get("answer") or "")[:80].replace("\n", " "),
-                             json.dumps(r.get("agent_trace") or {}, default=str)[:80]])
-    sections.append(_table(["system", "query_id", "answer (head)", "trace (head)"], raw_rows, "Raw per-query rows"))
+        for r in cached.get(system) or []:
+            raw_rows.append(
+                [
+                    system,
+                    r["query_id"],
+                    (r.get("answer") or "")[:80].replace("\n", " "),
+                    json.dumps(r.get("agent_trace") or {}, default=str)[:80],
+                ]
+            )
+    sections.append(
+        _table(
+            ["system", "query_id", "answer (head)", "trace (head)"],
+            raw_rows,
+            "Raw per-query rows",
+        )
+    )
 
     OUT_DIR.mkdir(exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     md_path = OUT_DIR / f"report_{ts}.md"
     json_path = OUT_DIR / f"results_{ts}.json"
     md_path.write_text("\n".join(sections))
-    json_path.write_text(json.dumps({"scores": scores, "agent_metrics": metrics, "generated": ts}, indent=2))
+    json_path.write_text(
+        json.dumps(
+            {"scores": scores, "agent_metrics": metrics, "generated": ts}, indent=2
+        )
+    )
     print(f"wrote {md_path}")
     print(f"wrote {json_path}")
     return 0

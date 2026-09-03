@@ -5,6 +5,7 @@ The HYBRID mode runs a 2-node deterministic graph (planner -> parallel tools).
 Both modes share: instrumented tools (per-request trace via ContextVar),
 post-loop evidence fusion -> RetrievedChunk conversion -> generator + uncertainty.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -100,7 +101,9 @@ class _InstrumentedTool(BaseTool):
         self._record(input, time.perf_counter() - t0, True, result)
         return result
 
-    async def ainvoke(self, input: Any, config: Optional[dict] = None, **kwargs: Any) -> Any:
+    async def ainvoke(
+        self, input: Any, config: Optional[dict] = None, **kwargs: Any
+    ) -> Any:
         t0 = time.perf_counter()
         try:
             result = await self.delegate.ainvoke(input, config=config, **kwargs)
@@ -144,20 +147,36 @@ class _InstrumentedTool(BaseTool):
                 if chunks:
                     for c in chunks:
                         if isinstance(c, dict):
-                            evidence.append({"kind": "chunk", "content": c, "source_tool": self.name})
+                            evidence.append(
+                                {
+                                    "kind": "chunk",
+                                    "content": c,
+                                    "source_tool": self.name,
+                                }
+                            )
                 return
             rows = data.get("rows")
             if isinstance(rows, list):
                 if rows:
                     for r in rows:
                         if isinstance(r, dict):
-                            evidence.append({"kind": "row", "content": r, "source_tool": self.name})
+                            evidence.append(
+                                {"kind": "row", "content": r, "source_tool": self.name}
+                            )
                 return
             if data.get("error") is None:
-                evidence.append({"kind": "row", "content": data, "source_tool": self.name})
+                evidence.append(
+                    {"kind": "row", "content": data, "source_tool": self.name}
+                )
                 return
         if text.strip():
-            evidence.append({"kind": "row", "content": {"text": text[:2000]}, "source_tool": self.name})
+            evidence.append(
+                {
+                    "kind": "row",
+                    "content": {"text": text[:2000]},
+                    "source_tool": self.name,
+                }
+            )
 
 
 # --------------------------------------------------------------------------
@@ -173,7 +192,10 @@ class _CapMiddleware(AgentMiddleware):
         if trace is None:
             return None
         trace.model_calls += 1
-        if trace.model_calls >= config.agent_max_llm_calls and not trace.model_calls_truncated:
+        if (
+            trace.model_calls >= config.agent_max_llm_calls
+            and not trace.model_calls_truncated
+        ):
             trace.model_calls_truncated = True
             return {"messages": [SystemMessage(content=_BACKSTOP)]}
         return None
@@ -211,16 +233,34 @@ async def _get_agentic_graph():
     return _agentic_graph
 
 
-def _build_tool_args(tool_name: str, query: str, atm_id: Optional[str], qtype: QueryType) -> dict:
+def _build_tool_args(
+    tool_name: str, query: str, atm_id: Optional[str], qtype: QueryType
+) -> dict:
     anomaly_type = _extract_anomaly_type_from_query(query)
     if tool_name == "search_knowledge":
-        return {"query": query, "atm_id": atm_id, "anomaly_type": anomaly_type, "top_k": 5}
+        return {
+            "query": query,
+            "atm_id": atm_id,
+            "anomaly_type": anomaly_type,
+            "top_k": 5,
+        }
     if tool_name == "query_anomalies":
-        return {"atm_id": atm_id, "anomaly_type": anomaly_type, "severity": None, "limit": 50}
+        return {
+            "atm_id": atm_id,
+            "anomaly_type": anomaly_type,
+            "severity": None,
+            "limit": 50,
+        }
     if tool_name == "get_statistics":
         return {"hours": 24, "group_by": "anomaly_type", "is_active": None}
     if tool_name == "get_atm_metrics":
-        return {"entity_id": atm_id, "metric_name": None, "start": None, "end": None, "limit": 100}
+        return {
+            "entity_id": atm_id,
+            "metric_name": None,
+            "start": None,
+            "end": None,
+            "limit": 100,
+        }
     if tool_name == "get_machine_history":
         return {"atm_id": atm_id, "hours": 24, "limit": 100}
     return {}
@@ -303,11 +343,30 @@ def reset_graphs() -> None:
 def _render_row(row: dict, tool_name: str) -> str:
     parts = []
     keys = (
-        "timestamp", "detected_at", "atm_id", "severity", "anomaly_type",
-        "metric_name", "metric_value", "title", "event_type", "message",
-        "source", "count", "group", "total", "active", "resolved",
-        "os_version", "location_code", "explanation", "recommended_action",
-        "model_confidence_score", "correlation_id", "transaction_id", "avg_value",
+        "timestamp",
+        "detected_at",
+        "atm_id",
+        "severity",
+        "anomaly_type",
+        "metric_name",
+        "metric_value",
+        "title",
+        "event_type",
+        "message",
+        "source",
+        "count",
+        "group",
+        "total",
+        "active",
+        "resolved",
+        "os_version",
+        "location_code",
+        "explanation",
+        "recommended_action",
+        "model_confidence_score",
+        "correlation_id",
+        "transaction_id",
+        "avg_value",
     )
     for k in keys:
         if k in row and row[k] is not None:
@@ -455,11 +514,17 @@ async def run_agent_query(
     eok = _current_evidence.set(evidence)
     t_start = time.perf_counter()
     try:
-        graph = await (_get_agentic_graph() if mode is AgentMode.AGENTIC else _get_hybrid_graph())
-        system_message = SystemMessage(content=_SYSTEM_PROMPT + (
-            f"\n\nData scope: you may only reason about evidence for ATM {atm_id}."
-            if atm_id else "\n\nData scope: the ATM named in the query."
-        ))
+        graph = await (
+            _get_agentic_graph() if mode is AgentMode.AGENTIC else _get_hybrid_graph()
+        )
+        system_message = SystemMessage(
+            content=_SYSTEM_PROMPT
+            + (
+                f"\n\nData scope: you may only reason about evidence for ATM {atm_id}."
+                if atm_id
+                else "\n\nData scope: the ATM named in the query."
+            )
+        )
         human_message = HumanMessage(content=query)
 
         async def run_once(extra_messages: Optional[list] = None) -> None:
@@ -486,7 +551,16 @@ async def run_agent_query(
         response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
         generation_s = time.perf_counter() - t_gen
 
-        result = _build_result(query, response, uncertainty, chunks, trace, planning_s, tools_s, generation_s)
+        result = _build_result(
+            query,
+            response,
+            uncertainty,
+            chunks,
+            trace,
+            planning_s,
+            tools_s,
+            generation_s,
+        )
 
         # D13: one grounding-gated re-retrieval round (AGENTIC only, inert when disabled)
         if (
@@ -514,7 +588,16 @@ async def run_agent_query(
             t_gen2 = time.perf_counter()
             response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
             generation_s += time.perf_counter() - t_gen2
-            result = _build_result(query, response, uncertainty, chunks, trace, planning_s, tools_s, generation_s)
+            result = _build_result(
+                query,
+                response,
+                uncertainty,
+                chunks,
+                trace,
+                planning_s,
+                tools_s,
+                generation_s,
+            )
 
         trace.latencies["total"] = round(time.perf_counter() - t_start, 4)
         # agentic graph doesn't plan explicitly; record the tools actually used
@@ -523,7 +606,10 @@ async def run_agent_query(
         result["agent_trace"] = asdict(trace)
         return result
     except Exception as exc:  # pragma: no cover - defensive
-        return {"error": str(exc), "answer": "I encountered an error processing your request."}
+        return {
+            "error": str(exc),
+            "answer": "I encountered an error processing your request.",
+        }
     finally:
         _current_trace.reset(tok)
         _current_evidence.reset(eok)

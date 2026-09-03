@@ -13,6 +13,7 @@ mcp-server:8001 inside compose, host port 8002; in-process tools are used here
 for eval speed and determinism). The patch must be applied BEFORE
 `reset_graphs()`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,11 +61,23 @@ _LOCAL_TOOLS: list[tuple[Callable, str, str]] = [
     (get_atm_metrics, "get_atm_metrics", "Fetch ATM metrics"),
     (get_machine_history, "get_machine_history", "Fetch ATM event history"),
     (search_events, "search_events", "Raw event search by source/severity/time"),
-    (get_error_context, "get_error_context", "Events sharing a correlation/transaction id"),
+    (
+        get_error_context,
+        "get_error_context",
+        "Events sharing a correlation/transaction id",
+    ),
     (get_atm_info, "get_atm_info", "ATM registry info (OS, location)"),
     (compare_atms, "compare_atms", "Compare one ATM vs fleet aggregates"),
-    (get_anomaly_class_info, "get_anomaly_class_info", "Canonical A1-A7 class knowledge"),
-    (get_rag_collection_stats, "get_rag_collection_stats", "Knowledge base storage health"),
+    (
+        get_anomaly_class_info,
+        "get_anomaly_class_info",
+        "Canonical A1-A7 class knowledge",
+    ),
+    (
+        get_rag_collection_stats,
+        "get_rag_collection_stats",
+        "Knowledge base storage health",
+    ),
 ]
 
 
@@ -104,8 +117,12 @@ def run_baseline(golden: dict) -> SystemResult:
         )
     except Exception as exc:  # pragma: no cover - defensive
         return SystemResult(
-            "baseline", golden["id"], golden["query"], golden["reference_answer"],
-            answer="", error=str(exc),
+            "baseline",
+            golden["id"],
+            golden["query"],
+            golden["reference_answer"],
+            answer="",
+            error=str(exc),
         )
     return SystemResult(
         "baseline",
@@ -164,7 +181,9 @@ def _ensure_patched() -> None:
     _patched = True
 
 
-def run_systems(golden_set: list[dict], systems: tuple[str, ...] = SYSTEMS) -> list[SystemResult]:
+def run_systems(
+    golden_set: list[dict], systems: tuple[str, ...] = SYSTEMS
+) -> list[SystemResult]:
     """Run all golden queries through the requested systems. Seeds first."""
     seed()
     results: list[SystemResult] = []
@@ -189,9 +208,11 @@ def main() -> None:
         golden_set = json.load(fh)
     systems = tuple(sys.argv[1:]) or SYSTEMS
     results = run_systems(golden_set, systems)
-    print(f"ran {len(results)} system/query pairs: "
-          f"{len([r for r in results if not r.error])} ok, "
-          f"{len([r for r in results if r.error])} errored")
+    print(
+        f"ran {len(results)} system/query pairs: "
+        f"{len([r for r in results if not r.error])} ok, "
+        f"{len([r for r in results if r.error])} errored"
+    )
 
 
 if __name__ == "__main__":

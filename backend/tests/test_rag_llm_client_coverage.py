@@ -41,9 +41,7 @@ def _make_llm_provider(**overrides):
         "name": "llm",
         "model": overrides.get("model", "google/gemma-4-31B-it"),
         "api_key": overrides.get("api_key", "sk-test"),
-        "base_url": overrides.get(
-            "base_url", "https://api.inference.wandb.ai/v1"
-        ),
+        "base_url": overrides.get("base_url", "https://api.inference.wandb.ai/v1"),
     }
 
 

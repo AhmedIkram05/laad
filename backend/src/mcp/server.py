@@ -2,6 +2,7 @@
 
 Run standalone:  python -m backend.src.mcp.server --transport http
 """
+
 from __future__ import annotations
 
 import argparse

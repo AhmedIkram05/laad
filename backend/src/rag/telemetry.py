@@ -5,6 +5,7 @@ estimates; record_trace persists it to rag_agent_traces and optionally appends
 OTel GenAI semconv as JSONL when OTEL_JSONL is configured (default off, no
 collector). report.py --runtime renders the same shapes from these rows.
 """
+
 from __future__ import annotations
 
 import json

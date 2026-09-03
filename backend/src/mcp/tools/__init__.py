@@ -1,4 +1,5 @@
 """MCP tool registry — every tool exposed by the LAAD MCP server."""
+
 from backend.src.mcp.tools.knowledge import (
     get_anomaly_class_info,
     get_rag_collection_stats,

@@ -1,4 +1,5 @@
 """Vector-search tool: search_knowledge wraps the production RAGRetriever."""
+
 from __future__ import annotations
 
 from backend.src.rag.retriever import get_retriever

@@ -1,4 +1,5 @@
 """Shared types for the agentic / hybrid RAG paths."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
