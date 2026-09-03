@@ -1,6 +1,6 @@
 # ATM Log Aggregation, Anomaly Detection & Diagnostics Platform (LAAD)
 
-> A production-grade ATM log platform: Kafka ingestion → 3-layer anomaly detection → FastAPI → React dashboard, plus an agentic RAG diagnostic assistant - deployed on AWS ECS Fargate with SageMaker inference.
+> An ATM log platform: Kafka ingestion → 3-layer anomaly detection → FastAPI → React dashboard, plus an agentic RAG diagnostic assistant - deployed on AWS ECS Fargate with SageMaker inference.
 
 <p align="center">
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python"></a>
@@ -112,7 +112,7 @@ flowchart LR
 
 - **Terraform** - 10 modules, 118 resources: VPC across 2 AZs, ECS Fargate, RDS, SageMaker, CloudFront, Secrets Manager, least-privilege IAM. State locked in DynamoDB + versioned in S3; CI auth via OIDC - no long-lived credentials. [Deep dive](docs/README-full.md#aws-deployment--infrastructure)
 
-  <img src="docs/demos/infra.gif" width="600" alt="AWS estate tour: VPC, ECS Fargate, ALB, Kafka EC2, CloudFront, IAM, Secrets Manager, SageMaker, S3 versioning — cycles every 3s">
+  <img src="docs/demos/infra.gif" width="600" alt="AWS estate tour: VPC, ECS Fargate, ALB, Kafka EC2, CloudFront, IAM, Secrets Manager, SageMaker, S3 versioning - cycles every 3s">
 
 **What's actually running:**
 
@@ -128,7 +128,7 @@ flowchart LR
 
 - **Quality gates** - **1,438 tests** gating every PR (959 pytest: 955 passed + 4 skipped, across 10 tiers · 394 vitest · 10 Playwright E2E · 75 Terraform assertions), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
 
-  <img src="docs/demos/qa.gif" width="600" alt="Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 955 passed, vitest 394, E2E 10, stress 8 — cycles every 3s">
+  <img src="docs/demos/qa.gif" width="600" alt="Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 955 passed, vitest 394, E2E 10, stress 8 - cycles every 3s">
 - **Frontend** - React 19 + Vite + Tailwind v4: 9 pages, KPI cards polling every 5s, Chart.js analytics, shipped as a ~25MB nginx image. [Deep dive](docs/README-full.md#frontend-architecture)
 
   ![Analytics dashboard: 56.9K events, 41 anomalies, 8 types detected](docs/demos/analytics.gif)
