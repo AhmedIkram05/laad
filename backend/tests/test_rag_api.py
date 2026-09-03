@@ -321,23 +321,34 @@ class TestAgentEndpoint:
             "cross_encoder_used": False,
             "was_revised": False,
             "critique_text": None,
-            "latencies": {"planning_s": 0.1, "tools_s": 0.2, "generation_s": 0.3, "reflexion_s": 0.0, "total": 0.6},
+            "latencies": {
+                "planning_s": 0.1,
+                "tools_s": 0.2,
+                "generation_s": 0.3,
+                "reflexion_s": 0.0,
+                "total": 0.6,
+            },
         }
         if sources is not None:
             result["sources"] = sources
         result["agent_trace"] = {
-                "mode": "hybrid",
-                "tool_calls": [
-                    {"tool": "search_knowledge", "ok": True, "duration_s": 0.1, "error": None}
-                ],
-                "rounds": 1,
-                "model_calls": 0,
-                "latencies": {},
-                "selected_tools": ["search_knowledge"],
-                "retries": 0,
-                "retry_trigger": None,
-                "model_calls_truncated": False,
-            }
+            "mode": "hybrid",
+            "tool_calls": [
+                {
+                    "tool": "search_knowledge",
+                    "ok": True,
+                    "duration_s": 0.1,
+                    "error": None,
+                }
+            ],
+            "rounds": 1,
+            "model_calls": 0,
+            "latencies": {},
+            "selected_tools": ["search_knowledge"],
+            "retries": 0,
+            "retry_trigger": None,
+            "model_calls_truncated": False,
+        }
         result.update(overrides)
         return result
 

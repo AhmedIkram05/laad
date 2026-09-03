@@ -1,5 +1,8 @@
 codecov:
-  require_ci_to_pass: true
+  # was true: but this repo's Actions only post check-runs, never Status API
+  # entries, so `true` holds every report in `pending` forever and the badge
+  # never moves. False = uploads finalize as soon as Codecov processes them.
+  require_ci_to_pass: false
 
 coverage:
   status:
@@ -16,6 +19,16 @@ flag_management:
     carryforward: true
   individual_flags:
     - name: backend
+      paths:
+        - backend/src/
+        - backend/generator/
+        - backend/kafka/
+    # Full-suite CLI upload (`make coverage-upload`): same files, measured by
+    # the complete pytest run incl. kafka/chroma/rag markers that CI skips.
+    # Separate flag so carryforward keeps it alive across commits that only
+    # carry CI's subset upload; the project total unions both, so it stays
+    # at true coverage. Re-run the upload when backend code changes a lot.
+    - name: backend-full
       paths:
         - backend/src/
         - backend/generator/

@@ -11,10 +11,13 @@ class AgentQueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000, description="User query")
     atm_id: Optional[str] = Field(None, description="Filter by specific ATM ID")
     mode: Literal["agentic", "hybrid"] = Field(
-        "agentic", description="Agent loop mode: full LLM agentic loop or deterministic hybrid planner"
+        "agentic",
+        description="Agent loop mode: full LLM agentic loop or deterministic hybrid planner",
     )
     top_k: Optional[int] = Field(None, ge=1, le=20, description="Max evidence chunks")
-    include_trace: bool = Field(True, description="Include the agent trace in the response")
+    include_trace: bool = Field(
+        True, description="Include the agent trace in the response"
+    )
 
 
 class RAGQueryRequest(BaseModel):
@@ -89,7 +92,9 @@ class RAGQueryResponse(BaseModel):
 class AgentQueryResponse(RAGQueryResponse):
     """Response for the agentic RAG endpoint: /query body + additive agent trace."""
 
-    agent_trace: Optional[dict] = Field(None, description="Per-request agent loop trace")
+    agent_trace: Optional[dict] = Field(
+        None, description="Per-request agent loop trace"
+    )
 
 
 class RAGFeedbackRequest(BaseModel):

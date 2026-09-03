@@ -7,6 +7,7 @@ Transport resolution:
 
 Both paths return langchain tools bound to a long-lived ClientSession.
 """
+
 from __future__ import annotations
 
 import os
@@ -37,9 +38,7 @@ async def get_langchain_tools() -> list:
         cm = create_connected_server_and_client_session(_mcp._mcp_server)
         session = await cm.__aenter__()
     result = await session.list_tools()
-    tools = [
-        convert_mcp_tool_to_langchain_tool(session, t) for t in result.tools
-    ]
+    tools = [convert_mcp_tool_to_langchain_tool(session, t) for t in result.tools]
     _shared = (session, tools, cm)
     return tools
 

@@ -1,4 +1,5 @@
 """Phase 3 tests: agent loop (AGENTIC + HYBRID), evidence fusion, D13, caps."""
+
 from __future__ import annotations
 
 import asyncio
@@ -110,24 +111,78 @@ def _fake_uncertainty():
 @contextmanager
 def _patch_env(script=None, grounding=None, tools=None, **cfg_overrides):
     """Starts all fakes; restores on exit."""
-    script = script if script is not None else [
-        AIMessage(content="", tool_calls=[
-            {"name": "search_knowledge", "args": {"query": "q", "top_k": 5}, "id": "c1", "type": "tool_call"}
-        ]),
-        AIMessage(content="Final answer based on retrieved evidence."),
-    ]
+    script = (
+        script
+        if script is not None
+        else [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_knowledge",
+                        "args": {"query": "q", "top_k": 5},
+                        "id": "c1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="Final answer based on retrieved evidence."),
+        ]
+    )
     if grounding is None:
         grounding = [0.9]
-    tools = tools if tools is not None else [
-        _make_tool("search_knowledge", {"chunks": [{"text": "chunk text", "chunk_id": "chunk-1", "atm_id": "ATM-GB-0001", "timestamp": "2026-01-01T00:00:00Z", "confidence_score": 0.9}], "count": 1}),
-        _make_tool("query_anomalies", {"count": 1, "rows": [{"id": 1, "detected_at": "2026-01-01T00:00:00Z", "atm_id": "ATM-GB-0001", "anomaly_type": "A4", "severity": "ERROR", "title": "Restart loop", "model_confidence_score": 0.8}]}),
-    ]
+    tools = (
+        tools
+        if tools is not None
+        else [
+            _make_tool(
+                "search_knowledge",
+                {
+                    "chunks": [
+                        {
+                            "text": "chunk text",
+                            "chunk_id": "chunk-1",
+                            "atm_id": "ATM-GB-0001",
+                            "timestamp": "2026-01-01T00:00:00Z",
+                            "confidence_score": 0.9,
+                        }
+                    ],
+                    "count": 1,
+                },
+            ),
+            _make_tool(
+                "query_anomalies",
+                {
+                    "count": 1,
+                    "rows": [
+                        {
+                            "id": 1,
+                            "detected_at": "2026-01-01T00:00:00Z",
+                            "atm_id": "ATM-GB-0001",
+                            "anomaly_type": "A4",
+                            "severity": "ERROR",
+                            "title": "Restart loop",
+                            "model_confidence_score": 0.8,
+                        }
+                    ],
+                },
+            ),
+        ]
+    )
     patches = [
         patch("backend.src.rag.agent.config", _fake_config(**cfg_overrides)),
         patch("backend.src.rag.agent._chat_model", return_value=_ScriptedModel(script)),
-        patch("backend.src.mcp.adapter.get_langchain_tools", AsyncMock(return_value=tools)),
-        patch("backend.src.rag.generator.get_generator", return_value=_fake_generator(grounding)),
-        patch("backend.src.rag.uncertainty.get_uncertainty_estimator", return_value=_fake_uncertainty()),
+        patch(
+            "backend.src.mcp.adapter.get_langchain_tools", AsyncMock(return_value=tools)
+        ),
+        patch(
+            "backend.src.rag.generator.get_generator",
+            return_value=_fake_generator(grounding),
+        ),
+        patch(
+            "backend.src.rag.uncertainty.get_uncertainty_estimator",
+            return_value=_fake_uncertainty(),
+        ),
     ]
     for p in patches:
         p.start()
@@ -155,7 +210,9 @@ def _clean_graphs():
 class TestAgenticLoop:
     def test_runs_tools_and_synthesizes(self):
         with _patch_env():
-            result = _run(run_agent_query("What happened on ATM-GB-0001?", atm_id="ATM-GB-0001"))
+            result = _run(
+                run_agent_query("What happened on ATM-GB-0001?", atm_id="ATM-GB-0001")
+            )
         assert result["answer"] == "Answer for What happened on ATM-GB-0001?"
         assert result["sources"], "expected at least one source"
         trace = result["agent_trace"]
@@ -163,7 +220,13 @@ class TestAgenticLoop:
         assert trace["tool_calls"][0]["tool"] == "search_knowledge"
         assert trace["rounds"] == 1
         assert trace["model_calls"] == 2
-        assert set(trace["latencies"]) == {"planning_s", "tools_s", "generation_s", "reflexion_s", "total"}
+        assert set(trace["latencies"]) == {
+            "planning_s",
+            "tools_s",
+            "generation_s",
+            "reflexion_s",
+            "total",
+        }
 
     def test_trace_shape(self):
         with _patch_env():
@@ -182,7 +245,13 @@ class TestAgenticLoop:
 class TestHybridLoop:
     def test_runs_planned_pair(self):
         with _patch_env(script=[]):
-            result = _run(run_agent_query("troubleshoot the network timeout anomaly on ATM-GB-0001", atm_id="ATM-GB-0001", mode=AgentMode.HYBRID))
+            result = _run(
+                run_agent_query(
+                    "troubleshoot the network timeout anomaly on ATM-GB-0001",
+                    atm_id="ATM-GB-0001",
+                    mode=AgentMode.HYBRID,
+                )
+            )
         trace = result["agent_trace"]
         assert trace["mode"] == "hybrid"
         assert trace["model_calls"] == 0
@@ -192,7 +261,13 @@ class TestHybridLoop:
 
     def test_row_evidence_converted(self):
         with _patch_env(script=[]):
-            result = _run(run_agent_query("troubleshoot the network timeout anomaly on ATM-GB-0001", atm_id="ATM-GB-0001", mode=AgentMode.HYBRID))
+            result = _run(
+                run_agent_query(
+                    "troubleshoot the network timeout anomaly on ATM-GB-0001",
+                    atm_id="ATM-GB-0001",
+                    mode=AgentMode.HYBRID,
+                )
+            )
         row_sources = [s for s in result["sources"] if s["chunk_id"].startswith("row:")]
         assert row_sources, "expected row-derived sources"
         assert any("A4" in s["text"] for s in row_sources)
@@ -216,17 +291,30 @@ class TestD13Retry:
 
     def test_hybrid_never_retries(self):
         with _patch_env(script=[], grounding=[0.3]):
-            result = _run(run_agent_query("q", atm_id="ATM-GB-0001", mode=AgentMode.HYBRID))
+            result = _run(
+                run_agent_query("q", atm_id="ATM-GB-0001", mode=AgentMode.HYBRID)
+            )
         assert result["agent_trace"]["retries"] == 0
 
 
 class TestCapsAndConfig:
     def test_cap_sets_truncated_flag(self):
-        tool_msg = AIMessage(content="", tool_calls=[
-            {"name": "search_knowledge", "args": {"query": "q"}, "id": "c1", "type": "tool_call"}
-        ])
+        tool_msg = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "search_knowledge",
+                    "args": {"query": "q"},
+                    "id": "c1",
+                    "type": "tool_call",
+                }
+            ],
+        )
         # two tool rounds (hits the cap) then the model synthesizes
-        with _patch_env(script=[tool_msg, tool_msg, AIMessage(content="done")], agent_max_llm_calls=2):
+        with _patch_env(
+            script=[tool_msg, tool_msg, AIMessage(content="done")],
+            agent_max_llm_calls=2,
+        ):
             result = _run(run_agent_query("q", atm_id="ATM-GB-0001"))
         assert "error" not in result
         assert result["agent_trace"]["model_calls_truncated"] is True

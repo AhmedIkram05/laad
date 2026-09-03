@@ -3,6 +3,7 @@
 All database access goes through backend.src.database.connection.get_cursor() —
 never raw psycopg2 here.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -183,8 +184,7 @@ def get_atm_metrics(
         params.append(end)
     sql = (
         "SELECT timestamp, metric_name, metric_value, source FROM metrics "
-        "WHERE " + " AND ".join(where)
-        + " ORDER BY timestamp DESC LIMIT %s"
+        "WHERE " + " AND ".join(where) + " ORDER BY timestamp DESC LIMIT %s"
     )
     params.append(max(1, min(limit, 1000)))
     with get_cursor() as cur:
@@ -285,7 +285,8 @@ def search_events(
         params.append(end)
     sql = (
         "SELECT id, timestamp, source, atm_id, event_type, severity, message FROM events "
-        "WHERE " + (" AND ".join(where) if where else "TRUE")
+        "WHERE "
+        + (" AND ".join(where) if where else "TRUE")
         + " ORDER BY timestamp DESC LIMIT %s"
     )
     params.append(max(1, min(limit, 500)))
@@ -342,7 +343,9 @@ def get_atm_info(atm_id: str) -> dict:
         {"atm_id", "os_version", "location_code"} or {"error": "ATM not found"}.
     """
     with get_cursor() as cur:
-        cur.execute("SELECT os_version, location_code FROM atms WHERE atm_id = %s", (atm_id,))
+        cur.execute(
+            "SELECT os_version, location_code FROM atms WHERE atm_id = %s", (atm_id,)
+        )
         row = cur.fetchone()
     if row is None:
         return {"error": f"ATM {atm_id} not found in registry"}
@@ -404,4 +407,9 @@ def compare_atms(
         if values
         else []
     )
-    return {"rows": rows, "overall_mean": round(mean, 3), "overall_std": round(std, 3), "outliers": outliers}
+    return {
+        "rows": rows,
+        "overall_mean": round(mean, 3),
+        "overall_std": round(std, 3),
+        "outliers": outliers,
+    }

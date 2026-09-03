@@ -164,7 +164,11 @@ class RAGRetriever:
                 # A7 has sub-tags (A7_OUT_OF_ORDER, A7_MALFORMED) — match all of them.
                 if anomaly_type == "A7":
                     filter_parts.append(
-                        {"_anomaly_tag": {"$in": ["A7", "A7_OUT_OF_ORDER", "A7_MALFORMED"]}}
+                        {
+                            "_anomaly_tag": {
+                                "$in": ["A7", "A7_OUT_OF_ORDER", "A7_MALFORMED"]
+                            }
+                        }
                     )
                 else:
                     filter_parts.append({"_anomaly_tag": anomaly_type})

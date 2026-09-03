@@ -7,6 +7,7 @@ are only answerable from this data.
 Run inside the pytest container:
     docker compose run --rm pytest sh -c "PYTHONPATH=/app python backend/tests/eval/seed.py"
 """
+
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -98,30 +99,60 @@ SCENARIOS = [
 # --- DB fixtures ---------------------------------------------------------
 # anomalies: (atm_id, anomaly_type, severity, hours_ago, title, explanation, action)
 ANOMALIES = [
-    ("ATM-GB-0001", "A1", "ERROR", 2.0,
-     "Hardware failure: dispenser offline",
-     "Dispenser motor failure and card reader offline detected on ATM-GB-0001.",
-     "Dispatch field engineer; check component diagnostics and part inventory."),
-    ("ATM-GB-0001", "A3", "ERROR", 3.5,
-     "Network timeouts detected",
-     "Packet loss and backend API timeouts observed; link flapping on eth0.",
-     "Check link status, firewall and TLS config; ping and traceroute from ATM."),
-    ("ATM-GB-0003", "A4", "ERROR", 5.0,
-     "Cash dispense error",
-     "Dispense failure with cassette count mismatch on ATM-GB-0003.",
-     "Reconcile cassette counts; run dispense self-test before redeploying cash."),
-    ("ATM-GB-0005", "A5", "CRITICAL", 7.0,
-     "Possible skimming detected",
-     "Failed auth burst followed by tamper switch event on ATM-GB-0005.",
-     "Escalate to security; freeze affected services; preserve evidence logs."),
-    ("ATM-GB-0007", "A7", "ERROR", 9.0,
-     "Malformed kafka event",
-     "Kafka event rejected by schema validation; sequence gap detected.",
-     "Check producer/consumer offsets; validate payload schema; replay from last good offset."),
-    ("ATM-GB-0009", "A2", "ERROR", 11.0,
-     "App crash loop",
-     "Application crashed and restarted repeatedly with OutOfMemoryError.",
-     "Collect crash logs and traceback; correlate with deployment window."),
+    (
+        "ATM-GB-0001",
+        "A1",
+        "ERROR",
+        2.0,
+        "Hardware failure: dispenser offline",
+        "Dispenser motor failure and card reader offline detected on ATM-GB-0001.",
+        "Dispatch field engineer; check component diagnostics and part inventory.",
+    ),
+    (
+        "ATM-GB-0001",
+        "A3",
+        "ERROR",
+        3.5,
+        "Network timeouts detected",
+        "Packet loss and backend API timeouts observed; link flapping on eth0.",
+        "Check link status, firewall and TLS config; ping and traceroute from ATM.",
+    ),
+    (
+        "ATM-GB-0003",
+        "A4",
+        "ERROR",
+        5.0,
+        "Cash dispense error",
+        "Dispense failure with cassette count mismatch on ATM-GB-0003.",
+        "Reconcile cassette counts; run dispense self-test before redeploying cash.",
+    ),
+    (
+        "ATM-GB-0005",
+        "A5",
+        "CRITICAL",
+        7.0,
+        "Possible skimming detected",
+        "Failed auth burst followed by tamper switch event on ATM-GB-0005.",
+        "Escalate to security; freeze affected services; preserve evidence logs.",
+    ),
+    (
+        "ATM-GB-0007",
+        "A7",
+        "ERROR",
+        9.0,
+        "Malformed kafka event",
+        "Kafka event rejected by schema validation; sequence gap detected.",
+        "Check producer/consumer offsets; validate payload schema; replay from last good offset.",
+    ),
+    (
+        "ATM-GB-0009",
+        "A2",
+        "ERROR",
+        11.0,
+        "App crash loop",
+        "Application crashed and restarted repeatedly with OutOfMemoryError.",
+        "Collect crash logs and traceback; correlate with deployment window.",
+    ),
 ]
 
 # metrics: (entity_id, metric_name, hours_ago, value)
@@ -141,16 +172,46 @@ METRICS = [
 
 # events: (source, event_type, severity, hours_ago, message, atm_id)
 EVENTS = [
-    ("HARDWARE", "HARDWARE_FAULT", "FATAL", 2.0,
-     "dispenser motor failure error_code=ERR-0077", "ATM-GB-0001"),
-    ("ATM_APP", "NETWORK_TIMEOUT", "ERROR", 3.5,
-     "backend API timeout response_time_ms=30000", "ATM-GB-0001"),
-    ("TERMINAL_HANDLER", "CASSETTE_ALARM", "ERROR", 5.0,
-     "cassette 3 count mismatch", "ATM-GB-0003"),
-    ("ATM_APP", "TAMPER_ALERT", "CRITICAL", 7.0,
-     "tamper switch triggered", "ATM-GB-0005"),
-    ("KAFKA", "SCHEMA_VIOLATION", "ERROR", 9.0,
-     "event rejected missing_field=transaction_id", "ATM-GB-0007"),
+    (
+        "HARDWARE",
+        "HARDWARE_FAULT",
+        "FATAL",
+        2.0,
+        "dispenser motor failure error_code=ERR-0077",
+        "ATM-GB-0001",
+    ),
+    (
+        "ATM_APP",
+        "NETWORK_TIMEOUT",
+        "ERROR",
+        3.5,
+        "backend API timeout response_time_ms=30000",
+        "ATM-GB-0001",
+    ),
+    (
+        "TERMINAL_HANDLER",
+        "CASSETTE_ALARM",
+        "ERROR",
+        5.0,
+        "cassette 3 count mismatch",
+        "ATM-GB-0003",
+    ),
+    (
+        "ATM_APP",
+        "TAMPER_ALERT",
+        "CRITICAL",
+        7.0,
+        "tamper switch triggered",
+        "ATM-GB-0005",
+    ),
+    (
+        "KAFKA",
+        "SCHEMA_VIOLATION",
+        "ERROR",
+        9.0,
+        "event rejected missing_field=transaction_id",
+        "ATM-GB-0007",
+    ),
 ]
 
 
@@ -179,7 +240,9 @@ def _seed_db() -> None:
                 (_ts(hours_ago), source, atm_id, etype, severity, message),
             )
         conn.commit()
-        print(f"seeded: {len(ANOMALIES)} anomalies, {len(METRICS)} metrics, {len(EVENTS)} events")
+        print(
+            f"seeded: {len(ANOMALIES)} anomalies, {len(METRICS)} metrics, {len(EVENTS)} events"
+        )
     finally:
         conn.close()
 
@@ -201,12 +264,14 @@ def _seed_chroma() -> None:
         chunks = chunker.create_documents([text])
         for i, c in enumerate(chunks):
             docs.append(c.page_content)
-            metas.append({
-                "atm_id": sc["atm_id"],
-                "_anomaly_tag": sc["anomaly_tag"],
-                "severity": sc["severity"],
-                "last_timestamp": _ts(1.0),
-            })
+            metas.append(
+                {
+                    "atm_id": sc["atm_id"],
+                    "_anomaly_tag": sc["anomaly_tag"],
+                    "severity": sc["severity"],
+                    "last_timestamp": _ts(1.0),
+                }
+            )
             ids.append(f"{sc['atm_id']}_{sc['anomaly_tag']}_{i}")
     collection.upsert(documents=docs, ids=ids, metadatas=metas)
     print(f"seeded chroma: {len(docs)} chunks across {len(SCENARIOS)} scenarios")
