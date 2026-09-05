@@ -4,6 +4,7 @@
 
 <p align="center">
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&labelColor=000000&logo=python"></a>
+<a href="https://docs.python.org/3/library/asyncio.html"><img src="https://img.shields.io/badge/asyncio-3776AB?style=for-the-badge&labelColor=000000&logo=python"></a>
 <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&labelColor=000000&logo=fastapi"></a>
 <a href="https://www.langchain.com/"><img src="https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&labelColor=000000&logo=langchain"></a>
 <a href="https://www.langchain.com/langgraph"><img src="https://img.shields.io/badge/LangGraph-7C3AED?style=for-the-badge&labelColor=000000"></a>
