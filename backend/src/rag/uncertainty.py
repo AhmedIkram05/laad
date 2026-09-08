@@ -40,7 +40,7 @@ class UncertaintyEstimator:
     """Estimates uncertainty by fusing multiple confidence signals.
 
     Fuses retrieval quality, self-consistency, LLM verbalized confidence,
-    and citation grounding into a single calibrated confidence score.
+    and citation grounding into a single fused confidence score.
     """
 
     def __init__(self):
