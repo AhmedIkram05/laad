@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS rag_queries (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 9. rag_feedback (User feedback for calibration)
+-- 9. rag_feedback (User feedback on answer quality)
 CREATE TABLE IF NOT EXISTS rag_feedback (
     id BIGSERIAL PRIMARY KEY,
     query_id INTEGER REFERENCES rag_queries(id),
@@ -95,18 +95,7 @@ CREATE TABLE IF NOT EXISTS rag_feedback (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 10. rag_calibration (Calibration history)
-CREATE TABLE IF NOT EXISTS rag_calibration (
-    id BIGSERIAL PRIMARY KEY,
-    calibration_method TEXT,
-    scale_factor DOUBLE PRECISION,
-    bias_term DOUBLE PRECISION,
-    ece_score DOUBLE PRECISION,
-    sample_size INTEGER,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 11. rag_agent_traces (Per-request telemetry for the agentic/hybrid loop)
+-- 10. rag_agent_traces (Per-request telemetry for the agentic/hybrid loop)
 CREATE TABLE IF NOT EXISTS rag_agent_traces (
     id BIGSERIAL PRIMARY KEY,
     query_id BIGINT REFERENCES rag_queries(id),

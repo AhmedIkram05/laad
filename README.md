@@ -83,7 +83,7 @@ flowchart LR
 | **7 log sources** | ATM application logs, hardware-sensor metrics, terminal-handler logs, and Kafka/Prometheus/Windows/GCP metrics stream from a single generator - pure Kafka producers (gzip, `acks=all`), no direct DB writes |
 | **Kafka (KRaft)** | 2 topics × 3 partitions (`atm-events`, `atm-metrics`), 7-day retention; the consumer deduplicates (Redis SET + LRU), parses via 7 source-specific parsers, dual-writes to PostgreSQL + ChromaDB, and routes failures to a Redis Stream DLQ |
 | **Detection engine** | 3 layers - XGBoost + Isolation Forest ensemble, rolling 20-window Z-score, 7 deterministic heuristics - running every 30s, cross-checked against the live SageMaker endpoint |
-| **PostgreSQL 16** | Unified events/metrics schema: 10 tables, 3 views, 14 indexes, JSONB; adding a source = new parser, zero schema change |
+| **PostgreSQL 16** | Unified events/metrics schema: 10 tables, 3 views, 15 indexes, JSONB; adding a source = new parser, zero schema change |
 | **ChromaDB** | `atm_logs` collection with 768-dim `nomic-embed-text` embeddings generated locally by Ollama - the RAG assistant's vector memory |
 | **FastAPI** | 30 endpoints across 6 routers (auth, anomalies, entities, analysis, admin, RAG) - the one API every consumer hits |
 | **React dashboard** | 9 pages, KPI cards polling every 5s, Chart.js analytics, served via CloudFront in production |
@@ -95,7 +95,7 @@ flowchart LR
 | Highlight | Why It Matters |
 | --- | --- |
 | **Effectively-once Kafka, without Kafka transactions** | Manual offset commits + a 10K-LRU idempotency filter keyed by `message_id` give at-least-once delivery with effectively-once semantics inside the window. [Deep dive](docs/README-full.md#kafka-message-bus) |
-| **A confidence system that knows when it's wrong** | Four signals fused and Platt-calibrated; when calibration error drifts above ECE 0.10 it auto-triggers recalibration - the assistant degrades gracefully instead of faking certainty. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) |
+| **A confidence system that knows when it's wrong** | Four signals fused as an uncertainty-weighted average with static calibrated weights; missing signals are renormalised away, so the assistant degrades gracefully instead of faking certainty. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) |
 | **Two models that answer two different questions** | XGBoost classifies the 8 known anomaly classes; the Isolation Forest sidecar separately flags "something is off, but it's not one of the known shapes" - a distinction most anomaly projects skip. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1) |
 | **SageMaker as a cross-check, not a crutch** | Local inference in ~30ms keeps detection independent of the cloud; SageMaker (~100ms) adds an external second opinion per prediction without ever becoming a hard dependency. |
 
@@ -108,13 +108,15 @@ flowchart LR
 | Throughput | **~100 msgs/sec** sustained on one consumer · **2.5M+** events processed |
 | API surface | **30 endpoints** across 6 routers |
 | Tests gating every PR | **1,438** (959 pytest · 394 vitest · 10 Playwright · 75 Terraform) + 26 security checks |
-| Infrastructure | **10 Terraform modules / 118 resources** on AWS: ECS Fargate, RDS, SageMaker, CloudFront, VPC |
+| Infrastructure | **10 Terraform modules / 114 resources (+6 bootstrap)** on AWS: ECS Fargate, RDS, SageMaker, CloudFront, VPC |
 | Inference latency | local ~30ms · SageMaker cross-check ~100ms |
+
+> **Metrics provenance:** throughput (~100 msgs/sec) and 2.5M+ events are live-pipeline figures from the commissioning deployment - the committed demo seed is 56.9K events - and sub-100ms query latency is a running-instance measurement, not a committed benchmark. RAG eval artifacts: [backend/tests/eval/golden_set.json](backend/tests/eval/golden_set.json) · [docs/eval/baseline.json](docs/eval/baseline.json).
 
 ## AI - detection & diagnostics
 
 - **3-layer detector** - XGBoost 8-class classifier at **99.8% CV (±0.1%, 868K rows)** plus an Isolation Forest sidecar (**97.3% precision, F1 0.70**) for out-of-class novelty, Z-score drift detection, and always-on heuristics. SageMaker (`ml.t2.medium`) validates predictions live. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1)
-- **Agentic Hybrid RAG** - LangGraph with 12 MCP tools, 4-stage reasoning, cross-encoder reranking, and 4-signal confidence fusion with Platt calibration. RAGAS-evaluated: **faithfulness 0.940, precision 0.874, relevancy 0.801**. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) · [Evaluation data](docs/eval/)
+- **Agentic Hybrid RAG** - LangGraph with 12 MCP tools, 4-stage reasoning, cross-encoder reranking, and 4-signal confidence fusion via uncertainty-weighted averaging (static calibrated weights). RAGAS-evaluated: **faithfulness 0.940, precision 0.874, relevancy 0.801**. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) · [Evaluation data](docs/eval/)
 
   ![Diagnostic assistant chat interface with example queries](docs/demos/rag-assistant.gif)
 
@@ -127,12 +129,12 @@ flowchart LR
 - **Kafka pipeline** - **~100 msgs/sec sustained** on a single consumer, **2.5M+ events** through the live pipeline: KRaft broker, 2 topics × 3 partitions, 7 source-specific parsers, Redis-SET deduplication, **manual offset commits** (at-least-once, effectively-once within the LRU window), failures routed to a Redis Stream DLQ with retry + backoff. [Deep dive](docs/README-full.md#kafka-message-bus)
 
   <img src="docs/demos/kafka-pipeline.gif" width="600" alt="Kafka consumer streaming events into ChromaDB (200 OK upserts)">
-- **PostgreSQL 16** - unified events/metrics schema with JSONB, 14 indexes, and a `v_unified_analysis` view for time-window semantics. Adding a log source = new parser, zero schema change. [Deep dive](docs/README-full.md#database-design)
+- **PostgreSQL 16** - unified events/metrics schema with JSONB, 15 indexes, and a `v_unified_analysis` view for time-window semantics. Adding a log source = new parser, zero schema change. [Deep dive](docs/README-full.md#database-design)
 - **Redis** - 8 patterns (rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics) off one connection pool, each degrading gracefully. [Deep dive](docs/README-full.md#redis-infrastructure-8-patterns)
 
 ## IaC - the estate
 
-- **Terraform** - 10 modules, 118 resources: VPC across 2 AZs, ECS Fargate, RDS, SageMaker, CloudFront, Secrets Manager, least-privilege IAM. State locked in DynamoDB + versioned in S3; CI auth via OIDC - no long-lived credentials. [Deep dive](docs/README-full.md#aws-deployment--infrastructure)
+- **Terraform** - 10 modules, 114 resources (+6 bootstrap): VPC across 2 AZs, ECS Fargate, RDS, SageMaker, CloudFront, Secrets Manager, least-privilege IAM. State locked in DynamoDB + versioned in S3; CI auth via OIDC - no long-lived credentials. [Deep dive](docs/README-full.md#aws-deployment--infrastructure)
 
   <img src="docs/demos/infra.gif" width="600" alt="AWS estate tour: VPC, ECS Fargate, ALB, Kafka EC2, CloudFront, IAM, Secrets Manager, SageMaker, S3 versioning - cycles every 3s">
 
@@ -161,7 +163,7 @@ flowchart LR
 | --- | --- | --- |
 | **3 detection layers, not ML-only** | ML-only, heuristic-only | Independent failure modes: ML catches the 8 known classes, Z-score catches drift, heuristics are the always-on net |
 | **XGBoost + Isolation Forest ensemble** | Single XGBoost, LSTM | XGBoost scores the 8 known classes; the unsupervised sidecar catches novelty outside them - "known anomaly" vs "something's wrong" |
-| **4-signal confidence fusion + Platt calibration** | LLM verbalised or retrieval-only confidence | Any single signal misleads; fusion with calibration degrades gracefully and resists hallucination |
+| **Uncertainty-weighted 4-signal confidence fusion** | LLM verbalised or retrieval-only confidence | Any single signal misleads; weighted fusion degrades gracefully and resists hallucination |
 | **Kafka (KRaft) + manual offset commits** | Redis Pub/Sub, auto-commit | Disk persistence and offset replay; auto-commit risks message loss on crash |
 | **Self-hosted ChromaDB + local embeddings** | Pinecone, Weaviate | No per-vector API costs, log data never leaves the network, 768-dim embeddings via local Ollama |
 | **Unified PostgreSQL (no TimescaleDB)** | TimescaleDB for metrics | 100+ msg/s under 100ms queries without extension lock-in; `PARTITION BY RANGE` is one DDL away if throughput grows 10× |
@@ -179,9 +181,11 @@ make all   # everything in Docker: frontend, API, Kafka, detection, RAG
 
 Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `:5434`. Default login `admin`/`admin`. [Configuration reference](docs/configuration.md)
 
+> **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 959-backend-test count materializes in CI, where all extras are present ([ci.yml](.github/workflows/ci.yml)).
+
 ## Documentation
 
-- **Everything, in full** - the complete 1,425-line document, preserved verbatim: [docs/README-full.md](docs/README-full.md)
+- **Everything, in full** - the complete 1,424-line document, preserved verbatim: [docs/README-full.md](docs/README-full.md)
 - [API reference](docs/api-reference.md) · [Configuration](docs/configuration.md) · [Anomaly detection guide](docs/anomaly_detection_guide.md) · [RAG evaluation](docs/eval/) · [Demos & media](docs/README-full.md#demos) · [Data dictionary](docs/Data%20Dictionary/) · [Academic project report](docs/Project-Report.pdf)
 
 ## About This Project

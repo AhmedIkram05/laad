@@ -105,7 +105,7 @@ flowchart TD
   end
 
   subgraph Storage ["Data Storage"]
-    PG[("PostgreSQL 16<br/>10 tables + 3 views<br/>14 indexes, JSONB")]
+    PG[("PostgreSQL 16<br/>10 tables + 3 views<br/>15 indexes, JSONB")]
     CDB[("ChromaDB<br/>atm_logs collection<br/>cosine similarity")]
   end
 
@@ -201,12 +201,12 @@ flowchart TD
 ## Engineering Highlights
 
 | Area | Decision | Why |
-|---|---|---|
+| --- | --- | --- |
 | **Anomaly Detection** | 3-layer ensemble: XGBoost + Isolation Forest + Z-Score + Heuristic + SageMaker cross-check | Defense in depth - ML catches 8-class patterns at 99.8%, Z-Score detects drift without models, Heuristic is the always-on safety net, SageMaker validates predictions live |
 | **Messaging** | Apache Kafka (KRaft) with gzip, acks=all, 7-day retention | Decouples ingestion from processing - zero data loss on restart, offset replay for backfill |
 | **RAG Pipeline** | LangChain + ChromaDB + cross-encoder reranking + 4-signal confidence fusion | Self-hosted vector store keeps data private; 4-signal fusion prevents hallucinated responses |
 | **MLOps** | MLflow v3 on AWS (RDS + S3) with champion aliases | Full experiment lineage, auto-retrain on corruption, 7 artifacts tracked per MLflow 3.x API |
-| **Deployment** | Terraform (10 modules, 118 resources) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 75 Terraform test assertions |
+| **Deployment** | Terraform (10 modules, 114 resources + 6 bootstrap) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 75 Terraform test assertions |
 | **Data Storage** | PostgreSQL 16 with JSONB + unified events/metrics tables | Adding a log source = new parser - no schema changes, no detector modifications |
 | **Distributed Coordination** | 8 Redis patterns from a single connection pool | Rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics - all gracefully degrade |
 | **Container Strategy** | Multi-stage Docker + health check cascading | 17 services (13 app, 4 test), 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
@@ -217,19 +217,19 @@ flowchart TD
 ## Key Metrics at a Glance
 
 | Category | Metric | Value |
-|---|---|---|
+| --- | --- | --- |
 | **Scale** | Log sources | 7 simultaneous |
 | | ATMs monitored | 10 ATMs + 3 Servers |
-| | Messages processed | 2.5M events, 100+ msgs/sec live |
-| | Tables / Views / Indexes | 10 + 3 + 14 |
+| | Messages processed | 2.5M events, 100+ msgs/sec (live pipeline; committed demo seed = 56.9K events - see [Metrics provenance](../README.md#key-metrics)) |
+| | Tables / Views / Indexes | 10 + 3 + 15 |
 | | Docker services | 13 app + 4 test |
-| | Terraform resources | 118 across 10 modules |
+| | Terraform resources | 114 across 10 modules (+6 bootstrap) |
 | **ML & Detection** | Anomaly types | 7 known (A1-A7) + UNKNOWN |
 | | Detection layers | 3 (ML_ENSEMBLE + ZSCORE + HEURISTIC) + SageMaker cross-check |
 | | ML features | 49 engineered (46 for IF) |
 | | XGBoost CV accuracy | 99.8% +/- 0.1% |
 | | Isolation Forest precision | 97.3% (F1=0.7008 at -0.5199) |
-| | RAG confidence fusion | 4 signals with Platt calibration |
+| | RAG confidence fusion | 4 signals, uncertainty-weighted average (static calibrated weights) |
 | **Infrastructure** | API endpoints | 30 across 6 routers |
 | | Frontend pages | 9 (React 19 + Vite 8 + Tailwind v4) |
 | | Redis patterns | 8 distinct |
@@ -252,14 +252,14 @@ flowchart TD
 Multi-AZ VPC with ECS Fargate, Kafka on EC2, RDS PostgreSQL for MLflow, SageMaker inference endpoint, and automated CI/CD with Terraform.
 
 | | |
-|---|---|
+| --- | --- |
 | <img src="docs/demos/vpc.png" alt="VPC with public/private subnets across 2 AZs" width="400"/> | **VPC topology** - 10.0.0.0/16, 2 AZs, public + private subnets, NAT Gateway, Internet Gateway. All application traffic isolated in private subnets. |
 | <img src="docs/demos/ecs-cluster.png" alt="ECS Fargate cluster" width="400"/> | **ECS Fargate cluster** - API and Consumer services in ACTIVE state, each with 2 desired tasks across AZs. Rolling updates, health check grace period, CloudWatch logs. |
 | <img src="docs/demos/ec2-alb.png" alt="Application Load Balancer" width="400"/> | **Application Load Balancer** - routes traffic to ECS Fargate tasks in private subnets across both AZs for high availability. |
 | <img src="docs/demos/ec2-kafka.png" alt="Kafka broker on EC2" width="400"/> | **Kafka broker on EC2** - deployed alongside Redis and ChromaDB on EC2 instances in private subnets. |
 | <img src="docs/demos/cloudfront.png" alt="CloudFront distribution" width="400"/> | **CloudFront distribution** - serves the React frontend from S3 with edge caching and HTTPS. |
 | <img src="docs/demos/sagemaker.png" alt="SageMaker endpoint InService" width="400"/> | **SageMaker endpoint** - `laad-xgb-champion`, InService on ml.t2.medium, XGBoost 1.7-1 container, 8-class softmax probabilities. |
-| <img src="docs/demos/iam-roles.png" alt="Least-privilege IAM roles" width="400"/> | **IAM roles** - 6 least-privilege policies: ECS execution, ECS task, SageMaker execution, CloudWatch logs, CI/CD OIDC, MLflow. |
+| <img src="docs/demos/iam-roles.png" alt="Least-privilege IAM roles" width="400"/> | **IAM roles** - 4 least-privilege roles: GitHub Actions OIDC, ECS execution, ECS task, SageMaker execution. |
 | <img src="docs/demos/secrets-manager.png" alt="Secrets Manager" width="400"/> | **Secrets Manager** - 8 secrets injected into ECS containers via task definition. No hardcoded credentials. |
 | <img src="docs/demos/s3-buckets.png" alt="S3 bucket inventory" width="400"/> | **S3 buckets** - 3 buckets: frontend hosting, MLflow artifacts, Terraform state (versioned). |
 | <img src="docs/demos/s3-terraform-state-versioning.png" alt="Terraform state versioning" width="400"/> | **Terraform state** - locked via DynamoDB, versioned via S3. Full point-in-time recovery for all 10 modules. |
@@ -272,7 +272,7 @@ CI - Python lint, checkov, pytest (959), vitest (394), Playwright E2E (10) | CD 
 
 ![CD-SHOULD-DEPLOY gate](docs/demos/cd-should-deploy.png) | ![Terraform apply](docs/demos/terraform.png)
 ---|---
-CD-SHOULD-DEPLOY - path-based filter skips infra when only docs change | Terraform plan/apply - automated via GitHub Actions OIDC, 10 modules, 118 resources
+CD-SHOULD-DEPLOY - path-based filter skips infra when only docs change | Terraform plan/apply - automated via GitHub Actions OIDC, 10 modules, 114 resources (+6 bootstrap)
 
 ### Platform Walkthrough
 
@@ -323,7 +323,7 @@ Apache Kafka (KRaft mode, no ZooKeeper) serves as the central message bus, decou
 **Producer Configuration:**
 
 | Parameter | Setting | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | `acks` | `all` | Every message confirmed by all in-sync replicas before the produce call returns. Zero data loss even if the leader crashes mid-write. |
 | `compression.type` | `gzip` | ~65% compression ratio on ATM log JSON - reduces broker network I/O and storage. Consumer decompresses transparently. |
 | `retries` | `5` | Automatic retry on transient broker errors (leader election, network glitches). Idempotent producer prevents duplicates. |
@@ -335,7 +335,7 @@ Apache Kafka (KRaft mode, no ZooKeeper) serves as the central message bus, decou
 **Consumer Configuration:**
 
 | Parameter | Setting | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | `enable.auto.commit` | `False` | Manual offset commits after handler success - no data loss on consumer restart |
 | `max.poll.records` | `500` | Bounds per-iteration processing time. At ~3 KB/record, 500 records = ~1.5 MB batch, well within the 2 MB fetch.max.bytes default. |
 | `max.poll.interval.ms` | `300000` (5 min) | Consumer must call poll() within this interval or be considered dead. 500 records with handlers fit comfortably under this. |
@@ -347,7 +347,7 @@ Apache Kafka (KRaft mode, no ZooKeeper) serves as the central message bus, decou
 **2 Topics, 3 Partitions Each:**
 
 | Topic | Partitions | Purpose | Retention |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `atm-events` | 3 | Structured event messages (card insertions, transactions, errors, etc.) with JSONB payloads | 7 days (log compaction via `delete.retention.ms=604800000`) |
 | `atm-metrics` | 3 | Numeric time-series metric readings (temperature, response time, memory, etc.) | 7 days (same retention as events) |
 
@@ -409,38 +409,39 @@ flowchart TD
 
 ### Database Design
 
-PostgreSQL 16 (Alpine) with a lean data lake design - unified `events` and `metrics` tables with JSONB payloads, plus dedicated tables for anomalies, RAG data, and calibration. The schema follows a **schema-on-read** philosophy: new log sources require only a new parser - no schema migrations, no detector modifications.
+PostgreSQL 16 (Alpine) with a lean data lake design - unified `events` and `metrics` tables with JSONB payloads, plus dedicated tables for anomalies and RAG data. The schema follows a **schema-on-read** philosophy: new log sources require only a new parser - no schema migrations, no detector modifications.
 
 **Core Tables:**
 
 | Table | Purpose | Key Columns | Row Count |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `atms` | ATM device registry | `atm_id` (PK), `os_version`, `location_code` | Per-ATM |
 | `events` | Structured ATM event messages | `id` (PK, BIGSERIAL), `timestamp`, `atm_id` (FK), `event_type`, `severity`, `payload` (JSONB) | Per Request |
 | `metrics` | Numeric time-series readings | `id` (PK, BIGSERIAL), `timestamp`, `entity_id`, `metric_name`, `metric_value`, `payload` (JSONB) | Per Request |
 | `anomalies` | Detection engine results | `id` (PK), `detected_at`, `anomaly_type`, `atm_id` (FK), `model_confidence_score`, `severity`, `sources_involved` (JSONB), `is_active`, `is_starred` | By detection |
 | `ingestion_errors` | Failed message log | `id` (PK), `timestamp`, `source`, `error_detail`, `raw_input` | Trace-level |
-| `rag_queries` / `rag_feedback` | RAG history + calibration data | Full query + response + user rating | Per conversation |
-| `users` / `calibration_scores` | Auth + Platt scaling state | Hashed passwords, calibration params | Per user |
+| `rag_queries` / `rag_feedback` | RAG history + user feedback | Full query + response + user rating | Per conversation |
+| `users` / `retention_config` | Auth + retention policy | Hashed passwords, single-row retention window | Per user / global |
 
-**Indexing Strategy (14 B-tree indexes, 6 composite):**
+**Indexing Strategy (15 B-tree indexes, 6 composite):**
 
 | Index | Columns | Purpose | Pattern |
-|---|---|---|---|
-| PK: `events_pkey` | `id` | Primary key lookup | Equality |
-| `idx_events_timestamp` | `timestamp` DESC | Time-range queries for detection window | Range, sorted |
-| `idx_events_atm_id` | `atm_id` | Filter events by ATM | Equality |
-| `idx_events_atm_timestamp` | `atm_id`, `timestamp` DESC | ATM-scoped time-window analysis | Composite range |
-| `idx_events_type_timestamp` | `event_type`, `timestamp` DESC | Type-scoped time-window queries | Composite range |
-| `idx_metrics_timestamp` | `timestamp` DESC | Time-range queries | Range |
-| `idx_metrics_entity_id` | `entity_id` | Filter by entity | Equality |
-| `idx_metrics_name_timestamp` | `metric_name`, `timestamp` DESC | Metric-scoped range queries | Composite range |
-| `idx_anomalies_detected_at` | `detected_at` DESC | Recent anomalies display | Range, sorted |
-| `idx_anomalies_type` | `anomaly_type` | Filter by anomaly class | Equality |
-| `idx_anomalies_active` | `is_active` | Active anomalies filter | Equality |
-| `idx_anomalies_atm_type` | `atm_id`, `anomaly_type` | ATM + type dedup for heuristic | Composite equality |
-| `idx_rag_user_id` | `user_id` | Per-user RAG history | Equality |
-| `idx_rag_timestamp` | `created_at` DESC | Recent queries display | Range, sorted |
+| --- | --- | --- | --- |
+| `idx_users_username` | `username` | Login lookup | Equality |
+| `idx_events_correlation` | `correlation_id` | Correlate event chains | Equality |
+| `idx_events_atm_time` | `atm_id`, `timestamp` | ATM-scoped time-window analysis | Composite range |
+| `idx_events_transaction` | `transaction_id` | Transaction joins | Equality |
+| `idx_events_source` | `source` | Filter events by log source | Equality |
+| `idx_metrics_entity_time` | `entity_id`, `timestamp` | Entity-scoped metric ranges | Composite range |
+| `idx_metrics_name_time` | `metric_name`, `timestamp` | Metric-scoped time ranges | Composite range |
+| `idx_metrics_source` | `source` | Filter metrics by source | Equality |
+| `idx_anomalies_atm` | `atm_id` | Filter anomalies by ATM | Equality |
+| `idx_anomalies_active_time` | `is_active`, `detected_at` | Active-anomaly recent window | Composite range |
+| `idx_anomalies_correlation` | `correlation_id` | Anomaly-event correlation | Equality |
+| `idx_anomalies_type_time` | `anomaly_type`, `detected_at` | Type-scoped recency | Composite range |
+| `idx_rag_queries_user` | `user_id`, `created_at` | Per-user RAG history | Composite range |
+| `idx_rag_agent_traces_query` | `query_id` | Trace lookup per query | Equality |
+| `idx_rag_feedback_query` | `query_id` | Feedback per query | Equality |
 
 **Unified Analysis View:**
 
@@ -463,7 +464,7 @@ FULL OUTER JOIN metrics m ON e.atm_id = m.entity_id
 **Connection Pool Management:**
 
 | Parameter | Value | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `minconn` | 5 | Keep 5 connections warm for low-latency API responses |
 | `maxconn` | 50 | Upper bound - each consumer poll (up to 500 records) may need 5+ connections for parallel writes |
 | `retry_backoff` | 3 retries, exponential | Covers transient RDS failover, load spikes |
@@ -485,7 +486,7 @@ WHERE id IN (
 
 Unresolved anomalies (`is_active = 1`) are preserved regardless of age - the detection engine may need historical context for cross-referencing.
 
-**Why not TimescaleDB?** PostgreSQL with proper indexing handles 100+ msg/sec with sub-100ms queries. The unified view pattern provides the time-window semantics TimescaleDB hypertables would enforce, without adding an extension dependency. If throughput grows 10×, adding `PARTITION BY RANGE (timestamp)` is a single DDL statement away.
+**Why not TimescaleDB?** PostgreSQL with proper indexing handles 100+ msg/sec with sub-100ms queries (live-instance figures from the commissioning deployment - see [Metrics provenance](../README.md#key-metrics); no committed load-test artifact). The unified view pattern provides the time-window semantics TimescaleDB hypertables would enforce, without adding an extension dependency. If throughput grows 10×, adding `PARTITION BY RANGE (timestamp)` is a single DDL statement away.
 
 **Entity-Relationship Diagram:**
 
@@ -618,7 +619,7 @@ flowchart TD
 **Feature Engineering - 49 Features in 7 Groups:**
 
 | Group | Features | Description |
-|---|---|---|
+| --- | --- | --- |
 | **Metric Statistics** | 16 | Per-metric min/max/mean/std for each metric_name in the window (`time_taken_mean`, `memory_usage_std`, `cpu_load_max`, etc.) |
 | **Percentile Metrics** | 9 | P50/P75/P90/P95/P99 for latency metrics + rolling window percentiles |
 | **Temporal Features** | 5 | Hour of day, day of week, time since last event, event frequency, window position |
@@ -630,6 +631,7 @@ flowchart TD
 Isolation Forest uses a **46-feature subset** (selected by XGBoost feature importance - drops 3 low-importance metric features) to reduce noise in the unsupervised path.
 
 **Layer 1 - ML_ENSEMBLE (Primary):** Two independent feature paths (XGBoost: 49-dim, IF: 46-dim). Decision flow:
+
 - IF predicts anomaly (score ≤ 0) → XGBoost predict_proba
   - Known anomaly if `class != NORMAL` and `confidence >= 0.70` → save as detected type (A1-A7)
   - Novel pattern if `class == NORMAL` but `IF score <= -0.5199` (Youden's J threshold) → save as UNKNOWN
@@ -640,7 +642,7 @@ Isolation Forest uses a **46-feature subset** (selected by XGBoost feature impor
 **Layer 3 - HEURISTIC (Fallback):** 7 deterministic detectors, always active, zero model dependency:
 
 | Detector | Triggers For | Pattern |
-|---|---|---|
+| --- | --- | --- |
 | Network Timeout | A1 | ≥3 occurrencees of NETWORK_DISCONNECT + Kafka Offline + TIMEOUT within window |
 | Cash Cassette | A2 | CASSETTE_EMPTY event + Kafka OutOfService metric + TPS=0 |
 | JVM Memory | A3 | Rising heap (≥50% increase) + OOM events, server-type entity |
@@ -705,7 +707,7 @@ flowchart TD
 The synthetic training dataset (`training_data.json`) covers 24 hours of simulated ATM operations with injected anomalies:
 
 | Attribute | Value |
-|---|---|
+| --- | --- |
 | Total rows | 868,000 |
 | Time span | 24 hours |
 | Window size | 60 seconds |
@@ -718,7 +720,7 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 **Cross-Validation Results (StratifiedKFold, up to 5 folds):**
 
 | Class | Precision | Recall | F1-Score | Support (avg) |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | NORMAL | 1.0 | 1.0 | 1.0 | 4,480 |
 | A1 (Network Timeout) | 1.0 | 1.0 | 1.0 | 192 |
 | A2 (Cash Cassette) | 1.0 | 1.0 | 1.0 | 144 |
@@ -733,7 +735,7 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 **Isolation Forest (unsupervised):**
 
 | Metric | Value |
-|---|---|
+| --- | --- |
 | AUC-ROC | 0.9502 |
 | Precision | 97.3% |
 | Optimal threshold (Youden's J) | -0.5199 |
@@ -743,7 +745,7 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 **Hyperparameter Details:**
 
 | Model | Parameter | Value | Tuning |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | XGBoost | `n_estimators` | 100 | Manual |
 | | `max_depth` | 6 | Manual |
 | | `learning_rate` | 0.1 | Manual |
@@ -759,7 +761,7 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 **7 MLflow Artifacts:**
 
 | Artifact | Type | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `xgb_classifier.joblib` | Pickle | Trained XGBoost model (49 features, 8 classes) |
 | `isolation_forest.joblib` | Pickle | Trained Isolation Forest model (46 features) |
 | `label_encoder.joblib` | Pickle | Encodes anomaly type strings ↔ integers |
@@ -840,7 +842,7 @@ flowchart TD
 The ChromaDB ingestion pipeline processes each ATM event through LangChain's `SemanticChunker` (threshold-based, not fixed-size) which splits log sequences into semantically coherent segments. Each chunk is embedded via Ollama's `nomic-embed-text` model (768-dimension vectors) using a local API call - no data leaves the local network. The `atm_logs` collection stores metadata alongside each embedding:
 
 | Metadata Field | Source | Purpose in Filtering |
-|---|---|---|
+| --- | --- | --- |
 | `atm_id` | Event source | Filter diagnostics to a specific ATM |
 | `anomaly_type` | Detection engine | Scope by anomaly class |
 | `severity` | Detection engine | Filter by CRITICAL/MAJOR/HIGH |
@@ -863,7 +865,7 @@ The ChromaDB ingestion pipeline processes each ATM event through LangChain's `Se
 8. **Multi-Signal Confidence Fusion** - Combines 4 independent signals into a single score:
 
 | Signal | Weight | Source | Computation |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Retrieval | 30% | ChromaDB | Normalised cosine similarity (0-1) |
 | Self-Consistency | 25% | 3 samples | Mean 3-gram Jaccard similarity |
 | Verbalized | 25% | LLM | Self-rated confidence (0-1) |
@@ -871,18 +873,18 @@ The ChromaDB ingestion pipeline processes each ATM event through LangChain's `Se
 
 Fused score = `0.30 × ret + 0.25 × cons + 0.25 × verb + 0.20 × gnd`. Missing signals (e.g., no entities to ground) are renormalised by removing their weight from the denominator. Final level: **HIGH (≥0.8)**, **MEDIUM (≥0.5)**, **LOW (<0.5)**.
 
-**Platt Calibration:**
+**Calibration:**
 
-Every 20 user feedback samples (thumbs up/down), the calibrator fits a Platt scaling model (logistic regression on fused scores vs binary feedback). Calibration is applied when Expected Calibration Error (ECE) exceeds 0.10. This ensures the confidence score remains empirically calibrated as the system processes more data.
+The fusion weights are static calibrated values fixed at deploy time - there is no online recalibration step. `POST /api/rag/feedback` accepts user ratings (logged for offline analysis); the fused score never changes after deployment.
 
 **LLM Provider:**
 
 A single env-driven OpenAI-compatible provider. OpenRouter and Ollama Cloud are no longer functional as LLM providers and were removed (not kept as fallback). Provider configuration is a `.env` edit, never a code change.
 
 | Parameter | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `LLM_API_KEY` | (required) | W&B Serverless Inference API key (or `WANDB_API_KEY`) |
-| `LLM_BASE_URL` | https://api.inference.wandb.ai/v1 | W&B Serverless Inference endpoint |
+| `LLM_BASE_URL` | <https://api.inference.wandb.ai/v1> | W&B Serverless Inference endpoint |
 | `LLM_MODEL` | google/gemma-4-31B-it | Model for all RAG LLM calls |
 | `RAG_JUDGE_MODEL` | Qwen/Qwen3-30B-A3B-Instruct-2507 | Eval-only judge model (RAGAS scoring) |
 
@@ -899,7 +901,7 @@ RAGAS 0.4.x evaluation over a 50-query golden set (5 categories × 10: semantic,
 **Results (committed baseline, `docs/eval/baseline.json` - 20 queries per system):**
 
 | System | context_recall | faithfulness | context_precision (w/ reference) | answer_relevancy |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `baseline` (fixed retrieval, no agent) | 0.533 | 0.982 | 0.711 | 0.650 |
 | `hybrid` (agent, deterministic tools) | 0.350 | 0.908 | 0.645 | 0.602 |
 | `agentic` (free routing + D13 re-retrieval) | **0.708** | 0.940 | **0.874** | **0.801** |
@@ -909,7 +911,7 @@ All three systems share one LLM (`LLM_MODEL`), so the deltas are retrieval-only.
 **Latency Breakdown:**
 
 | Stage | Uncached | Cached (300s TTL) |
-|---|---|---|
+| --- | --- | --- |
 | Agent tool selection + execution (1-2 rounds) | +2-8s | - |
 | ChromaDB retrieval | ~200ms | ~200ms |
 | Cross-encoder reranking | ~150ms | - |
@@ -974,7 +976,7 @@ flowchart TD
 **Connection Pool Configuration:**
 
 | Parameter | Value | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | `max_connections` | 20 | Shared across API (4 workers) + consumer + detection engine + RAG. At peak load, each worker may hold 1-2 connections. |
 | `socket_timeout` | 2s | Fast failure - no operation should wait more than 2s for Redis. Degradation kicks in immediately after timeout. |
 | `socket_connect_timeout` | 2s | If Redis is down, fail fast rather than hanging the service startup. |
@@ -984,7 +986,7 @@ flowchart TD
 **8 Patterns - Implementation & Degradation Details:**
 
 | # | Pattern | Data Structure | Operations | Degradation |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 1 | **Rate Limiting** | Sorted Set | `ZADD timestamp:req`, `ZREMRANGEBYSCORE -inf (now-60s)`, `ZCARD` | Falls back to in-memory counters per worker. Rate limit becomes per-worker (less accurate) but the API stays up. |
 | 2 | **Message Deduplication** | Set + 1h TTL | `SADD message_id` + `SISMEMBER` check | 10K-entry LRU `OrderedDict` in process memory. On Redis failure, dedup degrades to process-scoped (no cross-restart dedup, but in-flight dedup survives). |
 | 3 | **JWT Blacklist** | String + TTL | `SETEX token_blacklist:{jti} 1 {exp}` | Falls back to an in-memory set. Tokens are only blacklisted until the next process restart. TTL-driven expiry becomes process-lifetime. |
@@ -1019,7 +1021,7 @@ flowchart TD
         RAG["RAG Chat Page<br/>Diagnostic assistant<br/>History sidebar"]
         DET["Anomaly Detail<br/>Detection metadata<br/>Timeline view"]
         ADM_DASH["Admin Dashboard<br/>System stats<br/>User management"]
-        ADM_SETTINGS["Admin Settings<br/>Calibration config<br/>Retention controls"]
+        ADM_SETTINGS["Admin Settings<br/>Retention controls"]
         ADMIN_LOG["Audit Log<br/>Security events<br/>Filter by action"]
         ADM_USERS["User Management<br/>CRUD + roles<br/>Search + paginate"]
     end
@@ -1067,7 +1069,7 @@ flowchart TD
 **Key Features:**
 
 | Feature | Implementation | Details |
-|---|---|---|
+| --- | --- | --- |
 | **Auto-refresh** | `setInterval` + route awareness | Analytics: 5s polling. Anomalies: 30s polling. Paused on RAG/Detail pages to save bandwidth. Loading indicator shows "live" status. |
 | **6-filter anomaly list** | Multi-select + text search | Sort by criticality (weighted score), recency, severity. Filter by entity, type, severity, source, free text. 20 results per page with page jump. |
 | **Chart.js dashboards** | 3 visualization types | Bar (anomaly counts per type), Line (metric trends over time), Doughnut (severity distribution). 5 time range presets (1h/6h/24h/7d/30d) with adaptive bucket resolution. |
@@ -1081,7 +1083,7 @@ flowchart TD
 
 ## AWS Deployment & Infrastructure
 
-The entire platform is deployed on AWS using **Terraform infrastructure-as-code** - 10 modules across 118 resources - with automated CI/CD (GitHub Actions), managed secrets, and container orchestration via ECS Fargate.
+The entire platform is deployed on AWS using **Terraform infrastructure-as-code** - 10 modules across 114 resources (plus 6 in a separate bootstrap state) - with automated CI/CD (GitHub Actions), managed secrets, and container orchestration via ECS Fargate.
 
 ### VPC & Network Topology
 
@@ -1131,13 +1133,11 @@ flowchart TD
             SM_SECRETS["8 Secrets<br/>DB/Kafka/JWT/SageMaker<br/>Injected via ECS task def"]
         end
 
-        subgraph IAM_Roles ["IAM (6 least-privilege roles)"]
-            IAM_ECS_EXEC["ECS Execution Role<br/>Pull from ECR + CW logs"]
-            IAM_ECS_TASK["ECS Task Role<br/>Access S3 + Secrets"]
-            IAM_SM["SageMaker Execution<br/>S3 + CW logs"]
-            IAM_OIDC["CI/CD OIDC Role<br/>GitHub → AWS auth"]
-            IAM_CW["CloudWatch Logs<br/>Write log streams"]
-            IAM_MLF["MLflow Role<br/>S3 artifacts access"]
+        subgraph IAM_Roles ["IAM (4 least-privilege roles)"]
+            IAM_OIDC["GitHub Actions OIDC<br/>ECR/ECS/S3/CloudFront/TF-state"]
+            IAM_ECS_EXEC["ECS Execution Role<br/>ECR pull + Secrets read"]
+            IAM_ECS_TASK["ECS Task Role<br/>S3 + SageMaker invoke + logs"]
+            IAM_SAGEMAKER["SageMaker Execution<br/>S3 + CW logs"]
         end
     end
 
@@ -1185,28 +1185,28 @@ flowchart TD
     class FRONTEND_B,ARTIFACTS_B,TFSTATE_B s3;
     class SM_ENDPOINT sm;
     class SM_SECRETS secrets;
-    class IAM_ECS_EXEC,IAM_ECS_TASK,IAM_SM,IAM_OIDC,IAM_CW,IAM_MLF iam;
+    class IAM_ECS_EXEC,IAM_ECS_TASK,IAM_SAGEMAKER,IAM_OIDC iam;
     class CI_PIPE,CD_PIPE,CD_GATE cicd;
 ```
 
 ### Layer-by-Layer Architecture
 
 | Layer | Provisioned Resources | Details |
-|---|---|---|
+| --- | --- | --- |
 | **Networking** | VPC (10.0.0.0/16), 2 public subnets, 2 private subnets, Internet Gateway, NAT Gateway, 2 AZs | All application traffic isolated in private subnets, outbound via NAT Gateway. Public subnets only for ALB and NAT Gateway. |
 | **Container Orchestration** | ECS Fargate cluster (2 services: API + Consumer), each with 2 desired tasks across AZs | Rolling update deployments, health check grace period, CloudWatch log groups per task. No EC2 nodes to manage. |
 | **Kafka + Supporting** | EC2 instance in private subnet hosting Kafka (KRaft), Redis 7, ChromaDB, Ollama | Single EC2 hosts 4 services. Kafka persists events with 7-day retention; Redis provides 8 distributed patterns; ChromaDB stores vector embeddings for RAG. |
-| **Databases** | RDS PostgreSQL 18.4 (MLflow tracking backend) + PostgreSQL 16 Docker (app database) | App DB on EC2 for cost optimisation, MLflow on RDS for reliability with automated backups. 10 tables + 3 views + 14 indexes. |
+| **Databases** | RDS PostgreSQL 18.4 (MLflow tracking backend) + PostgreSQL 16 Docker (app database) | App DB on EC2 for cost optimisation, MLflow on RDS for reliability with automated backups. 10 tables + 3 views + 15 indexes. |
 | **Storage** | 3 S3 buckets: frontend hosting (static assets), MLflow artifacts (model binaries), Terraform state (infrastructure state) | Frontend bucket serves React app via CloudFront. MLflow artifacts bucket stores model files (XGBoost, Isolation Forest, scalers, encoders). Terraform state bucket is versioned with DynamoDB locking. |
 | **ML Inference** | SageMaker endpoint `laad-xgb-champion` on ml.t2.medium | XGBoost 1.7-1 container, 49-feature model, 8-class softmax probabilities (`multi:softprob`), ~100ms inference. CloudWatch logs enabled, model deployed from MLflow artifact store via automated upload script. |
 | **CDN** | CloudFront distribution backed by S3 origin | Edge caching for React frontend, HTTPS enforcement, custom error pages. Argo-powered CDN with origin shield. |
 | **CI/CD** | GitHub Actions - 3 pipelines (CI, CD, CD-SHOULD-DEPLOY) | OIDC-based AWS authentication (no static keys). CI runs 945 tests + checkov. CD applies Terraform and triggers ECS rolling updates. CD-SHOULD-DEPLOY gates deployment to path changes. |
-| **Security** | 6 IAM roles (least-privilege), Secrets Manager (8 secrets), no hardcoded credentials | ECS execution role, ECS task role, SageMaker execution role, CI/CD OIDC role, CloudWatch logs role, MLflow role. Secrets: DB credentials, Kafka config, JWT secret, API keys, SageMaker config, MLflow URIs, admin credentials, Redis password. |
+| **Security** | 4 IAM roles (least-privilege), Secrets Manager (8 secrets), no hardcoded credentials | GitHub Actions OIDC role, ECS execution role, ECS task role, SageMaker execution role. Secrets: DB credentials, Kafka config, JWT secret, API keys, SageMaker config, MLflow URIs, admin credentials, Redis password. |
 
 ### Complete Infrastructure Inventory
 
 | Service | Technology | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | PostgreSQL (App) | 16 Alpine | Primary application database, health-checked with `pg_isready`, `ThreadedConnectionPool` (min=5, max=50) |
 | PostgreSQL (MLflow) | RDS 18.4 | MLflow tracking backend - experiment params, metrics, tags, runs registered against AWS RDS |
 | Apache Kafka | confluentinc/cp-kafka:7.5.0 (KRaft) | Central message bus, 3 partitions/topic, 7-day retention, gzip compression, acks=all |
@@ -1239,17 +1239,17 @@ flowchart TD
 Key architectural decisions that shaped the platform, beyond what the Engineering Highlights table covers.
 
 | Decision | Alternative Considered | Why This Won |
-|---|---|---|
+| --- | --- | --- |
 | **Kafka (KRaft) over Redis PubSub** | Redis Pub/Sub + Redis Streams for message bus | Kafka persists to disk with configurable retention (7 days) and offset replay for backfill. Redis PubSub loses messages with no active subscriber. At 100+ msg/s, Kafka's batching and compression (gzip, 65% ratio) significantly reduce network I/O. |
 | **3 detection layers (not just ML)** | ML-only, pure heuristic-only | Each layer has independent failure modes. ML_ENSEMBLE catches 8-class patterns at 99.8% but misses novel drift. ZSCORE catches drift without models. HEURISTIC is the always-on safety net. Defense in depth - no single failure mode goes undetected. |
 | **XGBoost + Isolation Forest (two-model ensemble)** | Single XGBoost classifier, deep learning (LSTM) | XGBoost provides interpretable 8-class classification with soft probabilities. Isolation Forest adds unsupervised anomaly detection for novel patterns not in the 8 training classes. The two-model ensemble distinguishes "known anomaly type" from "something is wrong but I don't know what" - a critical operational distinction. LSTM would require sequence-order sensitivity that adds complexity without improving detection at this scale. |
 | **ChromaDB over Pinecone / Weaviate** | Pinecone (managed), Weaviate (self-hosted) | Self-hosted ChromaDB in Docker - no per-vector API costs, 50K+ docs fit in RAM, log data never leaves the local network. Ollama `nomic-embed-text` (768-dim) for local embeddings eliminates network round-trip and per-token API costs. |
-| **4-signal confidence fusion over single confidence** | LLM-only confidence, retrieval-only score | No single signal is reliable enough to trust alone. Retrieval can miss relevant chunks. LLM verbalized confidence is systematically overconfident. Self-consistency is expensive. Grounding is sparse. Fusing all 4 with Platt calibration produces calibrated confidence that degrades gracefully when any signal is missing. |
+| **4-signal confidence fusion over single confidence** | LLM-only confidence, retrieval-only score | No single signal is reliable enough to trust alone. Retrieval can miss relevant chunks. LLM verbalized confidence is systematically overconfident. Self-consistency is expensive. Grounding is sparse. Fusing all 4 via uncertainty-weighted averaging (static calibrated weights, renormalised when a signal is missing) produces a robust confidence estimate that degrades gracefully when any signal is missing. |
 | **SageMaker cross-check (not primary inference)** | SageMaker as primary, local model only | Local model inference is ~30ms (in-process joblib load). SageMaker adds ~100ms + network latency + cost ($0.046/hr for ml.t2.medium). Using SageMaker as a cross-check gives independent cloud-side validation of each prediction without making the system dependent on cloud availability. |
 | **PostgreSQL unified events/metrics (not separate databases)** | TimescaleDB for metrics, separate event store | PostgreSQL with proper indexing handles 100+ msg/sec with sub-100ms queries. The unified `v_unified_analysis` view provides the time-window semantics TimescaleDB hypertables enforce, without adding an extension dependency. If throughput grows 10×, adding `PARTITION BY RANGE` is a single DDL statement away. |
 | **Manual offset commits (not auto-commit)** | `enable.auto.commit=True` | Auto-commit can commit offsets before handler writes succeed → message loss on crash. Manual commits after handler success guarantee at-least-once delivery; an in-memory 10k-LRU idempotency filter keyed by `message_id` approximates effectively-once within its window. Exactly-once would require Kafka transactions. |
 | **No ZooKeeper (pure KRaft)** | ZooKeeper-based Kafka | Eliminates an entire cluster dependency - fewer containers, less memory, simpler deployment, faster startup. KRaft metadata quorum handles controller election and metadata management without a separate system. |
-| **Platt calibration for RAG confidence** | Fixed thresholds only | LLM confidence is systematically miscalibrated. Platt scaling (logistic regression on 20 feedback samples) learns the mapping from fused scores to true correctness probability. ECE < 0.10 threshold triggers recalibration - ensures the system stays calibrated as data distribution shifts over time. |
+| **Static-weight fusion over runtime recalibration** | Fixed thresholds, online Platt/ECE recalibration | LLM confidence is systematically miscalibrated, so four signals (retrieval 0.30, self-consistency 0.25, verbalized 0.25, grounding 0.20) are fused as a weighted average with weights fixed at deploy time. Missing signals are renormalised away rather than imputed. There is no online recalibration loop to operate or drift - the estimate is stable and explainable, and degrades gracefully as signals drop out. |
 | **Single LLM provider (W&B Serverless Inference)** | Ollama Cloud primary + OpenRouter fallback | One env-driven OpenAI-compatible endpoint (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) serves all LLM calls - the agent, generator, self-consistency, reflexion, and the RAGAS judge - so RAGAS deltas are retrieval-only. OpenRouter/Ollama-Cloud providers are dead and removed (not kept as fallback); a provider change is a `.env` edit, never a code change. On total outage the system degrades to structured log extraction (no LLM). |
 
 ---
@@ -1322,7 +1322,7 @@ flowchart TD
 **Test Suite Breakdown:**
 
 | Suite | Tests | Tools | CI Gate |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Backend unit + integration | 959 | pytest (10 tiers), pytest-cov, mock Redis/Kafka | ✅ Required |
 | Frontend component | 394 | vitest 4, @testing-library/react 16 | ✅ Required |
 | Playwright E2E | 10 | Playwright Chromium | ✅ Required |
@@ -1340,7 +1340,7 @@ make test-terraform    # Terraform test (75 IaC assertions)
 ```
 
 | Metric | Value |
-|---|---|
+| --- | --- |
 | Test DB | Isolated (`atm_platform_test`, port 5433) |
 | Backend test tiers | 10 (unit, integration, stress, security, ML, RAG, Redis, Kafka, generators, parsers) |
 | Frontend test files | 41 suite files |
@@ -1405,7 +1405,7 @@ Services run on:
 ## Team
 
 | Role | Member |
-|---|---|
+| --- | --- |
 | Backend & Data Engineering Lead - DB, Ingestion Pipeline, Auth, API, Testing, Continuous Log Generator eventually extending with ML Detector, Kafka Integration, MLOps, RAG Diagnostic Assistant, AWS Infrastructure (Terraform, ECS, SageMaker, CI/CD) | **Ahmed Ikram** |
 | Heuristic Anomaly Detection Logic | Martin Kelly |
 | Ranking Algorithm & Analysis Router | Emmanuel Dairo, Addie Tweed |
@@ -1414,7 +1414,7 @@ Services run on:
 
 Built for **NCR Atleos** as part of CS32002 Industrial Team Project, University of Dundee. See the [Project Report](docs/Project-Report.pdf) for the complete academic submission.
 
-> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion and calibration, the comprehensive test suite (959 backend + 394 frontend + 10 E2E + 75 Terraform = 1,438 tests), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
+> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion, the comprehensive test suite (959 backend + 394 frontend + 10 E2E + 75 Terraform = 1,438 tests), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
 
 ---
 

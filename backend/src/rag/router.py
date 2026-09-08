@@ -381,7 +381,7 @@ async def provide_feedback(
     request: RAGFeedbackRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Provide feedback on a RAG response for calibration."""
+    """Provide feedback on a RAG response."""
     try:
         user_id = _get_user_id_from_username(current_user.get("sub", ""))
         query_row = _get_query_by_id(request.query_id, user_id)
