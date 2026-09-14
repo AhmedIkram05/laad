@@ -88,6 +88,224 @@ def _check_rate_limit_in_memory(user_key: str) -> None:
     _query_timestamps[user_key].append(now)
 
 
+async def _run_champion_query(
+    *,
+    query: str,
+    sanitized_query: str,
+    atm_id: Optional[str],
+    top_k: Optional[int],
+    current_user: dict,
+) -> Optional[RAGQueryResponse]:
+    """Try the agentic champion. Returns response on hit, None on miss when
+    fallback is enabled, raises HTTPException when fallback is disabled."""
+    from backend.src.rag.agent import run_agent_query
+    from backend.src.rag.agent_types import AgentMode
+
+    try:
+        agent_result = await run_agent_query(
+            query=query,
+            atm_id=atm_id,
+            mode=AgentMode.AGENTIC,
+            top_k=top_k,
+        )
+    except Exception as e:
+        logger.warning("Agentic champion error, legacy fallback: %s", e)
+        if not config.champion_fallback:
+            logger.error("Agentic champion failed", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Query processing failed due to an internal error.",
+            )
+        return None
+    if agent_result.get("error") or not agent_result.get("sources"):
+        if not config.champion_fallback:
+            if not agent_result.get("sources"):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No relevant logs found for your query. Try rephrasing or check if the data generator is running.",
+                )
+            logger.error(
+                "Agentic champion failed: %s", agent_result.get("error")
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Query processing failed due to an internal error.",
+            )
+        logger.warning(
+            "Agentic champion miss, falling back to legacy: %s",
+            agent_result.get("error") or "no sources",
+        )
+        return None
+    user_id = _get_user_id_from_username(current_user.get("sub", ""))
+    query_id = _save_query_history(
+        user_id=user_id,
+        query=query,
+        answer=agent_result["answer"],
+        uncertainty_score=agent_result.get("uncertainty_score", 0.5),
+    )
+    if query_id is None:
+        query_id = _save_query_history_fallback(
+            query=query,
+            answer=agent_result["answer"],
+            uncertainty_score=agent_result.get("uncertainty_score", 0.5),
+        )
+    _save_agent_trace(query_id, agent_result.get("agent_trace"))
+    set_cached_response(sanitized_query, {**agent_result, "query_id": query_id})
+    return RAGQueryResponse(
+        query_id=query_id,
+        answer=agent_result["answer"],
+        sources=[SourceChunk(**s) for s in agent_result["sources"]],
+        uncertainty_score=agent_result.get("uncertainty_score", 0.5),
+        confidence_level=agent_result.get("confidence_level", "medium"),
+        is_uncertain=agent_result.get("is_uncertain", False),
+        recommendation=agent_result.get("recommendation", "Review recommended"),
+        model_used=agent_result.get("model_used", "agentic"),
+        self_consistency_score=agent_result.get("self_consistency_score"),
+        verbalized_confidence=agent_result.get("verbalized_confidence"),
+        grounding_score=agent_result.get("grounding_score"),
+        generation_variance=agent_result.get("generation_variance"),
+        cross_encoder_used=agent_result.get("cross_encoder_used", False),
+        was_revised=agent_result.get("was_revised", False),
+        critique_text=agent_result.get("critique_text"),
+    )
+
+
+def _run_legacy_query(
+    *,
+    query: str,
+    sanitized_query: str,
+    query_type,
+    atm_id: Optional[str],
+    anomaly_type: Optional[str],
+    error_only: bool,
+    most_recent_first: bool,
+    top_k: Optional[int],
+    include_uncertainty: bool,
+    enable_reflexion: bool,
+    enable_citation_grounding: bool,
+    enable_self_consistency: bool,
+    current_user: dict,
+) -> RAGQueryResponse:
+    """Direct retriever+generator path (legacy fallback)."""
+    retriever = get_retriever()
+    generator = get_generator()
+    uncertainty_estimator = get_uncertainty_estimator()
+
+    chunks = retriever.retrieve(
+        query=sanitized_query,
+        atm_id=atm_id,
+        top_k=top_k,
+        anomaly_type=anomaly_type,
+        temporal_boost=True,
+        error_only=error_only,
+        most_recent_first=most_recent_first,
+    )
+
+    if not chunks:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No relevant logs found for your query. Try rephrasing or check if the data generator is running.",
+        )
+
+    response = generator.generate(
+        query=query,
+        chunks=chunks,
+        query_type=query_type,
+        enable_reflexion=enable_reflexion,
+        enable_citation_grounding=enable_citation_grounding,
+        enable_self_consistency=enable_self_consistency,
+    )
+
+    uncertainty = None
+    if include_uncertainty:
+        uncertainty = uncertainty_estimator.estimate(
+            query=query,
+            chunks=chunks,
+            self_consistency_score=response.self_consistency_score,
+            verbalized_confidence=response.verbalized_confidence,
+            grounding_score=response.grounding_score,
+        )
+
+    user_id = _get_user_id_from_username(current_user.get("sub", ""))
+    query_id = _save_query_history(
+        user_id=user_id,
+        query=query,
+        answer=response.text,
+        uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
+    )
+
+    if query_id is None:
+        query_id = _save_query_history_fallback(
+            query=query,
+            answer=response.text,
+            uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
+        )
+
+    result = RAGQueryResponse(
+        query_id=query_id,
+        answer=response.text,
+        sources=[
+            SourceChunk(
+                text=c.text,
+                chunk_id=c.chunk_id,
+                atm_id=c.atm_id,
+                timestamp=c.timestamp,
+                confidence_score=c.confidence_score,
+            )
+            for c in response.sources
+        ],
+        uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
+        confidence_level=uncertainty.confidence_level if uncertainty else "medium",
+        is_uncertain=uncertainty.is_uncertain if uncertainty else False,
+        recommendation=uncertainty.recommendation
+        if uncertainty
+        else "Review recommended",
+        model_used=response.model,
+        self_consistency_score=response.self_consistency_score,
+        verbalized_confidence=response.verbalized_confidence,
+        grounding_score=response.grounding_score,
+        generation_variance=uncertainty.generation_variance
+        if uncertainty
+        else None,
+        cross_encoder_used=response.cross_encoder_used,
+        was_revised=response.was_revised,
+        critique_text=response.critique_text if response.critique_text else None,
+    )
+
+    cache_payload = {
+        "query_id": query_id,
+        "answer": response.text,
+        "sources": [
+            {
+                "text": c.text,
+                "chunk_id": c.chunk_id,
+                "atm_id": c.atm_id,
+                "timestamp": c.timestamp,
+                "confidence_score": c.confidence_score,
+            }
+            for c in response.sources
+        ],
+        "uncertainty_score": uncertainty.final_confidence if uncertainty else 0.5,
+        "confidence_level": uncertainty.confidence_level
+        if uncertainty
+        else "medium",
+        "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
+        "recommendation": uncertainty.recommendation
+        if uncertainty
+        else "Review recommended",
+        "model_used": response.model,
+        "self_consistency_score": response.self_consistency_score,
+        "verbalized_confidence": response.verbalized_confidence,
+        "grounding_score": response.grounding_score,
+        "cross_encoder_used": response.cross_encoder_used,
+        "was_revised": response.was_revised,
+        "critique_text": response.critique_text,
+    }
+    set_cached_response(sanitized_query, cache_payload)
+
+    return result
+
+
 @router.post("/query", response_model=RAGQueryResponse)
 async def query(
     request: RAGQueryRequest,
@@ -170,131 +388,42 @@ async def query(
                 critique_text=cached.get("critique_text"),
             )
 
-        retriever = get_retriever()
-        generator = get_generator()
-        uncertainty_estimator = get_uncertainty_estimator()
+        # Champion = agentic (RAG_CHAMPION=agentic default). Fall back to legacy
+        # direct retriever+generator when the agent errors or returns no sources.
+        if config.champion == "agentic":
+            champion_result = await _run_champion_query(
+                query=request.query,
+                sanitized_query=sanitized_query,
+                atm_id=atm_id,
+                top_k=request.top_k,
+                current_user=current_user,
+            )
+            if champion_result is not None:
+                return champion_result
 
-        chunks = retriever.retrieve(
-            query=sanitized_query,
+        return _run_legacy_query(
+            query=request.query,
+            sanitized_query=sanitized_query,
+            query_type=query_type,
             atm_id=atm_id,
-            top_k=request.top_k,
             anomaly_type=anomaly_type,
-            temporal_boost=True,
             error_only=error_only,
             most_recent_first=most_recent_first,
-        )
-
-        if not chunks:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No relevant logs found for your query. Try rephrasing or check if the data generator is running.",
-            )
-
-        response = generator.generate(
-            query=request.query,
-            chunks=chunks,
-            query_type=query_type,
+            top_k=request.top_k,
+            include_uncertainty=request.include_uncertainty,
             enable_reflexion=request.enable_reflexion,
             enable_citation_grounding=request.enable_citation_grounding,
             enable_self_consistency=request.enable_self_consistency,
+            current_user=current_user,
         )
-
-        uncertainty = None
-        if request.include_uncertainty:
-            uncertainty = uncertainty_estimator.estimate(
-                query=request.query,
-                chunks=chunks,
-                self_consistency_score=response.self_consistency_score,
-                verbalized_confidence=response.verbalized_confidence,
-                grounding_score=response.grounding_score,
-            )
-
-        user_id = _get_user_id_from_username(current_user.get("sub", ""))
-        query_id = _save_query_history(
-            user_id=user_id,
-            query=request.query,
-            answer=response.text,
-            uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
-        )
-
-        if query_id is None:
-            query_id = _save_query_history_fallback(
-                query=request.query,
-                answer=response.text,
-                uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
-            )
-
-        result = RAGQueryResponse(
-            query_id=query_id,
-            answer=response.text,
-            sources=[
-                SourceChunk(
-                    text=c.text,
-                    chunk_id=c.chunk_id,
-                    atm_id=c.atm_id,
-                    timestamp=c.timestamp,
-                    confidence_score=c.confidence_score,
-                )
-                for c in response.sources
-            ],
-            uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
-            confidence_level=uncertainty.confidence_level if uncertainty else "medium",
-            is_uncertain=uncertainty.is_uncertain if uncertainty else False,
-            recommendation=uncertainty.recommendation
-            if uncertainty
-            else "Review recommended",
-            model_used=response.model,
-            self_consistency_score=response.self_consistency_score,
-            verbalized_confidence=response.verbalized_confidence,
-            grounding_score=response.grounding_score,
-            generation_variance=uncertainty.generation_variance
-            if uncertainty
-            else None,
-            cross_encoder_used=response.cross_encoder_used,
-            was_revised=response.was_revised,
-            critique_text=response.critique_text if response.critique_text else None,
-        )
-
-        cache_payload = {
-            "query_id": query_id,
-            "answer": response.text,
-            "sources": [
-                {
-                    "text": c.text,
-                    "chunk_id": c.chunk_id,
-                    "atm_id": c.atm_id,
-                    "timestamp": c.timestamp,
-                    "confidence_score": c.confidence_score,
-                }
-                for c in response.sources
-            ],
-            "uncertainty_score": uncertainty.final_confidence if uncertainty else 0.5,
-            "confidence_level": uncertainty.confidence_level
-            if uncertainty
-            else "medium",
-            "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
-            "recommendation": uncertainty.recommendation
-            if uncertainty
-            else "Review recommended",
-            "model_used": response.model,
-            "self_consistency_score": response.self_consistency_score,
-            "verbalized_confidence": response.verbalized_confidence,
-            "grounding_score": response.grounding_score,
-            "cross_encoder_used": response.cross_encoder_used,
-            "was_revised": response.was_revised,
-            "critique_text": response.critique_text,
-        }
-        set_cached_response(sanitized_query, cache_payload)
-
-        return result
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"RAG query failed: {e}", exc_info=True)
+    except Exception:
+        logger.error("RAG query failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Query processing failed: {str(e)}",
+            detail="Query processing failed due to an internal error.",
         )
 
 
@@ -334,9 +463,10 @@ async def agent_query(
         )
 
         if result.get("error"):
+            logger.error("Agent query failed: %s", result.get("error"))
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Agent query failed: {result['error']}",
+                detail="Query processing failed due to an internal error.",
             )
 
         if not result["sources"]:
@@ -368,11 +498,11 @@ async def agent_query(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Agent query failed: {e}", exc_info=True)
+    except Exception:
+        logger.error("Agent query failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Agent query processing failed: {str(e)}",
+            detail="Query processing failed due to an internal error.",
         )
 
 
@@ -753,9 +883,9 @@ async def _handle_stats_query(
             model_used="db_stats",
         )
 
-    except Exception as e:
-        logger.error(f"Stats query handling failed: {e}")
+    except Exception:
+        logger.error("Stats query handling failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process stats query: {str(e)}",
+            detail="Failed to process stats query due to an internal error.",
         )

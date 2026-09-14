@@ -140,7 +140,8 @@ METRICS = [
 METRIC_NAMES = [name for name, _ in METRICS]
 
 # Gate: absolute floors (any system) and relative drop vs baseline.
-FLOORS = {"faithfulness": 0.5, "context_recall": 0.3}
+# Faithfulness 0.9 catches grounding slides like the agentic 0.982 -> 0.939 drop.
+FLOORS = {"faithfulness": 0.9, "context_recall": 0.3}
 MAX_DROP = 0.05
 
 

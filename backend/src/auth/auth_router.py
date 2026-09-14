@@ -17,7 +17,7 @@ from typing import Generator
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
@@ -59,6 +59,24 @@ ACCESS_TOKEN_EXPIRE_HOURS = 8
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+_optional_oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/auth/login", auto_error=False
+)
+
+AUTH_COOKIE_NAME = "access_token"
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        token,
+        max_age=ACCESS_TOKEN_EXPIRE_HOURS * 3600,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        path="/",
+    )
 
 
 # DB connection dependency
@@ -106,10 +124,21 @@ def _blacklist_token(token: str, expires_at: datetime) -> None:
 
 
 # Route dependency injectors
-def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+def get_current_user(
+    request: Request,
+    token: str | None = Depends(_optional_oauth2_scheme),
+) -> dict:
     """Validates JWT and checks blacklist. Returns {'sub': username, 'role': role}.
     Inject with Depends(get_current_user) on any route requiring login.
+    Accepts Authorization header first, httpOnly cookie as fallback.
     """
+    if not token:
+        token = request.cookies.get(AUTH_COOKIE_NAME)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
@@ -152,10 +181,12 @@ class RegisterRequest(BaseModel):
 # Endpoints
 @router.post("/login")
 def login(
+    response: Response,
     form: OAuth2PasswordRequestForm = Depends(),
     conn=Depends(get_db_connection),
 ):
-    """Standard username/password login. Returns a JWT."""
+    """Standard username/password login. Sets httpOnly cookie + returns a JWT
+    (token in body kept for backwards compat with localStorage clients)."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             "SELECT password_hash, role FROM users WHERE username = %s",
@@ -172,6 +203,7 @@ def login(
         )
 
     token = create_access_token(username=form.username, role=row["role"])
+    _set_auth_cookie(response, token)
     logger.info(f"Login: '{form.username}' (role={row['role']})")
     return {"access_token": token, "token_type": "bearer", "role": row["role"]}
 
@@ -228,12 +260,20 @@ def register(request: RegisterRequest, conn=Depends(get_db_connection)):
 
 
 @router.post("/logout")
-def logout(token: str = Depends(oauth2_scheme)):
+def logout(
+    request: Request,
+    response: Response,
+    token: str | None = Depends(_optional_oauth2_scheme),
+):
     """Revoke the current JWT by adding it to the Redis blacklist.
 
     The token is stored with TTL = remaining token expiry time.
     If Redis is unavailable, the endpoint returns success but logs a warning.
     """
+    token = token or request.cookies.get(AUTH_COOKIE_NAME)
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    if not token:
+        return {"message": "Successfully logged out"}
     try:
         payload = jwt.decode(
             token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False}

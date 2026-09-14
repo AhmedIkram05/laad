@@ -77,6 +77,10 @@ class RAGConfig:
             )
             self.agent_max_llm_calls: int = int(os.getenv("AGENT_MAX_LLM_CALLS", "24"))
             self.hybrid_top_k: int = int(os.getenv("RAG_HYBRID_TOP_K", "5"))
+            self.champion: str = os.getenv("RAG_CHAMPION", "agentic").lower()
+            self.champion_fallback: bool = (
+                os.getenv("RAG_CHAMPION_FALLBACK", "true").lower() == "true"
+            )
             # 0 disables the client-side global rate limiter (eval runs).
             self.rate_limit_per_min: int = int(os.getenv("RAG_RATE_LIMIT", "20"))
         except (ValueError, TypeError):
@@ -110,6 +114,8 @@ class RAGConfig:
             self.agent_grounding_retry_threshold = 0.6
             self.agent_max_llm_calls = 24
             self.hybrid_top_k = 5
+            self.champion = "agentic"
+            self.champion_fallback = True
             self.rate_limit_per_min = 20
 
         self.redis_host: str = os.getenv("REDIS_HOST", "localhost")
