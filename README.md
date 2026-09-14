@@ -39,7 +39,7 @@
 <a href="https://codecov.io/gh/AhmedIkram05/laad"><img src="https://codecov.io/gh/AhmedIkram05/laad/branch/main/graph/badge.svg" alt="Codecov"></a>
 </p>
 
-![Detected anomalies across ATM and server systems, prioritised by criticality score](docs/demos/detection-engine.gif)
+![Detected anomalies across ATM and server systems, prioritised by criticality score](https://github.com/user-attachments/assets/27b6df3b-71f6-45f6-80a9-8fe2a8756989)
 
 ## How It Fits Together
 
@@ -118,17 +118,17 @@ flowchart LR
 - **3-layer detector** - XGBoost 8-class classifier at **99.8% CV (±0.1%, 868K rows)** plus an Isolation Forest sidecar (**97.3% precision, F1 0.70**) for out-of-class novelty, Z-score drift detection, and always-on heuristics. SageMaker (`ml.t2.medium`) validates predictions live. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1)
 - **Agentic Hybrid RAG** - LangGraph with 12 MCP tools, 4-stage reasoning, cross-encoder reranking, and 4-signal confidence fusion via uncertainty-weighted averaging (static calibrated weights). RAGAS-evaluated: **faithfulness 0.940, precision 0.874, relevancy 0.801**. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) · [Evaluation data](docs/eval/)
 
-  ![Diagnostic assistant chat interface with example queries](docs/demos/rag-assistant.gif)
+  ![Diagnostic assistant chat interface with example queries](https://github.com/user-attachments/assets/d31fec6d-2921-415c-973f-3f146eb11550)
 
 - **MLOps** - MLflow on AWS (RDS + S3), 7 artifacts per run, champion aliases, auto-retrain when artifacts go missing or corrupt. [Deep dive](docs/README-full.md#ml-training--mlops)
 
-  <img src="docs/demos/aws-mlflow.gif" width="600" alt="MLflow experiment tracking for atm-anomaly-detection">
+  ![MLflow experiment tracking for atm-anomaly-detection](https://github.com/user-attachments/assets/6c744d53-60e8-4335-8a4c-6f83d1cdec5c)
 
 ## Data engineering - the spine
 
 - **Kafka pipeline** - **~100 msgs/sec sustained** on a single consumer, **2.5M+ events** through the live pipeline: KRaft broker, 2 topics × 3 partitions, 7 source-specific parsers, Redis-SET deduplication, **manual offset commits** (at-least-once, effectively-once within the LRU window), failures routed to a Redis Stream DLQ with retry + backoff. [Deep dive](docs/README-full.md#kafka-message-bus)
 
-  <img src="docs/demos/kafka-pipeline.gif" width="600" alt="Kafka consumer streaming events into ChromaDB (200 OK upserts)">
+  ![Kafka consumer streaming events into ChromaDB (200 OK upserts)](https://github.com/user-attachments/assets/f9663335-d81e-4478-a64f-11becc42ceb1)
 - **PostgreSQL 16** - unified events/metrics schema with JSONB, 15 indexes, and a `v_unified_analysis` view for time-window semantics. Adding a log source = new parser, zero schema change. [Deep dive](docs/README-full.md#database-design)
 - **Redis** - 8 patterns (rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics) off one connection pool, each degrading gracefully. [Deep dive](docs/README-full.md#redis-infrastructure-8-patterns)
 
@@ -136,7 +136,7 @@ flowchart LR
 
 - **Terraform** - 10 modules, 114 resources (+6 bootstrap): VPC across 2 AZs, ECS Fargate, RDS, SageMaker, CloudFront, Secrets Manager, least-privilege IAM. State locked in DynamoDB + versioned in S3; CI auth via OIDC - no long-lived credentials. [Deep dive](docs/README-full.md#aws-deployment--infrastructure)
 
-  <img src="docs/demos/infra.gif" width="600" alt="AWS estate tour: VPC, ECS Fargate, ALB, Kafka EC2, CloudFront, IAM, Secrets Manager, SageMaker, S3 versioning - cycles every 3s">
+  ![AWS estate tour: VPC, ECS Fargate, ALB, Kafka EC2, CloudFront, IAM, Secrets Manager, SageMaker, S3 versioning - cycles every 3s](https://github.com/user-attachments/assets/6acdac36-3129-4f60-a595-bed73d91409b)
 
 **What's actually running:**
 
@@ -152,10 +152,10 @@ flowchart LR
 
 - **Quality gates** - **1,438 tests** gating every PR (959 pytest: 955 passed + 4 skipped, across 10 tiers · 394 vitest · 10 Playwright E2E · 75 Terraform assertions), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
 
-  <img src="docs/demos/qa.gif" width="600" alt="Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 955 passed, vitest 394, E2E 10, stress 8 - cycles every 3s">
+  ![Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 955 passed, vitest 394, E2E 10, stress 8 - cycles every 3s](https://github.com/user-attachments/assets/800b48bf-0c3d-4c81-a06a-44cab1716f79)
 - **Frontend** - React 19 + Vite + Tailwind v4: 9 pages, KPI cards polling every 5s, Chart.js analytics, shipped as a ~25MB nginx image. [Deep dive](docs/README-full.md#frontend-architecture)
 
-  ![Analytics dashboard: 56.9K events, 41 anomalies, 8 types detected](docs/demos/analytics.gif)
+  ![Analytics dashboard: 56.9K events, 41 anomalies, 8 types detected](https://github.com/user-attachments/assets/48e35dba-3e39-4072-b7b2-0ed7cf838f81)
 
 ## Trade-offs That Mattered
 

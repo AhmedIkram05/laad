@@ -253,16 +253,16 @@ Multi-AZ VPC with ECS Fargate, Kafka on EC2, RDS PostgreSQL for MLflow, SageMake
 
 | | |
 | --- | --- |
-| <img src="docs/demos/vpc.png" alt="VPC with public/private subnets across 2 AZs" width="400"/> | **VPC topology** - 10.0.0.0/16, 2 AZs, public + private subnets, NAT Gateway, Internet Gateway. All application traffic isolated in private subnets. |
-| <img src="docs/demos/ecs-cluster.png" alt="ECS Fargate cluster" width="400"/> | **ECS Fargate cluster** - API and Consumer services in ACTIVE state, each with 2 desired tasks across AZs. Rolling updates, health check grace period, CloudWatch logs. |
-| <img src="docs/demos/ec2-alb.png" alt="Application Load Balancer" width="400"/> | **Application Load Balancer** - routes traffic to ECS Fargate tasks in private subnets across both AZs for high availability. |
-| <img src="docs/demos/ec2-kafka.png" alt="Kafka broker on EC2" width="400"/> | **Kafka broker on EC2** - deployed alongside Redis and ChromaDB on EC2 instances in private subnets. |
-| <img src="docs/demos/cloudfront.png" alt="CloudFront distribution" width="400"/> | **CloudFront distribution** - serves the React frontend from S3 with edge caching and HTTPS. |
-| <img src="docs/demos/sagemaker.png" alt="SageMaker endpoint InService" width="400"/> | **SageMaker endpoint** - `laad-xgb-champion`, InService on ml.t2.medium, XGBoost 1.7-1 container, 8-class softmax probabilities. |
-| <img src="docs/demos/iam-roles.png" alt="Least-privilege IAM roles" width="400"/> | **IAM roles** - 4 least-privilege roles: GitHub Actions OIDC, ECS execution, ECS task, SageMaker execution. |
-| <img src="docs/demos/secrets-manager.png" alt="Secrets Manager" width="400"/> | **Secrets Manager** - 8 secrets injected into ECS containers via task definition. No hardcoded credentials. |
-| <img src="docs/demos/s3-buckets.png" alt="S3 bucket inventory" width="400"/> | **S3 buckets** - 3 buckets: frontend hosting, MLflow artifacts, Terraform state (versioned). |
-| <img src="docs/demos/s3-terraform-state-versioning.png" alt="Terraform state versioning" width="400"/> | **Terraform state** - locked via DynamoDB, versioned via S3. Full point-in-time recovery for all 10 modules. |
+| ![VPC with public/private subnets across 2 AZs](docs/demos/vpc.png) | **VPC topology** - 10.0.0.0/16, 2 AZs, public + private subnets, NAT Gateway, Internet Gateway. All application traffic isolated in private subnets. |
+| ![ECS Fargate cluster](docs/demos/ecs-cluster.png) | **ECS Fargate cluster** - API and Consumer services in ACTIVE state, each with 2 desired tasks across AZs. Rolling updates, health check grace period, CloudWatch logs. |
+| ![Application Load Balancer](docs/demos/ec2-alb.png) | **Application Load Balancer** - routes traffic to ECS Fargate tasks in private subnets across both AZs for high availability. |
+| ![Kafka broker on EC2](docs/demos/ec2-kafka.png) | **Kafka broker on EC2** - deployed alongside Redis and ChromaDB on EC2 instances in private subnets. |
+| ![CloudFront distribution](docs/demos/cloudfront.png) | **CloudFront distribution** - serves the React frontend from S3 with edge caching and HTTPS. |
+| ![SageMaker endpoint InService](docs/demos/sagemaker.png) | **SageMaker endpoint** - `laad-xgb-champion`, InService on ml.t2.medium, XGBoost 1.7-1 container, 8-class softmax probabilities. |
+| ![Least-privilege IAM roles](docs/demos/iam-roles.png) | **IAM roles** - 4 least-privilege roles: GitHub Actions OIDC, ECS execution, ECS task, SageMaker execution. |
+| ![Secrets Manager](docs/demos/secrets-manager.png) | **Secrets Manager** - 8 secrets injected into ECS containers via task definition. No hardcoded credentials. |
+| ![S3 bucket inventory](docs/demos/s3-buckets.png) | **S3 buckets** - 3 buckets: frontend hosting, MLflow artifacts, Terraform state (versioned). |
+| ![Terraform state versioning](docs/demos/s3-terraform-state-versioning.png) | **Terraform state** - locked via DynamoDB, versioned via S3. Full point-in-time recovery for all 10 modules. |
 
 ### CI/CD Pipeline
 
@@ -276,37 +276,37 @@ CD-SHOULD-DEPLOY - path-based filter skips infra when only docs change | Terrafo
 
 ### Platform Walkthrough
 
-![Architecture overview animation showing end-to-end system flow from 7 log sources through Kafka to the React dashboard](docs/demos/architecture-overview.gif)
+![Architecture overview animation showing end-to-end system flow from 7 log sources through Kafka to the React dashboard](https://github.com/user-attachments/assets/6294873b-60ff-472c-b786-ebe1dd9dfcc5)
 
 > **Architecture Overview** - 8 log emitters (ATM events, hardware sensors, GCP Cloud Metrics, etc.) emitting into Kafka (KRaft) topics, the kafka-consumer service ingesting into PostgreSQL and ChromaDB, the detection engine scoring anomalies and publishing to Redis Pub/Sub, and the React dashboard displaying real-time analytics with auto-refresh.
 
 ### 3-Layer Anomaly Detection
 
-![3-layer anomaly detection engine animation showing ML ensemble, z-score, and heuristic filtering in the anomaly list](docs/demos/detection-engine.gif)
+![3-layer anomaly detection engine animation showing ML ensemble, z-score, and heuristic filtering in the anomaly list](https://github.com/user-attachments/assets/27b6df3b-71f6-45f6-80a9-8fe2a8756989)
 
 > **3-Layer Detection Engine** - ML_ENSEMBLE → ZSCORE → HEURISTIC pipeline: scored anomalies appear in the UI with type label (A1-A7 or UNKNOWN), severity (CRITICAL/HIGH/MAJOR), detector origin, model confidence score, and structured explanation.
 
 ### Agentic Hybrid RAG Diagnostic Assistant
 
-![Agentic Hybrid RAG diagnostic assistant animation showing a conversation with confidence breakdown and citation grounding](docs/demos/rag-assistant.gif)
+![Agentic Hybrid RAG diagnostic assistant animation showing a conversation with confidence breakdown and citation grounding](https://github.com/user-attachments/assets/d31fec6d-2921-415c-973f-3f146eb11550)
 
 > **Agentic Hybrid RAG** - End-to-end diagnostic conversation: ChromaDB retrieval → cross-encoder reranking → LLM response with verbalized confidence → reflexion (self-critique) → final answer with source citations.
 
 ### Real-Time Analytics Dashboard
 
-![Real-time analytics dashboard animation showing Chart.js visualizations with KPI cards and metric filters](docs/demos/analytics.gif)
+![Real-time analytics dashboard animation showing Chart.js visualizations with KPI cards and metric filters](https://github.com/user-attachments/assets/48e35dba-3e39-4072-b7b2-0ed7cf838f81)
 
 > **Analytics Dashboard** - 4 KPI cards polling every 5 seconds, Bar/Line/Doughnut Chart.js visualizations, 5 time range options with adaptive bucket resolution.
 
 ### Kafka Ingestion Pipeline
 
-![Kafka pipeline animation showing message flow through deduplication, processing, and dead letter queue](docs/demos/kafka-pipeline.gif)
+![Kafka pipeline animation showing message flow through deduplication, processing, and dead letter queue](https://github.com/user-attachments/assets/f9663335-d81e-4478-a64f-11becc42ceb1)
 
 > **Kafka Pipeline** - gzip-compressed messages on `atm-events`/`atm-metrics` topics → hybrid deduplicator (Redis SET + 10K LRU, 1h TTL) → batch processing (max.poll.records=500) → failed messages retry 3× before Redis Stream DLQ.
 
 ### MLflow on AWS
 
-![AWS MLflow integration animation demonstrating experiment tracking on RDS and model registry with champion aliases](docs/demos/aws-mlflow.gif)
+![AWS MLflow integration animation demonstrating experiment tracking on RDS and model registry with champion aliases](https://github.com/user-attachments/assets/6c744d53-60e8-4335-8a4c-6f83d1cdec5c)
 
 > **AWS MLflow** - Experiments tracked against RDS PostgreSQL 18.4 with model artifacts stored in S3. Shows experiment runs, logged metrics, and the model registry with `champion` alias promotion.
 
