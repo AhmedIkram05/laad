@@ -6,7 +6,7 @@ JWT blacklisting, deduplication, distributed locking, Pub/Sub, query caching,
 analytics counters, and dead letter queue).
 
 Usage:
-    from backend.src.cache import get_redis_client
+    from backend.src.cache.redis_client import get_redis_client
 
     client = get_redis_client()
     if client:

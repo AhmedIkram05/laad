@@ -12,30 +12,28 @@ import { AuthContext } from "./useAuth";
 const API_BASE_URL = "";
 
 export function AuthProvider({ children }) {
+    // Legacy localStorage token kept as fallback; httpOnly cookie is primary.
     const [token, setToken] = useState(() => localStorage.getItem("jwt") || null);
     const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(Boolean(token));
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let mounted = true;
 
         const load = async () => {
-            if (!token) {
-                setUser(null);
-                setLoading(false);
-                return;
-            }
-
             setLoading(true);
             try {
                 const res = await fetch(`${API_BASE_URL}/auth/me`, {
-                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: "include",
+                    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
                 });
 
                 if (!res.ok) {
                     localStorage.removeItem("jwt");
-                    setToken(null);
-                    setUser(null);
+                    if (mounted) {
+                        setToken(null);
+                        setUser(null);
+                    }
                 } else {
                     const data = await res.json();
                     if (mounted) setUser(data);
@@ -54,13 +52,21 @@ export function AuthProvider({ children }) {
     }, [token]);
 
     const login = (newToken) => {
-        if (!newToken) return;
-        localStorage.setItem("jwt", newToken);
+        if (newToken) localStorage.setItem("jwt", newToken);
         setLoading(true); // Prevent ProtectedRoute from redirecting before /auth/me resolves
-        setToken(newToken);
+        setToken(newToken || null);
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            await fetch(`${API_BASE_URL}/auth/logout`, {
+                method: "POST",
+                credentials: "include",
+                ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+            });
+        } catch {
+            // Clear local state even if the server call fails
+        }
         localStorage.removeItem("jwt");
         setToken(null);
         setUser(null);

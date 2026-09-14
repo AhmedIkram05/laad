@@ -25,6 +25,7 @@ export default function Login() {
     try {
       const res = await fetch("/auth/login", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ username, password }),
       });

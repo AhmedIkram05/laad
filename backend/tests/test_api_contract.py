@@ -172,6 +172,9 @@ class TestEndpointBehaviour:
         assert resp.json()["username"] == "admin"
 
     def test_auth_me_unauthorized(self, client):
+        # Clear httpOnly login cookie so absence of Authorization header
+        # genuinely means unauthenticated (TestClient persists cookies).
+        client.cookies.clear()
         resp = client.get("/auth/me")
         assert resp.status_code == 401
 

@@ -10,18 +10,47 @@ export const getAuthHeaders = () => {
     return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-// Helper Function for Making API Requests
+// Helper Function for Making API Requests (timeout + status-specific errors)
+const DEFAULT_TIMEOUT_MS = 15000;
+const RAG_TIMEOUT_MS = 90000;
+
 const request = async (endpoint, options = {}) => {
-    const { headers: optionHeaders, ...restOptions } = options;
-    const res = await fetch(endpoint, {
-        headers: {
-            ...getAuthHeaders(),
-            ...(optionHeaders || {}),
-        },
-        ...restOptions,
-    });
+    const { headers: optionHeaders, timeoutMs, ...restOptions } = options;
+    const controller = new AbortController();
+    const timeout = setTimeout(
+        () => controller.abort(),
+        timeoutMs ?? DEFAULT_TIMEOUT_MS
+    );
+    let res;
+    try {
+        res = await fetch(endpoint, {
+            headers: {
+                ...getAuthHeaders(),
+                ...(optionHeaders || {}),
+            },
+            credentials: "include",
+            signal: controller.signal,
+            ...restOptions,
+        });
+    } catch (e) {
+        if (e?.name === "AbortError") {
+            throw new Error("Request timed out. The assistant is slow — try again.");
+        }
+        throw e;
+    } finally {
+        clearTimeout(timeout);
+    }
 
     if (!res.ok) {
+        if (res.status === 404) {
+            throw new Error("No relevant logs found. Try rephrasing your query.");
+        }
+        if (res.status === 401) {
+            throw new Error("Session expired, please log in again.");
+        }
+        if (res.status === 429) {
+            throw new Error("Too many requests. Please wait and try again.");
+        }
         throw new Error(`Request failed: ${res.status}`);
     }
 
@@ -101,6 +130,7 @@ export const queryRAG = (
 ) =>
     request("/api/rag/query", {
         method: "POST",
+        timeoutMs: RAG_TIMEOUT_MS,
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
             query,
