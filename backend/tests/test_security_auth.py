@@ -240,11 +240,15 @@ class TestTokenAbuse:
 
     def test_blank_token(self, client):
         """A blank/empty token should return 401."""
+        # Blank Authorization header must not fall back to the httpOnly
+        # cookie (TestClient persists login cookies from other tests).
         resp = client.get("/auth/me", headers={"Authorization": "Bearer "})
         assert resp.status_code == 401
 
     def test_no_auth_header(self, client):
         """No Authorization header at all should return 401."""
+        # Clear httpOnly login cookie so missing header is truly anonymous.
+        client.cookies.clear()
         resp = client.get("/auth/me")
         assert resp.status_code == 401
 

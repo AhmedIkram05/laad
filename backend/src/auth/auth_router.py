@@ -125,14 +125,18 @@ def _blacklist_token(token: str, expires_at: datetime) -> None:
 
 # Route dependency injectors
 def get_current_user(
-    request: Request,
     token: str | None = Depends(_optional_oauth2_scheme),
+    request: Request = None,  # type: ignore[assignment]
 ) -> dict:
     """Validates JWT and checks blacklist. Returns {'sub': username, 'role': role}.
     Inject with Depends(get_current_user) on any route requiring login.
     Accepts Authorization header first, httpOnly cookie as fallback.
+    Token-first signature keeps direct unit-test calls (get_current_user(token))
+    working; FastAPI injects both params by type/Depends regardless of order.
     """
-    if not token:
+    if not isinstance(token, str):
+        token = None
+    if token is None and request is not None:
         token = request.cookies.get(AUTH_COOKIE_NAME)
     if not token:
         raise HTTPException(
@@ -261,16 +265,19 @@ def register(request: RegisterRequest, conn=Depends(get_db_connection)):
 
 @router.post("/logout")
 def logout(
-    request: Request,
     response: Response,
     token: str | None = Depends(_optional_oauth2_scheme),
+    request: Request = None,  # type: ignore[assignment]
 ):
     """Revoke the current JWT by adding it to the Redis blacklist.
 
     The token is stored with TTL = remaining token expiry time.
     If Redis is unavailable, the endpoint returns success but logs a warning.
     """
-    token = token or request.cookies.get(AUTH_COOKIE_NAME)
+    if not isinstance(token, str):
+        token = None
+    if token is None and request is not None:
+        token = request.cookies.get(AUTH_COOKIE_NAME)
     response.delete_cookie(AUTH_COOKIE_NAME, path="/")
     if not token:
         return {"message": "Successfully logged out"}
