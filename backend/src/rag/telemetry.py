@@ -1,9 +1,12 @@
 """Runtime telemetry for the agentic RAG retrofit (D15 / plan §4.1).
 
 TraceRecord aggregates per-request agent-loop telemetry plus token/cost
-estimates; record_trace persists it to rag_agent_traces and optionally appends
-OTel GenAI semconv as JSONL when OTEL_JSONL is configured (default off, no
-collector). report.py --runtime renders the same shapes from these rows.
+estimates; record_trace persists it to rag_agent_traces (ADR-0003: AgentTrace
+stays the in-process source of truth and feeds the API response). The
+distributed view is OpenTelemetry spans (rag.query root, rag.tool.* children,
+cap/gate events) — there is deliberately only one span representation, the
+old OTEL_JSONL side-channel was retired in the Phase 3 rollout.
+report.py --runtime renders the same shapes from these rows.
 """
 
 from __future__ import annotations
@@ -14,7 +17,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from backend.src.database.connection import get_cursor
-from backend.src.rag.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +76,7 @@ def _from_trace(trace: dict) -> TraceRecord:
 
 
 def record_trace(query_id: Optional[int], trace: Optional[dict]) -> None:
-    """Persist one agent-loop trace, then append OTel JSONL when configured."""
+    """Persist one agent-loop trace to rag_agent_traces."""
     if query_id is None or not trace:
         return
     record = _from_trace(trace)
@@ -102,30 +104,6 @@ def record_trace(query_id: Optional[int], trace: Optional[dict]) -> None:
             )
     except Exception as e:  # noqa: BLE001 - telemetry must never break the request
         logger.warning(f"Failed to save agent trace: {e}")
-        return
-    _append_otel_jsonl(query_id, record)
-
-
-def _append_otel_jsonl(query_id: Optional[int], record: TraceRecord) -> None:
-    """Append a GenAI-semconv-ish JSONL line (OTEL_JSONL, default off)."""
-    path = config.otel_jsonl
-    if not path:
-        return
-    payload = {
-        "query_id": query_id,
-        "gen_ai.usage.input_tokens": record.tokens_in,
-        "gen_ai.usage.output_tokens": record.tokens_out,
-        "gen_ai.system": "wandb-serverless",
-        "laad.agent.mode": record.mode,
-        "laad.agent.model_calls": record.model_calls,
-        "laad.agent.est_cost": record.est_cost,
-        "laad.agent.model_calls_truncated": record.model_calls_truncated,
-    }
-    try:
-        with open(path, "a") as f:
-            f.write(json.dumps(payload) + "\n")
-    except OSError as e:
-        logger.warning(f"Failed to append OTel JSONL: {e}")
 
 
 def aggregate(records: list[TraceRecord]) -> dict[str, float]:

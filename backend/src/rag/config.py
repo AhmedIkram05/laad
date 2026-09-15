@@ -126,8 +126,6 @@ class RAGConfig:
             self.redis_port = 6379
         self.cache_ttl: int = int(os.getenv("REDIS_CACHE_TTL", "300"))
 
-        self.otel_jsonl: Optional[str] = os.getenv("OTEL_JSONL") or None
-
         self._check_configured()
 
     def _check_configured(self) -> None:

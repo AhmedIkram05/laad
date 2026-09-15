@@ -34,6 +34,7 @@ async def get_langchain_tools() -> list:
         cm = streamable_http_client(url)
         read, write, _ = await cm.__aenter__()
         session = await ClientSession(read, write).__aenter__()
+        await session.initialize()
     else:
         cm = create_connected_server_and_client_session(_mcp._mcp_server)
         session = await cm.__aenter__()
