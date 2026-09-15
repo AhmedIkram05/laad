@@ -1,0 +1,460 @@
+"""Tests for RAG API router and schemas."""
+
+import pytest
+from unittest.mock import MagicMock, patch
+from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.rag
+
+
+class TestRAGSchemas:
+    """Test cases for RAG Pydantic schemas."""
+
+    def test_rag_query_request_valid(self):
+        from backend.src.rag.schemas import RAGQueryRequest
+
+        request = RAGQueryRequest(
+            query="What is error A1?",
+            atm_id="ATM-GB-0001",
+            top_k=3,
+            include_uncertainty=True,
+        )
+
+        assert request.query == "What is error A1?"
+        assert request.atm_id == "ATM-GB-0001"
+        assert request.top_k == 3
+        assert request.include_uncertainty is True
+
+    def test_rag_query_request_defaults(self):
+        from backend.src.rag.schemas import RAGQueryRequest
+
+        request = RAGQueryRequest(query="Test query")
+
+        assert request.atm_id is None
+        assert request.top_k == 10
+        assert request.include_uncertainty is True
+
+    def test_rag_query_request_validation(self):
+        from backend.src.rag.schemas import RAGQueryRequest
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            RAGQueryRequest(query="")
+
+        with pytest.raises(ValidationError):
+            RAGQueryRequest(query="a" * 1001)
+
+    def test_source_chunk(self):
+        from backend.src.rag.schemas import SourceChunk
+
+        chunk = SourceChunk(
+            text="Error log entry",
+            chunk_id="chunk_1",
+            atm_id="ATM-GB-0001",
+            timestamp="2026-05-15T10:00:00Z",
+            confidence_score=0.85,
+        )
+
+        assert chunk.text == "Error log entry"
+        assert chunk.confidence_score == 0.85
+
+    def test_rag_query_response(self):
+        from backend.src.rag.schemas import RAGQueryResponse, SourceChunk
+
+        sources = [
+            SourceChunk(
+                text="Log 1",
+                chunk_id="1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                confidence_score=0.9,
+            )
+        ]
+
+        response = RAGQueryResponse(
+            query_id=42,
+            answer="The error means...",
+            sources=sources,
+            uncertainty_score=0.85,
+            confidence_level="high",
+            is_uncertain=False,
+            recommendation="Auto-respond",
+            model_used="google/gemma-4-26b-a4b-it:free",
+            self_consistency_score=0.88,
+            verbalized_confidence=0.92,
+            grounding_score=0.95,
+            cross_encoder_used=True,
+            was_revised=False,
+        )
+
+        assert response.query_id == 42
+        assert response.answer == "The error means..."
+        assert response.confidence_level == "high"
+        assert response.self_consistency_score == 0.88
+        assert response.verbalized_confidence == 0.92
+        assert response.grounding_score == 0.95
+        assert response.cross_encoder_used is True
+        assert response.was_revised is False
+
+    def test_rag_query_response_with_fallback_model(self):
+        from backend.src.rag.schemas import RAGQueryResponse, SourceChunk
+
+        sources = [
+            SourceChunk(
+                text="Log 1",
+                chunk_id="1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                confidence_score=0.9,
+            )
+        ]
+
+        response = RAGQueryResponse(
+            query_id=43,
+            answer="I found 3 relevant log entries...",
+            sources=sources,
+            uncertainty_score=0.6,
+            confidence_level="medium",
+            is_uncertain=False,
+            recommendation="Verify - moderate confidence",
+            model_used="fallback-template",
+        )
+
+        assert response.model_used == "fallback-template"
+        assert response.query_id == 43
+        assert response.self_consistency_score is None
+
+
+class TestRAGFeedback:
+    """Test cases for RAG feedback schemas."""
+
+    def test_feedback_request(self):
+        from backend.src.rag.schemas import RAGFeedbackRequest
+        from pydantic import ValidationError
+
+        req = RAGFeedbackRequest(query_id=1, feedback="helpful")
+        assert req.feedback == "helpful"
+
+        req_uncertain = RAGFeedbackRequest(query_id=1, feedback="uncertain")
+        assert req_uncertain.feedback == "uncertain"
+
+        with pytest.raises(ValidationError):
+            RAGFeedbackRequest(query_id=1, feedback="invalid")
+
+    def test_feedback_response(self):
+        from backend.src.rag.schemas import RAGFeedbackResponse
+
+        response = RAGFeedbackResponse(
+            success=True,
+            message="Feedback recorded",
+        )
+
+        assert response.success is True
+        assert response.message == "Feedback recorded"
+
+
+class TestRAGRouter:
+    """Test cases for RAG FastAPI routes."""
+
+    @pytest.fixture(autouse=True)
+    def mock_mlflow(self):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": MagicMock(),
+                "mlflow.sklearn": MagicMock(),
+                "mlflow.xgboost": MagicMock(),
+            },
+        ):
+            yield
+
+    @pytest.fixture
+    def client(self):
+        from backend.src.api.server import app
+
+        return TestClient(app)
+
+    @patch("backend.src.rag.router.get_retriever")
+    @patch("backend.src.rag.router.get_generator")
+    @patch("backend.src.rag.router.get_uncertainty_estimator")
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    def test_query_returns_404_no_chunks(
+        self, mock_user_id, mock_unc, mock_gen, mock_ret, client
+    ):
+        mock_user_id.return_value = 1
+        mock_ret.return_value.retrieve.return_value = []
+        from backend.src.rag import router as rag_router
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        # Bypass the agentic champion (real LLM/network) and exercise the
+        # legacy 404 path directly.
+        with patch.object(rag_router.config, "champion", "legacy"):
+            resp = client.post(
+                "/api/rag/query",
+                json={"query": "test"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert resp.status_code == 404
+
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.get_retriever")
+    @patch("backend.src.rag.router.get_generator")
+    @patch("backend.src.rag.router.get_uncertainty_estimator")
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.router.set_cached_response")
+    def test_query_rate_limiting(
+        self,
+        mock_set_cache,
+        mock_get_cache,
+        mock_unc,
+        mock_gen,
+        mock_ret,
+        mock_user_id,
+        client,
+    ):
+        from backend.src.rag.retriever import RetrievedChunk
+        from backend.src.rag.generator import GeneratedResponse
+        from backend.src.rag.uncertainty import UncertaintyEstimate
+        from backend.src.rag import router as rag_router
+
+        rag_router._query_timestamps.clear()
+
+        mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
+        mock_ret.return_value.retrieve.return_value = [
+            RetrievedChunk(
+                text="Network timeout at ATM-GB-0001",
+                chunk_id="doc_1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                distance=0.1,
+                confidence_score=0.9,
+            )
+        ]
+        mock_gen.return_value.generate.return_value = GeneratedResponse(
+            text="This is a network timeout error.",
+            sources=[],
+            model="test-model",
+            raw_response={},
+        )
+        mock_unc.return_value.estimate.return_value = UncertaintyEstimate(
+            final_confidence=0.85,
+            confidence_level="high",
+            self_consistency_score=0.85,
+            verbalized_confidence=None,
+            generation_variance=None,
+            grounding_score=None,
+            is_uncertain=False,
+            recommendation="Auto-respond",
+        )
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        with patch(
+            "backend.src.rag.router.get_redis_client", return_value=None
+        ), patch.object(rag_router.config, "champion", "legacy"):
+            resp = client.post(
+                "/api/rag/query",
+                json={"query": "test query"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+
+            # Fill the 60s window without 9 more (slow) HTTP round-trips.
+            import time
+
+            rag_router._query_timestamps["admin"] = [
+                time.time() - i for i in range(rag_router.RATE_LIMIT_MAX_REQUESTS)
+            ]
+
+            resp = client.post(
+                "/api/rag/query",
+                json={"query": "rate limited query"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 429
+            assert "Rate limit exceeded" in resp.json()["detail"]
+
+            # Don't leak a full window into later tests in the same process.
+            rag_router._query_timestamps.clear()
+
+
+class TestAgentEndpoint:
+    """Smoke tests for POST /api/rag/agent."""
+
+    @pytest.fixture(autouse=True)
+    def mock_mlflow(self):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlflow": MagicMock(),
+                "mlflow.sklearn": MagicMock(),
+                "mlflow.xgboost": MagicMock(),
+            },
+        ):
+            yield
+
+    @pytest.fixture
+    def client(self):
+        from backend.src.api.server import app
+
+        return TestClient(app)
+
+    def _reset_rate_limit(self):
+        from backend.src.rag import router as rag_router
+
+        rag_router._query_timestamps.clear()
+
+    def _agent_result(self, sources=None, **overrides):
+        result = {
+            "answer": "Answer based on retrieved evidence.",
+            "sources": [
+                {
+                    "text": "Network timeout at ATM-GB-0001",
+                    "chunk_id": "row:query_anomalies:0",
+                    "atm_id": "ATM-GB-0001",
+                    "timestamp": "2026-05-15T10:00:00Z",
+                    "confidence_score": 0.9,
+                }
+            ],
+            "uncertainty_score": 0.85,
+            "confidence_level": "high",
+            "is_uncertain": False,
+            "recommendation": "Auto-respond",
+            "model_used": "test-model",
+            "self_consistency_score": 0.85,
+            "verbalized_confidence": None,
+            "grounding_score": 0.9,
+            "generation_variance": None,
+            "cross_encoder_used": False,
+            "was_revised": False,
+            "critique_text": None,
+            "latencies": {
+                "planning_s": 0.1,
+                "tools_s": 0.2,
+                "generation_s": 0.3,
+                "reflexion_s": 0.0,
+                "total": 0.6,
+            },
+        }
+        if sources is not None:
+            result["sources"] = sources
+        result["agent_trace"] = {
+            "mode": "hybrid",
+            "tool_calls": [
+                {
+                    "tool": "search_knowledge",
+                    "ok": True,
+                    "duration_s": 0.1,
+                    "error": None,
+                }
+            ],
+            "rounds": 1,
+            "model_calls": 0,
+            "latencies": {},
+            "selected_tools": ["search_knowledge"],
+            "retries": 0,
+            "retry_trigger": None,
+            "model_calls_truncated": False,
+        }
+        result.update(overrides)
+        return result
+
+    @patch("backend.src.rag.router.get_redis_client", return_value=None)
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.set_cached_response")
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.agent.run_agent_query")
+    def test_agent_success_returns_trace_and_caches(
+        self, mock_run, mock_get_cache, mock_set_cache, mock_user_id, mock_redis, client
+    ):
+
+        self._reset_rate_limit()
+        mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
+        mock_run.return_value = self._agent_result()
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        resp = client.post(
+            "/api/rag/agent",
+            json={"query": "troubleshoot ATM-GB-0001", "mode": "hybrid"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["answer"] == "Answer based on retrieved evidence."
+        assert body["agent_trace"]["selected_tools"] == ["search_knowledge"]
+        assert body["agent_trace"]["mode"] == "hybrid"
+        # cache key includes mode + atm_id
+        key = mock_set_cache.call_args[0][0]
+        assert key == "rag:agent:hybrid:ATM-GB-0001:troubleshoot ATM-GB-0001"
+        # run_agent_query received the parsed mode + extracted atm_id
+        _, kwargs = mock_run.call_args
+        assert kwargs["mode"].value == "hybrid"
+        assert kwargs["atm_id"] == "ATM-GB-0001"
+
+    @patch("backend.src.rag.router.get_redis_client", return_value=None)
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.agent.run_agent_query")
+    def test_agent_404_when_no_sources(
+        self, mock_run, mock_get_cache, mock_user_id, mock_redis, client
+    ):
+
+        self._reset_rate_limit()
+        mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
+        mock_run.return_value = self._agent_result(sources=[])
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        resp = client.post(
+            "/api/rag/agent",
+            json={"query": "nothing here"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
+
+    @patch("backend.src.rag.router.get_redis_client", return_value=None)
+    @patch("backend.src.rag.router._get_user_id_from_username")
+    @patch("backend.src.rag.router.get_cached_response")
+    @patch("backend.src.rag.agent.run_agent_query")
+    def test_agent_500_on_internal_error(
+        self, mock_run, mock_get_cache, mock_user_id, mock_redis, client
+    ):
+
+        self._reset_rate_limit()
+        mock_user_id.return_value = 1
+        mock_get_cache.return_value = None
+        mock_run.return_value = {"error": "boom"}
+
+        token_resp = client.post(
+            "/auth/login", data={"username": "admin", "password": "admin"}
+        )
+        token = token_resp.json()["access_token"]
+
+        resp = client.post(
+            "/api/rag/agent",
+            json={"query": "boom"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 500
+        # The endpoint logs internals but never leaks them in the response.
+        assert (
+            resp.json()["detail"]
+            == "Query processing failed due to an internal error."
+        )

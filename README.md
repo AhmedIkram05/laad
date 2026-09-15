@@ -107,7 +107,7 @@ flowchart LR
 | RAG quality (RAGAS) | faithfulness **0.940** · precision **0.874** · relevancy **0.801** |
 | Throughput | **~100 msgs/sec** sustained on one consumer · **2.5M+** events processed |
 | API surface | **30 endpoints** across 6 routers |
-| Tests gating every PR | **1,438** (959 pytest · 394 vitest · 10 Playwright · 75 Terraform) + 26 security checks |
+| Tests gating every PR | **1,880** (1,300 pytest · 495 vitest · 10 Playwright · 75 Terraform) + 26 security checks |
 | Infrastructure | **10 Terraform modules / 114 resources (+6 bootstrap)** on AWS: ECS Fargate, RDS, SageMaker, CloudFront, VPC |
 | Inference latency | local ~30ms · SageMaker cross-check ~100ms |
 
@@ -150,9 +150,9 @@ flowchart LR
 | ML inference | SageMaker endpoint deployed from the MLflow `champion` alias - model saved as JSON for the XGBoost 1.7-1 container |
 | Secrets & IAM | Secrets Manager injected straight into ECS task definitions (no `.env` files); least-privilege role per service; GitHub → AWS via OIDC, zero long-lived keys |
 
-- **Quality gates** - **1,438 tests** gating every PR (959 pytest: 955 passed + 4 skipped, across 10 tiers · 394 vitest · 10 Playwright E2E · 75 Terraform assertions), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
+- **Quality gates** - **1,880 tests** gating every PR (1,300 pytest: 1,288 passed + 4 skipped + 8 stress, across 10 tiers · 495 vitest · 10 Playwright E2E · 75 Terraform assertions), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
 
-  <video src="https://github.com/user-attachments/assets/93948a73-43d5-4aeb-bb3f-93e81f00bfc0" title="Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 955 passed, vitest 394, E2E 10, stress 8 - cycles every 3s" controls></video>
+  <video src="https://github.com/user-attachments/assets/4664af25-f549-45d1-9333-0391a051f27d" title="Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 1288 passed, vitest 495/55 suites, E2E 10, stress 8" controls></video>
 - **Frontend** - React 19 + Vite + Tailwind v4: 9 pages, KPI cards polling every 5s, Chart.js analytics, shipped as a ~25MB nginx image. [Deep dive](docs/README-full.md#frontend-architecture)
 
   <video src="https://github.com/user-attachments/assets/19d7ede8-d000-4e01-bfec-714f206448a7" title="Analytics dashboard: 56.9K events, 41 anomalies, 8 types detected" controls></video>
@@ -181,7 +181,7 @@ make all   # everything in Docker: frontend, API, Kafka, detection, RAG
 
 Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `:5434`. Default login `admin`/`admin`. [Configuration reference](docs/configuration.md)
 
-> **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 959-backend-test count materializes in CI, where all extras are present ([ci.yml](.github/workflows/ci.yml)).
+> **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 1,300-backend-test count materializes when all extras are present (1,288 passed + 4 skipped, plus 8 stress tests) ([ci.yml](.github/workflows/ci.yml)).
 
 ## Documentation
 
@@ -190,7 +190,7 @@ Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `
 
 ## About This Project
 
-Started as the CS32002 Industrial Team Project at the University of Dundee, built for **NCR Atleos** (team foundation: rule-based detection and a single-script generator). The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,438-test suite, the 30-endpoint API, and the entire AWS estate above were designed, built, and deployed by **Ahmed Ikram** as an independent post-submission extension. [Team breakdown](docs/README-full.md#team)
+Started as the CS32002 Industrial Team Project at the University of Dundee, built for **NCR Atleos** (team foundation: rule-based detection and a single-script generator). The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,880-test suite, the 30-endpoint API, and the entire AWS estate above were designed, built, and deployed by **Ahmed Ikram** as an independent post-submission extension. [Team breakdown](docs/README-full.md#team)
 
 ## Related Projects
 
