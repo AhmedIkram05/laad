@@ -83,6 +83,24 @@ services:
     volumes:
       - redis_data:/data
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.160.0
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./backend/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on:
+      jaeger:
+        condition: service_started
+    # No host ports: OTLP is internal-only (compose network), per plan §7.
+
+  jaeger:
+    image: jaegertracing/jaeger:2.21.0
+    restart: unless-stopped
+    ports:
+      # UI is dev-only, bound to localhost (plan §7)
+      - "127.0.0.1:16686:16686"
+
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
@@ -140,6 +158,12 @@ services:
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_CACHE_TTL=${REDIS_CACHE_TTL:-300}
+      - OTEL_SERVICE_NAME=atm-consumer
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # OpenLLMetry emits gen_ai.task.input/output with full prompts/tool
+      # outputs by default — plan §7 forbids bodies in spans (ADR-0002 paths,
+      # honest attributes only).
+      - TRACELOOP_TRACE_CONTENT=false
     depends_on:
       kafka:
         condition: service_healthy
@@ -151,6 +175,8 @@ services:
         condition: service_healthy
       ollama-init:
         condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
     volumes:
       - ./backend:/app/backend
@@ -191,9 +217,17 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - OTEL_SERVICE_NAME=atm-backend
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # OpenLLMetry emits gen_ai.task.input/output with full prompts/tool
+      # outputs by default — plan §7 forbids bodies in spans (ADR-0002 paths,
+      # honest attributes only).
+      - TRACELOOP_TRACE_CONTENT=false
     depends_on:
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/docs\")' || exit 1"]
       interval: 30s
@@ -226,11 +260,19 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
+      - OTEL_SERVICE_NAME=atm-mcp
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # OpenLLMetry emits gen_ai.task.input/output with full prompts/tool
+      # outputs by default — plan §7 forbids bodies in spans (ADR-0002 paths,
+      # honest attributes only).
+      - TRACELOOP_TRACE_CONTENT=false
     depends_on:
       chromadb:
         condition: service_started
       ollama:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import socket; s=socket.create_connection((\"localhost\", 8001), 2); s.close()' || exit 1"]
       interval: 15s
@@ -255,6 +297,12 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-atm_platform}
       - POSTGRES_USER=${POSTGRES_USER:-atm_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
+      - OTEL_SERVICE_NAME=atm-generator
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # OpenLLMetry emits gen_ai.task.input/output with full prompts/tool
+      # outputs by default — plan §7 forbids bodies in spans (ADR-0002 paths,
+      # honest attributes only).
+      - TRACELOOP_TRACE_CONTENT=false
     depends_on:
       kafka:
         condition: service_healthy
@@ -262,6 +310,8 @@ services:
         condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
     volumes:
       - ./backend:/app/backend
