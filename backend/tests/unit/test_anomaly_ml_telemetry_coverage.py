@@ -1,8 +1,7 @@
 """Coverage for rag/telemetry.py, rag/generator.py leftovers, anomaly_detector
 persistence paths, ml_detector remaining branches, and ml/train helpers."""
 
-import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -250,8 +249,12 @@ class TestRagGeneratorLeftovers:
             )
         ]
         gen.llm_client = MagicMock()
+        # generate() consumes 6 LLM calls in order: 3 self-consistency
+        # samples, critique, regeneration, verbalized confidence.
         gen.llm_client.generate.side_effect = [
             resp("consistent diagnosis text"),
+            resp("the claim about reboot lacks evidence"),
+            resp("corrected diagnosis text"),
             resp("the claim about reboot lacks evidence"),
             resp("corrected diagnosis text"),
             resp("0.82"),
@@ -264,7 +267,6 @@ class TestRagGeneratorLeftovers:
         assert out.verbalized_confidence == 0.82
 
     def test_fallback_per_query_type(self):
-        from backend.src.rag.generator import RAGGenerator
         from backend.src.rag.retriever import RetrievedChunk
         from backend.src.rag.utils import QueryType
 

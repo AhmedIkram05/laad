@@ -590,7 +590,10 @@ class TestConnectionInitDb:
             patch("os.getenv", return_value="production"),
         ):
             assert init_mod.init_db(force=True) is False
+        # CI sets LAAD_ENV=production globally; pin it here so the
+        # production guard doesn't veto the force-allowed assertions.
         with (
+            patch.dict(os.environ, {"LAAD_ENV": "test"}, clear=False),
             patch.object(init_mod, "_read_schema", return_value="SELECT 1"),
             patch.object(init_mod, "get_conn", return_value=conn),
             patch.object(init_mod, "release_conn"),
@@ -882,8 +885,6 @@ class TestSmallRagModules:
 
 class TestGapClosers:
     def test_chroma_builder_functions(self):
-        import sys
-
         from backend.kafka import chroma_buffer as cb
 
         fake_chroma = MagicMock()

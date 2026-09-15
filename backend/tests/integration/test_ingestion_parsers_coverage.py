@@ -184,10 +184,8 @@ class TestGcpRemaining:
 
     def test_metric_name_fallback_to_cpu(self):
         p = GcpCloudMetricsParser()
-        row = [TS, "proj-1", "t", "res-1", "z", "", "7.5", "u", "9.5", "", "", "", "", "", "", "", ""]
-        # metric_name empty but cpu_usage_percent present -> metric_value from metric_value col,
-        # name falls back to cpu_usage_percent... here metric_value present ("7.5") so name None?
-        # Build row where metric_name empty and metric_value empty but cpu present:
+        # metric_name empty but cpu_usage_percent present; metric_value empty,
+        # so value comes from the cpu column and the name falls back:
         row2 = [TS, "proj-1", "t", "res-1", "z", "", "", "u", "9.5", "", "", "", "", "", "", "", ""]
         out = p.parse_line(",".join(row2))
         assert out["metric_name"] == "cpu_usage_percent"

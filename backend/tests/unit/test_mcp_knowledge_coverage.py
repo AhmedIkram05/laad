@@ -8,7 +8,6 @@ Loaded via spec with a stubbed retriever so no chromadb is required.
 from __future__ import annotations
 
 import importlib.util
-import pathlib
 import sys
 import types
 from unittest.mock import MagicMock
@@ -25,7 +24,7 @@ for _name in ("backend.src.rag",):
         _pkg.__path__ = []  # type: ignore[attr-defined]
         sys.modules[_name] = _pkg
 
-import pathlib as _pl
+import pathlib as _pl  # noqa: E402
 
 _REPO = _pl.Path(__file__).resolve().parents[3]
 _SPEC = importlib.util.spec_from_file_location(

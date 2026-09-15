@@ -51,7 +51,7 @@ if os.path.isdir(_test_data_dir):
 # anyio cancel-scope teardown errors). The agentic smoke file used to warm
 # this chain as a side effect of running first; wiring it here makes the
 # outcome independent of test file order.
-from backend.tests.eval.systems import _ensure_patched
+from backend.tests.eval.systems import _ensure_patched  # noqa: E402
 
 _ensure_patched()
 

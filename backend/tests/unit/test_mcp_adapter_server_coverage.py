@@ -15,7 +15,7 @@ import importlib.util
 import pathlib
 import sys
 import types
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -286,8 +286,6 @@ class TestServer:
 
     def test_dunder_main_guard(self, monkeypatch):
         # Execute the file as __main__ so the `if __name__ == "__main__"` body runs.
-        import runpy
-
         mod, instances, restore = _load_server_with_fakes([])
         # runpy will re-execute with our fakes still installed; stub run happens there too.
         restore()  # restore first; runpy needs a clean load with fakes reinstalled inside

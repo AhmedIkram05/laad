@@ -44,15 +44,6 @@ def _failing_conn():
     ctx.__enter__.side_effect = RuntimeError("db down")
     conn.cursor.return_value = ctx
     return conn
-    cur = MagicMock()
-    cur.fetchall.side_effect = rows_seq if rows_seq is not None else [rows or []]
-    cur.fetchone.side_effect = one_seq if one_seq is not None else [one or {}]
-    ctx = MagicMock()
-    ctx.__enter__.return_value = cur
-    ctx.__exit__.return_value = False
-    conn = MagicMock()
-    conn.cursor.return_value = ctx
-    return conn, cur
 
 
 class TestAnalysisHelpers:

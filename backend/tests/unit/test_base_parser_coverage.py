@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from backend.src.ingestion.parsers.base_parser import (
     BaseParser,
     EventDataParser,
