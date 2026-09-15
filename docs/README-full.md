@@ -276,37 +276,37 @@ CD-SHOULD-DEPLOY - path-based filter skips infra when only docs change | Terrafo
 
 ### Platform Walkthrough
 
-![Architecture overview animation showing end-to-end system flow from 7 log sources through Kafka to the React dashboard](https://github.com/user-attachments/assets/6294873b-60ff-472c-b786-ebe1dd9dfcc5)
+<video src="https://github.com/user-attachments/assets/6d4f310c-e771-402c-956c-e5348305595f" title="Architecture overview animation showing end-to-end system flow from 7 log sources through Kafka to the React dashboard" controls></video>
 
 > **Architecture Overview** - 8 log emitters (ATM events, hardware sensors, GCP Cloud Metrics, etc.) emitting into Kafka (KRaft) topics, the kafka-consumer service ingesting into PostgreSQL and ChromaDB, the detection engine scoring anomalies and publishing to Redis Pub/Sub, and the React dashboard displaying real-time analytics with auto-refresh.
 
 ### 3-Layer Anomaly Detection
 
-![3-layer anomaly detection engine animation showing ML ensemble, z-score, and heuristic filtering in the anomaly list](https://github.com/user-attachments/assets/27b6df3b-71f6-45f6-80a9-8fe2a8756989)
+<video src="https://github.com/user-attachments/assets/e3a59f59-8d6f-419b-87da-e520be77ccf6" title="3-layer anomaly detection engine animation showing ML ensemble, z-score, and heuristic filtering in the anomaly list" controls></video>
 
 > **3-Layer Detection Engine** - ML_ENSEMBLE → ZSCORE → HEURISTIC pipeline: scored anomalies appear in the UI with type label (A1-A7 or UNKNOWN), severity (CRITICAL/HIGH/MAJOR), detector origin, model confidence score, and structured explanation.
 
 ### Agentic Hybrid RAG Diagnostic Assistant
 
-![Agentic Hybrid RAG diagnostic assistant animation showing a conversation with confidence breakdown and citation grounding](https://github.com/user-attachments/assets/d31fec6d-2921-415c-973f-3f146eb11550)
+<video src="https://github.com/user-attachments/assets/aad8a189-0d2e-4de0-9a8f-ff04e8dc6ba3" title="Agentic Hybrid RAG diagnostic assistant animation showing a conversation with confidence breakdown and citation grounding" controls></video>
 
 > **Agentic Hybrid RAG** - End-to-end diagnostic conversation: ChromaDB retrieval → cross-encoder reranking → LLM response with verbalized confidence → reflexion (self-critique) → final answer with source citations.
 
 ### Real-Time Analytics Dashboard
 
-![Real-time analytics dashboard animation showing Chart.js visualizations with KPI cards and metric filters](https://github.com/user-attachments/assets/48e35dba-3e39-4072-b7b2-0ed7cf838f81)
+<video src="https://github.com/user-attachments/assets/19d7ede8-d000-4e01-bfec-714f206448a7" title="Real-time analytics dashboard animation showing Chart.js visualizations with KPI cards and metric filters" controls></video>
 
 > **Analytics Dashboard** - 4 KPI cards polling every 5 seconds, Bar/Line/Doughnut Chart.js visualizations, 5 time range options with adaptive bucket resolution.
 
 ### Kafka Ingestion Pipeline
 
-![Kafka pipeline animation showing message flow through deduplication, processing, and dead letter queue](https://github.com/user-attachments/assets/f9663335-d81e-4478-a64f-11becc42ceb1)
+<video src="https://github.com/user-attachments/assets/faf59298-5710-4a79-84d8-fbdafdcf789d" title="Kafka pipeline animation showing message flow through deduplication, processing, and dead letter queue" controls></video>
 
 > **Kafka Pipeline** - gzip-compressed messages on `atm-events`/`atm-metrics` topics → hybrid deduplicator (Redis SET + 10K LRU, 1h TTL) → batch processing (max.poll.records=500) → failed messages retry 3× before Redis Stream DLQ.
 
 ### MLflow on AWS
 
-![AWS MLflow integration animation demonstrating experiment tracking on RDS and model registry with champion aliases](https://github.com/user-attachments/assets/6c744d53-60e8-4335-8a4c-6f83d1cdec5c)
+<video src="https://github.com/user-attachments/assets/1807441a-6208-43cf-984d-8a8452212df7" title="AWS MLflow integration animation demonstrating experiment tracking on RDS and model registry with champion aliases" controls></video>
 
 > **AWS MLflow** - Experiments tracked against RDS PostgreSQL 18.4 with model artifacts stored in S3. Shows experiment runs, logged metrics, and the model registry with `champion` alias promotion.
 
