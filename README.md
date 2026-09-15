@@ -21,6 +21,7 @@
 <a href="https://ollama.ai/"><img src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&labelColor=000000&logo=ollama"></a>
 <a href="https://aws.amazon.com/sagemaker/"><img src="https://img.shields.io/badge/SageMaker-232F3E?style=for-the-badge&labelColor=000000&logo=amazonwebservices"></a>
 <a href="https://mlflow.org/"><img src="https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&labelColor=000000&logo=mlflow"></a>
+<a href="https://opentelemetry.io/"><img src="https://img.shields.io/badge/OpenTelemetry-425CC7?style=for-the-badge&labelColor=000000&logo=opentelemetry"></a>
 <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&labelColor=000000&logo=react"></a>
 <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&labelColor=000000&logo=vite"></a>
 <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&labelColor=000000&logo=tailwindcss"></a>
@@ -89,6 +90,7 @@ flowchart LR
 | **React dashboard** | 9 pages, KPI cards polling every 5s, Chart.js analytics, served via CloudFront in production |
 | **Agentic RAG** | LangGraph assistant with 12 MCP tools and 4-stage reasoning over the same unified data |
 | **SageMaker** | `laad-xgb-champion` (XGBoost 1.7-1, `ml.t2.medium`): 8-class softmax in ~100ms, live-validating detector output |
+| **OpenTelemetry tracing** | Distributed traces across the four Python services — RAG query and event-pipeline golden paths browsable in Jaeger (dev): [docs/observability.md](docs/observability.md) · [docs/demos](docs/demos/) |
 
 ## Why It's Interesting
 
@@ -137,6 +139,16 @@ flowchart LR
 - **Terraform** - 10 modules, 114 resources (+6 bootstrap): VPC across 2 AZs, ECS Fargate, RDS, SageMaker, CloudFront, Secrets Manager, least-privilege IAM. State locked in DynamoDB + versioned in S3; CI auth via OIDC - no long-lived credentials. [Deep dive](docs/README-full.md#aws-deployment--infrastructure)
 
   <video src="https://github.com/user-attachments/assets/8c955dba-585d-4569-b336-6d21160df0b1" title="AWS estate tour: VPC, ECS Fargate, ALB, Kafka EC2, CloudFront, IAM, Secrets Manager, SageMaker, S3 versioning - cycles every 3s" controls></video>
+
+## Observability - Distributed Traces
+
+Every RAG query and every synthetic event can be followed end-to-end across services with [OpenTelemetry](https://opentelemetry.io): FastAPI → MCP tools → LLM → Redis/DB on the query path, generator → Kafka → consumer → detection on the pipeline path — W3C trace context propagates through Kafka message headers, so **one trace spans four services**.
+
+**Trace walkthrough** - RAG query path → confidence gate → event pipeline:
+
+<video src="https://github.com/user-attachments/assets/58ac557f-bc5f-460f-8393-e6e81dfaab79" title="Jaeger trace walkthrough - RAG golden path, gate decision close-up, event pipeline" controls></video>
+
+The gate close-up is the one worth pausing on - it's the same confidence machinery that decides answer-vs-escalate, now visible per query. Full contract and ops defaults in [docs/observability.md](docs/observability.md).
 
 **What's actually running:**
 
