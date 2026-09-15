@@ -51,7 +51,14 @@ def _build_embeddings():
 
 
 def _build_chunker(embeddings):
-    from langchain_experimental.text_splitter import SemanticChunker
+    import warnings
+
+    with warnings.catch_warnings():
+        # langchain-experimental is sunset upstream with no maintained
+        # drop-in for SemanticChunker; silence its import-time notice
+        # (also covers langchain-community imports inside that chain).
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from langchain_experimental.text_splitter import SemanticChunker
 
     return SemanticChunker(embeddings)
 
