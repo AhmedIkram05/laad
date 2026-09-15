@@ -26,6 +26,9 @@ from backend.src.rag.router import router as ragRouter
 from backend.src.database.connection import get_conn, release_conn
 from backend.src.database.init_db import init_db
 from backend.src.anomaly_detection.ml.train import ARTIFACT_DIR
+from backend.src.observability.tracing import instrument_fastapi, setup_tracing
+
+setup_tracing("atm-backend")
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +126,8 @@ def _do_retrain() -> None:
 
 
 app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
+
+instrument_fastapi(app)
 
 app.add_middleware(
     CORSMiddleware,
