@@ -46,9 +46,19 @@ from backend.kafka.handlers.event_handler import (
 )
 from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.cache import get_redis_client
+from backend.src.observability.tracing import setup_tracing
+from opentelemetry import trace
+from opentelemetry.context import Context
+from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [CONSUMER] %(message)s")
+
+setup_tracing("atm-consumer")
+
+_tracer = trace.get_tracer("laad.kafka")
+_propagator = TraceContextTextMapPropagator()
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "atm-platform-consumer")
@@ -77,22 +87,71 @@ def _deserialise(raw: bytes) -> dict | None:
         return None
 
 
-def _trigger_anomaly_detection() -> None:
-    global _cached_detector
-    try:
-        from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
-        from backend.src.alerts.pubsub import publish_anomaly
+def _extract_parent(headers) -> Context:
+    """Extract W3C context from raw Kafka header tuples for parent linkage.
 
-        if _cached_detector is None:
-            _cached_detector = MLAnomalyDetector()
-        n = _cached_detector.detect_and_save()
-        if n:
-            log.info("Anomaly detector: %d anomalies saved.", n)
-            anomalies = _cached_detector._get_recent_anomalies(n)
-            for anomaly in anomalies:
-                publish_anomaly(anomaly)
-    except Exception as exc:
-        log.warning("Anomaly detection failed: %s", exc)
+    Header values arrive as bytes; decode defensively and tolerate either
+    byte or str keys. Without a usable traceparent (e.g. messages produced
+    before this rollout) the result is an invalid context and the consume
+    span simply starts a fresh local trace.
+    """
+    carrier = {}
+    for key, value in headers or []:
+        key = key.decode("utf-8", "replace") if isinstance(key, bytes) else key
+        value = (
+            value.decode("utf-8", "replace") if isinstance(value, bytes) else value
+        )
+        if key and value is not None:
+            carrier[str(key)] = value
+    return _propagator.extract(carrier=carrier)
+
+
+def _trigger_anomaly_detection() -> None:
+    """Run the interval-guarded detection sweep inside an atm.detect stage span.
+
+    Detection sweeps the DB window (not the individual message) and is gated
+    by ANOMALY_TRIGGER_INTERVAL_S + the Redis lock, so this span is its own
+    trace rather than a child of any consume span (plan §4.2). Attributes are
+    real summary fields from the detector cycle — IDs and counts only.
+    """
+    global _cached_detector
+    with _tracer.start_as_current_span("atm.detect") as span:
+        try:
+            from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
+            from backend.src.alerts.pubsub import publish_anomaly
+
+            if _cached_detector is None:
+                _cached_detector = MLAnomalyDetector()
+            span.set_attribute(
+                "laad.detect.models_loaded",
+                bool(getattr(_cached_detector, "_loaded", False)),
+            )
+            n = _cached_detector.detect_and_save()
+            span.set_attribute("laad.detect.anomalies_saved", n)
+            if n:
+                log.info("Anomaly detector: %d anomalies saved.", n)
+                anomalies = _cached_detector._get_recent_anomalies(n)
+                span.set_attribute(
+                    "laad.detect.sources_fired",
+                    ",".join(sorted({a.get("source", "?") for a in anomalies})),
+                )
+                span.set_attribute(
+                    "laad.detect.anomaly_types",
+                    ",".join(sorted({a.get("anomaly_type", "?") for a in anomalies})),
+                )
+                for anomaly in anomalies:
+                    publish_anomaly(anomaly)
+            sm = getattr(_cached_detector, "sm_crosscheck", None)
+            if sm:
+                span.set_attribute("laad.sm_crosscheck.ok", bool(sm.get("ok")))
+                span.set_attribute("laad.sm_crosscheck.endpoint", sm["endpoint"])
+                span.set_attribute(
+                    "laad.sm_crosscheck.latency_ms", sm["latency_ms"]
+                )
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            log.warning("Anomaly detection failed: %s", exc)
 
 
 _cached_syncer = None
@@ -137,20 +196,25 @@ def _release_detection_lock() -> None:
 
 
 def _trigger_anomaly_sync() -> None:
-    """Sync UNKNOWN/NORMAL anomalies from DB to ChromaDB."""
+    """Sync UNKNOWN/NORMAL anomalies from DB to ChromaDB (own stage span)."""
     global _cached_syncer
-    try:
-        from backend.kafka.anomaly_syncer import AnomalySyncer
+    with _tracer.start_as_current_span("atm.anomaly.sync") as span:
+        try:
+            from backend.kafka.anomaly_syncer import AnomalySyncer
 
-        if _cached_syncer is None:
-            _cached_syncer = AnomalySyncer()
-        result = _cached_syncer.sync_once()
-        if result.get("synced", 0) > 0:
-            log.info(
-                "Anomaly syncer: %d anomalies synced to ChromaDB", result["synced"]
-            )
-    except Exception as exc:
-        log.warning("Anomaly sync failed: %s", exc)
+            if _cached_syncer is None:
+                _cached_syncer = AnomalySyncer()
+            result = _cached_syncer.sync_once()
+            span.set_attribute("laad.sync.synced", result.get("synced", 0))
+            span.set_attribute("laad.sync.status", result.get("status", "unknown"))
+            if result.get("synced", 0) > 0:
+                log.info(
+                    "Anomaly syncer: %d anomalies synced to ChromaDB", result["synced"]
+                )
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            log.warning("Anomaly sync failed: %s", exc)
 
 
 def _start_health_server() -> None:
@@ -264,13 +328,25 @@ def run_consumer() -> None:
                     if message_id:
                         dedup.mark_seen(message_id)
 
-                    if topic == TOPIC_EVENTS:
-                        ok = event_handler.handle_event(msg, chroma)
-                    elif topic == TOPIC_METRICS:
-                        ok = metric_handler.handle_metric(msg)
-                    else:
-                        log.warning("Unknown topic: %s", topic)
-                        ok = False
+                    # Consume span joins the producer's trace via the injected
+                    # traceparent; attrs are IDs/locations only — never bodies.
+                    with _tracer.start_as_current_span(
+                        "atm.event.consume",
+                        context=_extract_parent(raw_msg.headers),
+                        attributes={
+                            "topic": topic,
+                            "partition": raw_msg.partition,
+                            "offset": raw_msg.offset,
+                            "message_id": message_id,
+                        },
+                    ):
+                        if topic == TOPIC_EVENTS:
+                            ok = event_handler.handle_event(msg, chroma)
+                        elif topic == TOPIC_METRICS:
+                            ok = metric_handler.handle_metric(msg)
+                        else:
+                            log.warning("Unknown topic: %s", topic)
+                            ok = False
 
                     if ok:
                         processed += 1
