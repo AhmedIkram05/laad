@@ -4,6 +4,11 @@ The AGENTIC mode runs a langchain create_agent loop over the 12 MCP tools.
 The HYBRID mode runs a 2-node deterministic graph (planner -> parallel tools).
 Both modes share: instrumented tools (per-request trace via ContextVar),
 post-loop evidence fusion -> RetrievedChunk conversion -> generator + uncertainty.
+
+OpenTelemetry golden path (plan §4.1, ADR-0003): run_agent_query opens the
+rag.query root span so the agent graph, tool child spans and the
+auto-instrumented GenAI/LLM hop all nest beneath it; AgentTrace records stay
+unchanged — the spans are the distributed view of the same execution.
 """
 
 from __future__ import annotations
@@ -22,6 +27,8 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from opentelemetry import trace as otel_trace
+from opentelemetry.trace import Status, StatusCode
 
 from backend.src.mcp import adapter
 from backend.src.rag.agent_types import AgentMode, AgentTrace, ToolCallRecord
@@ -66,6 +73,18 @@ _current_trace: contextvars.ContextVar[Optional[AgentTrace]] = contextvars.Conte
 _current_evidence: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
     "rag_agent_evidence", default=None
 )
+_current_root_span: contextvars.ContextVar[Optional[Any]] = contextvars.ContextVar(
+    "rag_root_span", default=None
+)
+
+
+# --------------------------------------------------------------------------
+# OTel golden path (plan §4.1, ADR-0002/0003): run_agent_query opens the
+# rag.query root span, _InstrumentedTool opens rag.tool.<name> child spans,
+# cap and gate decisions are projected as span events. Span names are a
+# contract — keep them stable.
+# --------------------------------------------------------------------------
+_tracer = otel_trace.get_tracer("laad.rag")
 
 
 # --------------------------------------------------------------------------
@@ -93,32 +112,46 @@ class _InstrumentedTool(BaseTool):
 
     def invoke(self, input: Any, config: Optional[dict] = None, **kwargs: Any) -> Any:
         t0 = time.perf_counter()
-        try:
-            result = self.delegate.invoke(input, config=config, **kwargs)
-        except Exception:
-            self._record(input, 0.0, False, "")
-            raise
-        self._record(input, time.perf_counter() - t0, True, result)
-        return result
+        with _tracer.start_as_current_span(f"rag.tool.{self.name}") as span:
+            try:
+                result = self.delegate.invoke(input, config=config, **kwargs)
+            except Exception as exc:
+                self._fail(span, t0, input, exc)
+                raise
+            duration_s = time.perf_counter() - t0
+            self._record(input, duration_s, True, result)
+            _set_tool_span_attrs(span, duration_s, result, True)
+            return result
 
     async def ainvoke(
         self, input: Any, config: Optional[dict] = None, **kwargs: Any
     ) -> Any:
         t0 = time.perf_counter()
-        try:
-            result = await self.delegate.ainvoke(input, config=config, **kwargs)
-        except Exception:
-            self._record(input, 0.0, False, "")
-            raise
-        self._record(input, time.perf_counter() - t0, True, result)
-        return result
+        with _tracer.start_as_current_span(f"rag.tool.{self.name}") as span:
+            try:
+                result = await self.delegate.ainvoke(input, config=config, **kwargs)
+            except Exception as exc:
+                self._fail(span, t0, input, exc)
+                raise
+            duration_s = time.perf_counter() - t0
+            self._record(input, duration_s, True, result)
+            _set_tool_span_attrs(span, duration_s, result, True)
+            return result
 
     # -- internals ---------------------------------------------------------
+    def _fail(self, span, t0: float, input: Any, exc: Exception) -> None:
+        """Project a failed tool call onto its span; AgentTrace record unchanged."""
+        duration_s = time.perf_counter() - t0
+        self._record(input, 0.0, False, "")
+        span.record_exception(exc)
+        span.set_status(Status(StatusCode.ERROR, str(exc)))
+        _set_tool_span_attrs(span, duration_s, None, False)
+
     def _record(self, input: Any, duration_s: float, ok: bool, result: Any) -> None:
         trace = _current_trace.get()
         if trace is None:
             return
-        text = result.content if isinstance(result, ToolMessage) else str(result)
+        text = _result_text(result)
         args = input.get("args", {}) if isinstance(input, dict) else {}
         trace.tool_calls.append(
             ToolCallRecord(
@@ -179,6 +212,40 @@ class _InstrumentedTool(BaseTool):
             )
 
 
+def _result_text(result: Any) -> str:
+    """Flatten a tool result to plain text for records and span sizes.
+
+    MCP-converted tools (mcp 1.30 content blocks) return ToolMessage.content
+    as a list of typed blocks; the legacy string assumption crashed evidence
+    capture and text births at ``text.strip()``. Joins blocks' text fields.
+    """
+    content = result.content if isinstance(result, ToolMessage) else result
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return str(content)
+
+
+def _set_tool_span_attrs(span, duration_s: float, result: Any, ok: bool) -> None:
+    """Set rag.tool.* span attributes: duration, ok flag, result size.
+
+    Counts and durations only — never tool arguments or result text (plan §7).
+    ``result`` is None on failures (chunk_size 0) and spans carry the real
+    elapsed time while the AgentTrace record keeps its existing contract.
+    """
+    if result is None:
+        chunk_size = 0
+    else:
+        chunk_size = len(_result_text(result))
+    span.set_attribute("chunk_size", chunk_size)
+    span.set_attribute("duration_s", round(duration_s, 4))
+    span.set_attribute("ok", ok)
+
+
 # --------------------------------------------------------------------------
 # Model-call cap middleware
 # --------------------------------------------------------------------------
@@ -197,6 +264,20 @@ class _CapMiddleware(AgentMiddleware):
             and not trace.model_calls_truncated
         ):
             trace.model_calls_truncated = True
+            # Cap enforcement becomes a span event (plan §4.1); fires once,
+            # only when enforcement actually happened.
+            # Pinned to the root span (not the leaked OpenLLMetry task span)
+            # so cap events read consistently with the root-pinned rag.gate.
+            span = _current_root_span.get() or otel_trace.get_current_span()
+            if span.is_recording():
+                span.add_event(
+                    "cap.enforced",
+                    attributes={
+                        "laad.cap.model_calls": trace.model_calls,
+                        "laad.cap.max_llm_calls": config.agent_max_llm_calls,
+                        "laad.cap.rounds": trace.rounds,
+                    },
+                )
             return {"messages": [SystemMessage(content=_BACKSTOP)]}
         return None
 
@@ -412,7 +493,7 @@ def fuse_evidence(evidence: list, atm_id: Optional[str]) -> list:
 def _generate(query: str, atm_id: Optional[str], evidence: list, top_k: Optional[int]):
     """Post-loop generation: fuse -> rerank -> truncate -> generate + estimate."""
     from backend.src.rag.generator import get_generator
-    from backend.src.rag.uncertainty import get_uncertainty_estimator
+    from backend.src.rag.uncertainty import emit_gate_event, get_uncertainty_estimator
 
     chunks = fuse_evidence(evidence, atm_id)
     if chunks:
@@ -441,6 +522,10 @@ def _generate(query: str, atm_id: Optional[str], evidence: list, top_k: Optional
         verbalized_confidence=response.verbalized_confidence,
         grounding_score=response.grounding_score,
     )
+    # Gate Decision projected onto the query's root span (plan §4.1): pinned
+    # here rather than "whatever is current" because the LangChain handler
+    # leaks ended task spans into the async current context after the loop.
+    emit_gate_event(uncertainty, _current_root_span.get())
     return response, uncertainty, chunks
 
 
@@ -498,7 +583,12 @@ async def run_agent_query(
     mode: AgentMode = AgentMode.AGENTIC,
     top_k: Optional[int] = None,
 ) -> dict:
-    """Run one agentic or hybrid query end-to-end and return a /query-shaped dict."""
+    """Run one agentic or hybrid query end-to-end and return a /query-shaped dict.
+
+    Opens the rag.query root span around the whole execution (plan §4.1):
+    every mode flows through it, the agent graph and tool spans nest beneath,
+    and failures are recorded on the span before the error dict is returned.
+    """
     if not config.is_configured:
         return {
             "error": (
@@ -510,84 +600,56 @@ async def run_agent_query(
 
     trace = AgentTrace(mode=mode.value)
     evidence: list = []
-    tok = _current_trace.set(trace)
-    eok = _current_evidence.set(evidence)
     t_start = time.perf_counter()
-    try:
-        graph = await (
-            _get_agentic_graph() if mode is AgentMode.AGENTIC else _get_hybrid_graph()
-        )
-        system_message = SystemMessage(
-            content=_SYSTEM_PROMPT
-            + (
-                f"\n\nData scope: you may only reason about evidence for ATM {atm_id}."
-                if atm_id
-                else "\n\nData scope: the ATM named in the query."
+    with _tracer.start_as_current_span(
+        "rag.query",
+        attributes={
+            "mode": mode.value,
+            "atm_id": atm_id or "",
+            "top_k": top_k or config.hybrid_top_k,
+        },
+    ) as span:
+        tok = _current_trace.set(trace)
+        eok = _current_evidence.set(evidence)
+        sok = _current_root_span.set(span)
+        try:
+            graph = await (
+                _get_agentic_graph() if mode is AgentMode.AGENTIC else _get_hybrid_graph()
             )
-        )
-        human_message = HumanMessage(content=query)
-
-        async def run_once(extra_messages: Optional[list] = None) -> None:
-            trace.rounds += 1
-            messages = [system_message, human_message] + (extra_messages or [])
-            await graph.ainvoke(
-                {
-                    "messages": messages,
-                    "atm_id": atm_id,
-                    "trace": trace,
-                    "fused_evidence": evidence,
-                    "tool_plan": [],
-                    "selected_tools": [],
-                },
-                config={"recursion_limit": 10},
-            )
-
-        t_graph = time.perf_counter()
-        await run_once()
-        planning_s = time.perf_counter() - t_graph
-        tools_s = sum(c.duration_s for c in trace.tool_calls)
-
-        t_gen = time.perf_counter()
-        response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
-        generation_s = time.perf_counter() - t_gen
-
-        result = _build_result(
-            query,
-            response,
-            uncertainty,
-            chunks,
-            trace,
-            planning_s,
-            tools_s,
-            generation_s,
-        )
-
-        # D13: one grounding-gated re-retrieval round (AGENTIC only, inert when disabled)
-        if (
-            mode is AgentMode.AGENTIC
-            and result.get("grounding_score") is not None
-            and result["grounding_score"] < config.agent_grounding_retry_threshold
-            and trace.retries < config.agent_max_retries
-        ):
-            trace.retries += 1
-            trace.retry_trigger = result["grounding_score"]
-            critique = response.critique_text
-            hint = SystemMessage(
-                content=(
-                    "Your previous answer was not grounded enough in retrieved evidence. "
-                    f"Original query: {query}. "
-                    + (f"Gap hint from critique: {critique}. " if critique else "")
-                    + "Do not re-run tools that already returned evidence. "
-                    "Retrieve additional evidence for the missing details, then synthesize."
+            system_message = SystemMessage(
+                content=_SYSTEM_PROMPT
+                + (
+                    f"\n\nData scope: you may only reason about evidence for ATM {atm_id}."
+                    if atm_id
+                    else "\n\nData scope: the ATM named in the query."
                 )
             )
-            t_graph2 = time.perf_counter()
-            await run_once([hint])
-            planning_s += time.perf_counter() - t_graph2
+            human_message = HumanMessage(content=query)
+
+            async def run_once(extra_messages: Optional[list] = None) -> None:
+                trace.rounds += 1
+                messages = [system_message, human_message] + (extra_messages or [])
+                await graph.ainvoke(
+                    {
+                        "messages": messages,
+                        "atm_id": atm_id,
+                        "trace": trace,
+                        "fused_evidence": evidence,
+                        "tool_plan": [],
+                        "selected_tools": [],
+                    },
+                    config={"recursion_limit": 10},
+                )
+
+            t_graph = time.perf_counter()
+            await run_once()
+            planning_s = time.perf_counter() - t_graph
             tools_s = sum(c.duration_s for c in trace.tool_calls)
-            t_gen2 = time.perf_counter()
+
+            t_gen = time.perf_counter()
             response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
-            generation_s += time.perf_counter() - t_gen2
+            generation_s = time.perf_counter() - t_gen
+
             result = _build_result(
                 query,
                 response,
@@ -599,17 +661,63 @@ async def run_agent_query(
                 generation_s,
             )
 
-        trace.latencies["total"] = round(time.perf_counter() - t_start, 4)
-        # agentic graph doesn't plan explicitly; record the tools actually used
-        if not trace.selected_tools and trace.tool_calls:
-            trace.selected_tools = list(dict.fromkeys(c.tool for c in trace.tool_calls))
-        result["agent_trace"] = asdict(trace)
-        return result
-    except Exception as exc:  # pragma: no cover - defensive
-        return {
-            "error": str(exc),
-            "answer": "I encountered an error processing your request.",
-        }
-    finally:
-        _current_trace.reset(tok)
-        _current_evidence.reset(eok)
+            # D13: one grounding-gated re-retrieval round (AGENTIC only, inert when disabled)
+            if (
+                mode is AgentMode.AGENTIC
+                and result.get("grounding_score") is not None
+                and result["grounding_score"] < config.agent_grounding_retry_threshold
+                and trace.retries < config.agent_max_retries
+            ):
+                trace.retries += 1
+                trace.retry_trigger = result["grounding_score"]
+                critique = response.critique_text
+                hint = SystemMessage(
+                    content=(
+                        "Your previous answer was not grounded enough in retrieved evidence. "
+                        f"Original query: {query}. "
+                        + (f"Gap hint from critique: {critique}. " if critique else "")
+                        + "Do not re-run tools that already returned evidence. "
+                        "Retrieve additional evidence for the missing details, then synthesize."
+                    )
+                )
+                t_graph2 = time.perf_counter()
+                await run_once([hint])
+                planning_s += time.perf_counter() - t_graph2
+                tools_s = sum(c.duration_s for c in trace.tool_calls)
+                t_gen2 = time.perf_counter()
+                response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
+                generation_s += time.perf_counter() - t_gen2
+                result = _build_result(
+                    query,
+                    response,
+                    uncertainty,
+                    chunks,
+                    trace,
+                    planning_s,
+                    tools_s,
+                    generation_s,
+                )
+
+            trace.latencies["total"] = round(time.perf_counter() - t_start, 4)
+            # agentic graph doesn't plan explicitly; record the tools actually used
+            if not trace.selected_tools and trace.tool_calls:
+                trace.selected_tools = list(dict.fromkeys(c.tool for c in trace.tool_calls))
+            result["agent_trace"] = asdict(trace)
+            latencies = trace.latencies
+            span.set_attribute("planning_s", latencies.get("planning_s", 0.0))
+            span.set_attribute("tools_s", latencies.get("tools_s", 0.0))
+            span.set_attribute("generation_s", latencies.get("generation_s", 0.0))
+            if latencies.get("total") is not None:
+                span.set_attribute("total_s", latencies["total"])
+            return result
+        except Exception as exc:  # pragma: no cover - defensive
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, f"rag.query failed: {exc}"))
+            return {
+                "error": str(exc),
+                "answer": "I encountered an error processing your request.",
+            }
+        finally:
+            _current_trace.reset(tok)
+            _current_evidence.reset(eok)
+            _current_root_span.reset(sok)

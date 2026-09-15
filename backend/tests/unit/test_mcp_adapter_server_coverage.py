@@ -48,6 +48,9 @@ def _load_adapter_with_fakes():
     fake_tools = [FakeTool("a"), FakeTool("b")]
 
     class FakeSession:
+        async def initialize(self):
+            return None
+
         async def list_tools(self):
             m = MagicMock()
             m.tools = fake_tools

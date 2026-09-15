@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import re
+import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -353,12 +354,19 @@ class MLAnomalyDetector:
         Reads SAGEMAKER_ENDPOINT_NAME env var (optional).
         Returns parsed response dict or None if endpoint not configured or call fails.
         Features are sent as CSV via boto3 runtime.sagemaker client.
+
+        The outcome of the latest cross-check invocation (ok / endpoint /
+        latency_ms) is exposed on ``self.sm_crosscheck`` so the consumer's
+        detect-stage span can carry it as ``laad.sm_crosscheck`` attributes;
+        it is reset to None whenever no call is attempted.
         """
+        self.sm_crosscheck = None
         endpoint = os.getenv("SAGEMAKER_ENDPOINT_NAME", "").strip()
         if not endpoint:
             return None
 
         log.info("SageMaker endpoint configured: %s", endpoint)
+        started = time.monotonic()
         try:
             import boto3
 
@@ -375,8 +383,18 @@ class MLAnomalyDetector:
             )
             result = response["Body"].read().decode("utf-8")
             log.info("SageMaker inference complete for endpoint %s", endpoint)
+            self.sm_crosscheck = {
+                "ok": True,
+                "endpoint": endpoint,
+                "latency_ms": round((time.monotonic() - started) * 1000),
+            }
             return {"raw_prediction": result}
         except Exception as e:
+            self.sm_crosscheck = {
+                "ok": False,
+                "endpoint": endpoint,
+                "latency_ms": round((time.monotonic() - started) * 1000),
+            }
             log.warning("SageMaker inference failed for endpoint %s: %s", endpoint, e)
             return None
 
@@ -614,6 +632,7 @@ class MLAnomalyDetector:
             Total number of anomalies saved this cycle.
         """
         self._last_saved_anomalies = []
+        self.sm_crosscheck = None
         self._warmup_cycles += 1
         rows, window_start, window_end = self._query_window()
         if len(rows) < 5:

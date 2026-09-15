@@ -24,12 +24,23 @@ from datetime import datetime
 
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
+from opentelemetry import trace
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 log = logging.getLogger(__name__)
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 TOPIC_EVENTS = "atm-events"
 TOPIC_METRICS = "atm-metrics"
+
+# Span names are contract (ADR-0002, plan §7) — stable, documented in docs/observability.md.
+_PRODUCE_SPAN_NAMES = {
+    TOPIC_EVENTS: "atm.events.produce",
+    TOPIC_METRICS: "atm.metrics.produce",
+}
+
+_tracer = trace.get_tracer("laad.kafka")
+_propagator = TraceContextTextMapPropagator()
 
 
 def _serialise(data: dict) -> bytes:
@@ -60,17 +71,39 @@ class ATMProducer:
 
     def send_event(self, event: dict) -> None:
         msg = self._add_message_id(event)
-        try:
-            self._producer.send(TOPIC_EVENTS, value=msg)
-        except KafkaError as exc:
-            log.error("Failed to send event to %s: %s", TOPIC_EVENTS, exc)
+        self._send(TOPIC_EVENTS, msg)
 
     def send_metric(self, metric: dict) -> None:
         msg = self._add_message_id(metric)
+        self._send(TOPIC_METRICS, msg)
+
+    def _send(self, topic: str, msg: dict) -> None:
+        """Produce one message wrapped in an own produce span, W3C-injected.
+
+        Single choke point for send_event/send_metric, so generator code stays
+        uninstrumented (plan §4.2). The traceparent is injected while the
+        produce span is current, so the header advertises this span as the
+        consumer's parent. kafka-python asserts (str, bytes) header tuples.
+        Span attributes carry IDs only — no message bodies (plan §7).
+        """
+        attributes = {
+            "topic": topic,
+            "message_id": msg.get("message_id", ""),
+            "atm_id": msg.get("atm_id") or msg.get("entity_id") or "",
+        }
         try:
-            self._producer.send(TOPIC_METRICS, value=msg)
+            with _tracer.start_as_current_span(
+                _PRODUCE_SPAN_NAMES[topic], attributes=attributes
+            ):
+                headers: dict[str, str] = {}
+                _propagator.inject(carrier=headers)
+                self._producer.send(
+                    topic,
+                    value=msg,
+                    headers=[(k, v.encode("utf-8")) for k, v in headers.items()],
+                )
         except KafkaError as exc:
-            log.error("Failed to send metric to %s: %s", TOPIC_METRICS, exc)
+            log.error("Failed to send to %s: %s", topic, exc)
 
     def flush(self) -> None:
         self._producer.flush()

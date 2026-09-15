@@ -20,19 +20,22 @@ from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
+from backend.generator.anomaly_injectors import ANOMALY_REGISTRY
 from backend.generator.config import (
-    TICK_SECONDS,
-    BACKFILL_MINUTES,
     ANOMALY_PROB,
+    BACKFILL_MINUTES,
     GENERATOR_SEED,
+    TICK_SECONDS,
 )
 from backend.generator.emitters import BASELINE_EMITTERS
-from backend.generator.anomaly_injectors import ANOMALY_REGISTRY
+from backend.src.observability.tracing import setup_tracing
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [GENERATOR] %(message)s")
 log = logging.getLogger(__name__)
+
+setup_tracing("atm-generator")
 
 _shutdown_requested = False
 _in_backfill = False

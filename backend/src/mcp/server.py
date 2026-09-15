@@ -10,8 +10,13 @@ import argparse
 from mcp.server.fastmcp import FastMCP
 
 from backend.src.mcp.tools import ALL_TOOLS
+from backend.src.observability.tracing import setup_tracing
 
 mcp = FastMCP("laad", host="0.0.0.0", port=8001)
+
+# After FastMCP(): its __init__ installs the root RichHandler, and handler-level
+# filter attach (vs root-logger level) is what makes trace IDs land in logs.
+setup_tracing("atm-mcp")
 
 for _tool in ALL_TOOLS:
     mcp.add_tool(_tool)

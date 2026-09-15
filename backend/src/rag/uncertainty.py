@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from opentelemetry import trace
+
 from backend.src.rag.retriever import RetrievedChunk
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,11 @@ W_RETRIEVAL = 0.30
 W_CONSISTENCY = 0.25
 W_VERBALIZED = 0.25
 W_GROUNDING = 0.20
+
+# Gate Decision thresholds — single source of truth for _classify_confidence
+# and the rag.gate span-event projection below.
+CONFIDENCE_HIGH_THRESHOLD = 0.8
+CONFIDENCE_MEDIUM_THRESHOLD = 0.5
 
 
 @dataclass
@@ -64,7 +71,7 @@ class UncertaintyEstimator:
             grounding_score: Entity citation verification score
         """
         if not chunks:
-            return UncertaintyEstimate(
+            est = UncertaintyEstimate(
                 final_confidence=0.0,
                 confidence_level="low",
                 self_consistency_score=self_consistency_score,
@@ -73,15 +80,15 @@ class UncertaintyEstimator:
                 is_uncertain=True,
                 recommendation="Insufficient context - escalate to human review",
             )
-
-        retrieval_confidence = compute_retrieval_confidence(chunks)
-
-        return self._fuse_signals(
-            retrieval_confidence=retrieval_confidence,
-            self_consistency_score=self_consistency_score,
-            verbalized_confidence=verbalized_confidence,
-            grounding_score=grounding_score,
-        )
+        else:
+            retrieval_confidence = compute_retrieval_confidence(chunks)
+            est = self._fuse_signals(
+                retrieval_confidence=retrieval_confidence,
+                self_consistency_score=self_consistency_score,
+                verbalized_confidence=verbalized_confidence,
+                grounding_score=grounding_score,
+            )
+        return est
 
     def _fuse_signals(
         self,
@@ -147,9 +154,9 @@ class UncertaintyEstimator:
 
     def _classify_confidence(self, confidence: float) -> str:
         """Classify confidence into level."""
-        if confidence >= 0.8:
+        if confidence >= CONFIDENCE_HIGH_THRESHOLD:
             return "high"
-        elif confidence >= 0.5:
+        elif confidence >= CONFIDENCE_MEDIUM_THRESHOLD:
             return "medium"
         else:
             return "low"
@@ -184,6 +191,30 @@ def compute_retrieval_confidence(chunks: list[RetrievedChunk]) -> float:
     diversity_bonus = min(len(sources) - 1, 0.1) if sources else 0.0
 
     return min(1.0, distance_score + count_bonus + diversity_bonus)
+
+
+def emit_gate_event(estimate: UncertaintyEstimate, span=None) -> None:
+    """Project one Gate Decision onto ``span`` (plan §4.1, §6).
+
+    Span event ``rag.gate`` carrying the classification thresholds read from
+    the module constants (single source of truth), the fused confidence and
+    the routing recommendation. Projection only — no gate logic changes, and
+    a no-op when the span is not recording (e.g. pytest).
+    """
+    if span is None:
+        span = trace.get_current_span()
+    if not span.is_recording():
+        return
+    span.add_event(
+        "rag.gate",
+        attributes={
+            "laad.gate.conf_high": CONFIDENCE_HIGH_THRESHOLD,
+            "laad.gate.conf_medium": CONFIDENCE_MEDIUM_THRESHOLD,
+            "laad.gate.decision": estimate.confidence_level,
+            "laad.gate.confidence": estimate.final_confidence,
+            "laad.gate.recommendation": estimate.recommendation,
+        },
+    )
 
 
 _estimator: Optional[UncertaintyEstimator] = None
