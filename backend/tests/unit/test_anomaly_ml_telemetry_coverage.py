@@ -47,43 +47,37 @@ class TestTelemetry:
         from backend.src.rag import telemetry
 
         cur = MagicMock()
-        with (
-            patch.object(telemetry, "get_cursor", return_value=_ctx(cur)),
-            patch.object(telemetry, "_append_otel_jsonl") as otel,
-        ):
+        with patch.object(telemetry, "get_cursor", return_value=_ctx(cur)):
             telemetry.record_trace(9, {"mode": "hybrid", "rounds": 1})
             cur.execute.assert_called_once()
-            otel.assert_called_once()
 
     def test_record_trace_db_failure_never_raises(self):
         from backend.src.rag import telemetry
 
-        with (
-            patch.object(
-                telemetry, "get_cursor", side_effect=RuntimeError("db down")
-            ),
-            patch.object(telemetry, "_append_otel_jsonl") as otel,
+        with patch.object(
+            telemetry, "get_cursor", side_effect=RuntimeError("db down")
         ):
             telemetry.record_trace(9, {"mode": "x"})
-            otel.assert_not_called()
 
-    def test_append_otel_skipped_without_path(self, tmp_path):
+    def test_record_trace_no_jsonl_side_channel(self, tmp_path):
+        """JSONL side-channel retired (Phase 3): OTEL_JSONL must not write."""
         from backend.src.rag import telemetry
-        from backend.src.rag.telemetry import TraceRecord
 
-        with patch.object(telemetry.config, "otel_jsonl", None):
-            telemetry._append_otel_jsonl(1, TraceRecord(mode="x"))
+        side_file = tmp_path / "otel.jsonl"
+        with (
+            patch.object(telemetry, "get_cursor", return_value=_ctx()),
+            patch.dict("os.environ", {"OTEL_JSONL": str(side_file)}),
+        ):
+            telemetry.record_trace(9, {"mode": "agentic", "rounds": 1})
+        assert not side_file.exists()
 
-    def test_append_otel_writes_and_handles_oserror(self, tmp_path):
-        from backend.src.rag import telemetry
-        from backend.src.rag.telemetry import TraceRecord
+    def test_otel_jsonl_config_removed(self):
+        """Phase 3 retirement: OTEL_JSONL env no longer surfaces on RAG config."""
+        from backend.src.rag.config import RAGConfig, config
 
-        path = tmp_path / "otel.jsonl"
-        with patch.object(telemetry.config, "otel_jsonl", str(path)):
-            telemetry._append_otel_jsonl(4, TraceRecord(mode="agentic", model_calls=2))
-            assert path.read_text().strip().startswith("{")
-        with patch.object(telemetry.config, "otel_jsonl", "/nonexistent-dir/x.jsonl"):
-            telemetry._append_otel_jsonl(4, TraceRecord())
+        with patch.dict("os.environ", {"OTEL_JSONL": "/tmp/otel.jsonl"}):
+            assert not hasattr(RAGConfig(), "otel_jsonl")
+        assert not hasattr(config, "otel_jsonl")
 
     def test_aggregate(self):
         from backend.src.rag.telemetry import TraceRecord, aggregate
