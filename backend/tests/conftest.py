@@ -43,6 +43,18 @@ _test_data_dir = os.path.abspath(
 if os.path.isdir(_test_data_dir):
     os.environ.setdefault("TEST_DATA_DIR", _test_data_dir)
 
+# Deterministic MCP/agent import pre-warm, once at conftest import time.
+# Without this, the first lazy `from backend.src.rag.agent import ...` that a
+# request handler triggers builds pydantic's RootModel against a cold
+# sys.modules state (KeyError: 'pydantic.root_model') and the default MCP
+# adapter tries a real streamable_http connection (DNS lookup failure →
+# anyio cancel-scope teardown errors). The agentic smoke file used to warm
+# this chain as a side effect of running first; wiring it here makes the
+# outcome independent of test file order.
+from backend.tests.eval.systems import _ensure_patched  # noqa: E402
+
+_ensure_patched()
+
 _kafka_mock = None
 
 

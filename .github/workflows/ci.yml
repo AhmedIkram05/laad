@@ -115,6 +115,14 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+      chroma:
+        image: chromadb/chroma:latest
+        ports:
+          - 8000:8000
 
     steps:
       - uses: actions/checkout@v6
@@ -146,11 +154,13 @@ jobs:
           TEST_POSTGRES_PASSWORD: test_password
           JWT_SECRET_KEY: ci-test-secret-key-for-laad-pipeline
           LAAD_ENV: production
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          CHROMA_HOST: localhost
+          CHROMA_PORT: 8000
         run: |
           python -m pytest backend/tests/ -v --tb=short \
             --ignore=backend/tests/stress \
-            --ignore=backend/tests/integration \
-            -m "not rag and not kafka and not chroma" \
             --cov=backend/src --cov-report=term-missing --cov-report=xml:coverage-backend.xml
 
       - name: Upload backend coverage

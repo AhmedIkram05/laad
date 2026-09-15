@@ -381,6 +381,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./backend:/app/backend
+      - ./pytest.ini:/app/pytest.ini:ro
       - ./backend/src/anomaly_detection/ml/artifacts:/app/backend/src/anomaly_detection/ml/artifacts
       - ./backend/custom_synthetic_data_sources:/app/backend/custom_synthetic_data_sources
 
