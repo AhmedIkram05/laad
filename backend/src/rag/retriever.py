@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import heapq
 import logging
+import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -20,6 +23,61 @@ except ImportError:
     _HAS_CROSS_ENCODER = False
 
 logger = logging.getLogger(__name__)
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+_MAX_HYBRID_DOCS = 5000
+_SPARSE_CACHE_MAX = 5
+
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN_RE.findall((text or "").lower())
+
+
+def _bm25_scores(
+    query_tokens: list[str],
+    docs_tokens: list[list[str]],
+    k1: float = 1.5,
+    b: float = 0.75,
+) -> list[float]:
+    n = len(docs_tokens)
+    if n == 0:
+        return []
+    df: dict[str, int] = {}
+    for toks in docs_tokens:
+        for t in set(toks):
+            df[t] = df.get(t, 0) + 1
+    doc_lens = [len(t) for t in docs_tokens]
+    avgdl = sum(doc_lens) / n
+    scores = []
+    for toks, dl in zip(docs_tokens, doc_lens):
+        tf: dict[str, int] = {}
+        for t in toks:
+            tf[t] = tf.get(t, 0) + 1
+        s = 0.0
+        for t in set(query_tokens):
+            f = tf.get(t, 0)
+            if not f:
+                continue
+            df_t = df.get(t, 0)
+            idf = math.log(1 + (n - df_t + 0.5) / (df_t + 0.5))
+            denom = f + k1 * (1 - b + b * (dl / avgdl if avgdl else 1))
+            s += idf * (f * (k1 + 1) / denom)
+        scores.append(s)
+    return scores
+
+
+def _rrf_scores(ranked_lists: list[list[str]], k: int = 60) -> dict[str, float]:
+    fused: dict[str, float] = {}
+    for ranked in ranked_lists:
+        for rank, cid in enumerate(ranked, start=1):
+            fused[cid] = fused.get(cid, 0.0) + 1.0 / (k + rank)
+    return fused
+
+
+def _rrf_fuse(ranked_lists: list[list[str]], k: int = 60) -> list[str]:
+    fused = _rrf_scores(ranked_lists, k)
+    return sorted(fused, key=lambda c: fused[c], reverse=True)
 
 
 @dataclass
@@ -46,6 +104,7 @@ class RAGRetriever:
             self.client = None
             self.collection = None
         self._cross_encoder = None
+        self._sparse_cache: dict[str, tuple[int, int, tuple[list, list, list]]] = {}
 
     def _load_cross_encoder(self) -> None:
         """Lazy-load cross-encoder for reranking. Gracefully degrades if unavailable."""
@@ -121,6 +180,114 @@ class RAGRetriever:
                 metadata={"hnsw:space": "cosine"},
             )
 
+    def _sparse_pool(self, where_filter: Any) -> tuple[list, list, list]:
+        try:
+            try:
+                total = self.collection.count()
+            except Exception as e:
+                logger.debug("Sparse pool count failed: %s", e)
+                total = -1
+            if not isinstance(total, int) or isinstance(total, bool):
+                total = -1
+            if total > _MAX_HYBRID_DOCS:
+                logger.warning(
+                    "Hybrid disabled: collection size %d exceeds limit %d",
+                    total,
+                    _MAX_HYBRID_DOCS,
+                )
+                return [], [], []
+            try:
+                filtered = (
+                    self.collection.count(where=where_filter) if where_filter else total
+                )
+            except Exception as e:
+                logger.debug("Sparse pool filtered count failed: %s", e)
+                filtered = -1
+            if not isinstance(filtered, int) or isinstance(filtered, bool):
+                filtered = -1
+            key = repr(where_filter)
+            cached = self._sparse_cache.get(key)
+            if cached is not None and total != -1:
+                if cached[0] == total and (filtered == -1 or cached[1] == filtered):
+                    return cached[2]
+            fetched = self.collection.get(
+                where=where_filter, include=["documents", "metadatas"]
+            )
+            if not isinstance(fetched, dict):
+                return [], [], []
+            ids = fetched.get("ids", [])
+            docs = fetched.get("documents", [])
+            metas = fetched.get("metadatas", [])
+            if not isinstance(ids, list) or not isinstance(docs, list):
+                return [], [], []
+            if not isinstance(metas, list):
+                metas = [{}] * len(ids)
+            payload = (ids, docs, metas)
+            if total != -1:
+                self._sparse_cache[key] = (total, len(ids), payload)
+                while len(self._sparse_cache) > _SPARSE_CACHE_MAX:
+                    self._sparse_cache.pop(next(iter(self._sparse_cache)))
+            return payload
+        except Exception as e:
+            logger.debug("Sparse pool fetch failed: %s", e)
+            return [], [], []
+
+    def _fuse_hybrid(
+        self,
+        query: str,
+        dense_chunks: list[RetrievedChunk],
+        where_filter: Any,
+        pool_n: int,
+    ) -> list[RetrievedChunk]:
+        from dataclasses import replace
+
+        ids, docs, metas = self._sparse_pool(where_filter)
+        if not docs:
+            return dense_chunks
+        scores = _bm25_scores(_tokenize(query), [_tokenize(d) for d in docs])
+        pool_n = max(1, min(pool_n, len(scores)))
+        top = heapq.nlargest(pool_n, range(len(scores)), key=scores.__getitem__)
+        sparse_ids = [ids[i] for i in top if scores[i] > 0]
+        if not sparse_ids:
+            return dense_chunks
+        dense_ids = [c.chunk_id for c in dense_chunks]
+        fused_scores = _rrf_scores([dense_ids, sparse_ids])
+        if not fused_scores:
+            return dense_chunks
+        peak = max(fused_scores.values())
+        fused_order = sorted(fused_scores, key=lambda c: fused_scores[c], reverse=True)
+        dense_by_id = {c.chunk_id: c for c in dense_chunks}
+        id_to_index = {cid: i for i, cid in enumerate(ids)}
+        out: list[RetrievedChunk] = []
+        for cid in fused_order:
+            rrf = fused_scores[cid]
+            distance = 1.0 - (rrf / peak) if peak else 1.0
+            confidence = self._calculate_confidence(distance)
+            if cid in dense_by_id:
+                out.append(
+                    replace(
+                        dense_by_id[cid],
+                        distance=distance,
+                        confidence_score=confidence,
+                    )
+                )
+                continue
+            i = id_to_index.get(cid)
+            if i is None:
+                continue
+            meta = metas[i] if i < len(metas) and isinstance(metas[i], dict) else {}
+            out.append(
+                RetrievedChunk(
+                    text=docs[i] or "",
+                    chunk_id=cid,
+                    atm_id=meta.get("atm_id"),
+                    timestamp=meta.get("last_timestamp"),
+                    distance=distance,
+                    confidence_score=confidence,
+                )
+            )
+        return out or dense_chunks
+
     def retrieve(
         self,
         query: str,
@@ -130,6 +297,7 @@ class RAGRetriever:
         temporal_boost: bool = True,
         error_only: Optional[bool] = None,
         most_recent_first: Optional[bool] = None,
+        enable_hybrid: bool = True,
     ) -> list[RetrievedChunk]:
         """Retrieve relevant chunks for a query.
 
@@ -219,6 +387,12 @@ class RAGRetriever:
                             confidence_score=confidence,
                         )
                     )
+
+            if enable_hybrid:
+                try:
+                    chunks = self._fuse_hybrid(query, chunks, where_filter, top_k * 3)
+                except Exception as e:
+                    logger.warning("Hybrid fusion failed, using dense results: %s", e)
 
             if temporal_boost and chunks:
                 chunks = self._apply_temporal_boost(chunks)
@@ -382,6 +556,7 @@ class RAGRetriever:
                 name=config.chroma_collection,
                 metadata={"hnsw:space": "cosine"},
             )
+            self._sparse_cache.clear()
             logger.warning(
                 "Cleared and recreated ChromaDB collection: %s",
                 config.chroma_collection,
@@ -413,6 +588,7 @@ class RAGRetriever:
                 name=config.chroma_collection,
                 metadata={"hnsw:space": "cosine"},
             )
+            self._sparse_cache.clear()
             logger.info("Rebuilt ChromaDB collection: %s", config.chroma_collection)
             return {
                 "success": True,
