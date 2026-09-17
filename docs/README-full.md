@@ -784,7 +784,9 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 
 ### Agentic Hybrid RAG Diagnostic Assistant
 
-An agentic hybrid RAG system: a LangGraph agent over 12 MCP tools routes retrieval between vector search, structured metric/anomaly queries, and the knowledge base, then the generator applies 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) with multi-signal confidence fusion. Exposed via `POST /api/rag/agent` in two modes - `hybrid` (deterministic tool selection) and `agentic` (free-form agent routing with grounding-gated re-retrieval). Uses a single env-driven OpenAI-compatible LLM provider - W&B Serverless Inference by default (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) - for all LLM calls (agent, generator, self-consistency, reflexion, RAGAS judge), so evaluation deltas are retrieval-only. Designed for diagnostic conversations around ATM anomalies - users ask about specific anomaly IDs, entities, time ranges, or symptoms.
+An agentic hybrid RAG system: a LangGraph agent over 12 MCP tools routes between true-hybrid retrieval (`search_knowledge`: dense `nomic-embed-text` + BM25 sparse → RRF k=60 → temporal boost → cross-encoder `ms-marco-MiniLM-L-2-v2`), structured metric/anomaly queries, and the knowledge base, then the generator applies 4-stage reasoning (self-consistency, reflexion, citation grounding, verbalized confidence) with multi-signal confidence fusion. Exposed via `POST /api/rag/agent` in two modes - `hybrid` (deterministic tool selection) and `agentic` (free-form agent routing with grounding-gated re-retrieval). Uses a single env-driven OpenAI-compatible LLM provider - W&B Serverless Inference by default (`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`) - for all LLM calls (agent, generator, self-consistency, reflexion, RAGAS judge), so evaluation deltas are retrieval-only. Designed for diagnostic conversations around ATM anomalies - users ask about specific anomaly IDs, entities, time ranges, or symptoms.
+
+> **Terminology:** *Hybrid retrieval* = dense + BM25 → RRF fusion inside `search_knowledge` (both modes). *Hybrid mode* = deterministic planner (`search_knowledge` + ≤1 structured tool, 0 planning LLM calls, never retries) · *Agentic mode* = free-form tool loop with grounding-gated retry (<0.6).
 
 **Why ChromaDB over Pinecone?** Self-hosted in Docker - no per-vector API costs, 50K+ docs fit in RAM, log data never leaves the network. Local Ollama embedding (`nomic-embed-text`, 768-dim) eliminates network round-trip.
 
@@ -807,9 +809,9 @@ flowchart TD
   end
 
   subgraph Retrieval ["Retrieval Pipeline"]
-    CDB[("ChromaDB<br/>atm_logs collection<br/>cosine similarity")]
-    FILTER["Metadata Filter<br/>anomaly type, atm_id, severity<br/>temporal boost (6h decay)"]
-    CE["Cross-Encoder Reranking<br/>ms-marco-MiniLM-L-2-v2<br/>joint query+chunk scoring"]
+    CDB[("ChromaDB + BM25 sparse pool<br/>dense top_k*3 + BM25 (k1=1.5, b=0.75) top_k*3<br/>5000-doc gate, 5-entry cache")]
+    FILTER["RRF Fuse + Metadata Filter<br/>RRF k=60, anomaly type, atm_id, severity<br/>temporal boost (6h decay)"]
+    CE["Cross-Encoder Reranking<br/>ms-marco-MiniLM-L-2-v2<br/>joint query+chunk scoring to top_k"]
   end
 
   subgraph Reasoning ["4-Stage Reasoning"]
@@ -854,7 +856,7 @@ The ChromaDB ingestion pipeline processes each ATM event through LangChain's `Se
 1. **Agentic routing** - `POST /api/rag/agent` selects `AgentMode` (`hybrid` = deterministic tool choice, `agentic` = free-form). The LangGraph agent plans tool calls in parallel-first fashion: call `search_knowledge` always, plus at most one structured tool in the same response. (The legacy `classify_query_type()` keyword router and its PostgreSQL short-circuit were removed by the retrofit.)
 2. **Tool execution** - Up to 2 rounds via the 12-tool MCP toolset (`search_knowledge`, 9 structured tools, 2 knowledge tools). Structured results are rendered into row-chunks (`row:{tool}:{index}`) in the evidence pool; a backstop `SystemMessage` stops iteration after the round cap. Agent LLM calls are capped (`agent_max_llm_calls`), after which the best-so-far answer is returned with `model_calls_truncated=true` - never an error.
 3. **Grounding-gated re-retrieval** (agentic only, D13) - if the post-generation grounding score is < 0.6 and retries remain, the agent re-enters the graph with the reflexion critique, skipping tools that already returned evidence.
-4. **Retrieval** - ChromaDB cosine similarity search (k=10) with metadata filter from extracted query entities. Temporal metadata gets an exponential decay boost (6h half-life) - more recent chunks score higher in similarity.
+4. **Retrieval** (`retrieve(..., enable_hybrid=True)` by default) - dense ChromaDB query (`top_k*3`) + BM25 sparse pool (Okapi k1=1.5, b=0.75, `top_k*3`) fused via RRF (k=60), with metadata filter from extracted query entities; then temporal boost (6h half-life decay), cross-encoder rerank (`ms-marco-MiniLM-L-2-v2`), truncate to `[:top_k]`. Hybrid disables above a 5000-doc collection gate; the sparse pool uses a 5-entry cache.
 5. **Cross-Encoder Reranking** - `ms-marco-MiniLM-L-2-v2` jointly scores each (query, chunk) pair, producing relevance scores +5-15% more accurate than cosine similarity alone. Top-3 chunks proceed to the LLM.
 6. **LLM Generation** - The response is generated by the configured LLM provider (`LLM_MODEL`) over the fused evidence (vector chunks + rendered structured rows).
 7. **4-Stage Reasoning** - Runs on the generated response:
