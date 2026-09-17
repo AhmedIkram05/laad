@@ -27,12 +27,22 @@ _SERVER_PATH = str(_REPO / "backend" / "src" / "mcp" / "server.py")
 # ---------------------------------------------------------------- adapter ---
 def _load_adapter_with_fakes():
     """Install fake mcp/langchain modules, load adapter.py, return (mod, fakes)."""
-    saved = {k: sys.modules.get(k) for k in list(sys.modules) if k.startswith(("mcp", "langchain_mcp_adapters", "backend.src.mcp.server"))}
+    saved = {
+        k: sys.modules.get(k)
+        for k in list(sys.modules)
+        if k.startswith(("mcp", "langchain_mcp_adapters", "backend.src.mcp.server"))
+    }
     # extra keys we will create
     extra_keys = [
-        "mcp", "mcp.client", "mcp.client.streamable_http", "mcp.shared",
-        "mcp.shared.memory", "mcp.server", "mcp.server.fastmcp",
-        "langchain_mcp_adapters", "langchain_mcp_adapters.tools",
+        "mcp",
+        "mcp.client",
+        "mcp.client.streamable_http",
+        "mcp.shared",
+        "mcp.shared.memory",
+        "mcp.server",
+        "mcp.server.fastmcp",
+        "langchain_mcp_adapters",
+        "langchain_mcp_adapters.tools",
         "backend.src.mcp.server",
     ]
     for k in extra_keys:
@@ -132,7 +142,9 @@ def _load_adapter_with_fakes():
     sys.modules["langchain_mcp_adapters.tools"] = lc_tools
     sys.modules["backend.src.mcp.server"] = fake_server_mod
 
-    spec = importlib.util.spec_from_file_location("mcp_adapter_under_test", _ADAPTER_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "mcp_adapter_under_test", _ADAPTER_PATH
+    )
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

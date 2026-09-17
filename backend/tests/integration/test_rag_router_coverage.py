@@ -165,7 +165,9 @@ class TestChampionQuery:
 
     def test_exception_fallback_disabled_raises_500(self):
         with (
-            patch("backend.src.rag.agent.run_agent_query", side_effect=RuntimeError("x")),
+            patch(
+                "backend.src.rag.agent.run_agent_query", side_effect=RuntimeError("x")
+            ),
             patch.object(rag_router.config, "champion_fallback", False),
         ):
             with pytest.raises(HTTPException) as exc:
@@ -174,7 +176,9 @@ class TestChampionQuery:
 
     def test_exception_fallback_enabled_returns_none(self):
         with (
-            patch("backend.src.rag.agent.run_agent_query", side_effect=RuntimeError("x")),
+            patch(
+                "backend.src.rag.agent.run_agent_query", side_effect=RuntimeError("x")
+            ),
             patch.object(rag_router.config, "champion_fallback", True),
         ):
             assert self._run() is None
@@ -240,9 +244,7 @@ class TestChampionQuery:
             ),
             patch.object(rag_router, "_get_user_id_from_username", return_value=None),
             patch.object(rag_router, "_save_query_history", return_value=None),
-            patch.object(
-                rag_router, "_save_query_history_fallback", return_value=99
-            ),
+            patch.object(rag_router, "_save_query_history_fallback", return_value=99),
             patch.object(rag_router, "_save_agent_trace"),
             patch.object(rag_router, "set_cached_response"),
         ):
@@ -305,9 +307,7 @@ class TestLegacyQuery:
             patch.object(rag_router, "get_uncertainty_estimator"),
             patch.object(rag_router, "_get_user_id_from_username", return_value=None),
             patch.object(rag_router, "_save_query_history", return_value=None),
-            patch.object(
-                rag_router, "_save_query_history_fallback", return_value=5
-            ),
+            patch.object(rag_router, "_save_query_history_fallback", return_value=5),
             patch.object(rag_router, "set_cached_response"),
         ):
             gen = _generated(critique_text="fix this")
@@ -537,9 +537,7 @@ class TestAgentEndpoint:
             ),
             patch.object(rag_router, "_get_user_id_from_username", return_value=1),
             patch.object(rag_router, "_save_query_history", return_value=None),
-            patch.object(
-                rag_router, "_save_query_history_fallback", return_value=6
-            ),
+            patch.object(rag_router, "_save_query_history_fallback", return_value=6),
             patch.object(rag_router, "_save_agent_trace"),
             patch.object(rag_router, "set_cached_response"),
         ):
@@ -571,12 +569,8 @@ class TestFeedbackHistoryStats:
     def test_feedback_success(self):
         client = _make_client()
         with (
-            patch.object(
-                rag_router, "_get_user_id_from_username", return_value=1
-            ),
-            patch.object(
-                rag_router, "_get_query_by_id", return_value={"id": 1}
-            ),
+            patch.object(rag_router, "_get_user_id_from_username", return_value=1),
+            patch.object(rag_router, "_get_query_by_id", return_value={"id": 1}),
         ):
             resp = client.post(
                 "/api/rag/feedback", json={"query_id": 1, "feedback": "helpful"}
@@ -587,9 +581,7 @@ class TestFeedbackHistoryStats:
     def test_feedback_missing_query_returns_404(self):
         client = _make_client()
         with (
-            patch.object(
-                rag_router, "_get_user_id_from_username", return_value=1
-            ),
+            patch.object(rag_router, "_get_user_id_from_username", return_value=1),
             patch.object(rag_router, "_get_query_by_id", return_value=None),
         ):
             resp = client.post(
@@ -645,9 +637,7 @@ class TestFeedbackHistoryStats:
         client = _make_client()
         with (
             patch.object(rag_router, "_get_user_id_from_username", return_value=1),
-            patch.object(
-                rag_router, "get_cursor", side_effect=RuntimeError("db down")
-            ),
+            patch.object(rag_router, "get_cursor", side_effect=RuntimeError("db down")),
         ):
             assert client.get("/api/rag/history").status_code == 500
 
@@ -694,9 +684,7 @@ class TestFeedbackHistoryStats:
         ctx.__enter__.return_value = cur
         ctx.__exit__.return_value = False
         with patch.object(rag_router, "get_cursor", return_value=ctx):
-            resp = client.get(
-                "/api/rag/anomalies/stats?atm_id=ATM-1&anomaly_type=A1"
-            )
+            resp = client.get("/api/rag/anomalies/stats?atm_id=ATM-1&anomaly_type=A1")
             assert resp.status_code == 200
             body = resp.json()
             assert body["total"] == 10
@@ -806,9 +794,7 @@ class TestDbHelpers:
         ins_ctx = MagicMock()
         ins_ctx.__enter__.return_value = ins_cur
         ins_ctx.__exit__.return_value = False
-        with patch.object(
-            rag_router, "get_cursor", side_effect=[admin_ctx, ins_ctx]
-        ):
+        with patch.object(rag_router, "get_cursor", side_effect=[admin_ctx, ins_ctx]):
             assert (
                 rag_router._save_query_history_fallback(
                     query="q", answer="a", uncertainty_score=0.5

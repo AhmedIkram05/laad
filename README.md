@@ -106,7 +106,7 @@ flowchart LR
 | Metric | Value |
 | --- | --- |
 | Anomaly detection | XGBoost 8-class CV **99.8%** (±0.1%, 868K rows) · Isolation Forest **97.3%** precision, F1 0.70 |
-| RAG quality (RAGAS) | faithfulness **0.940** · precision **0.874** · relevancy **0.801** |
+| RAG quality (RAGAS, agentic) | faithfulness **0.940** · precision **0.874** · relevancy **0.801** |
 | Throughput | **~100 msgs/sec** sustained on one consumer · **2.5M+** events processed |
 | API surface | **30 endpoints** across 6 routers |
 | Tests gating every PR | **1,880** (1,300 pytest · 495 vitest · 10 Playwright · 75 Terraform) + 26 security checks |
@@ -118,7 +118,8 @@ flowchart LR
 ## AI - detection & diagnostics
 
 - **3-layer detector** - XGBoost 8-class classifier at **99.8% CV (±0.1%, 868K rows)** plus an Isolation Forest sidecar (**97.3% precision, F1 0.70**) for out-of-class novelty, Z-score drift detection, and always-on heuristics. SageMaker (`ml.t2.medium`) validates predictions live. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1)
-- **Agentic Hybrid RAG** - LangGraph with 12 MCP tools, 4-stage reasoning, cross-encoder reranking, and 4-signal confidence fusion via uncertainty-weighted averaging (static calibrated weights). RAGAS-evaluated: **faithfulness 0.940, precision 0.874, relevancy 0.801**. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) · [Evaluation data](docs/eval/)
+- **Agentic Hybrid RAG** - True-hybrid retrieval (dense `nomic-embed-text` + BM25 sparse → RRF k=60 → temporal boost → cross-encoder `ms-marco-MiniLM-L-2-v2`), LangGraph with 12 MCP tools, 4-stage reasoning, and 4-signal confidence fusion via uncertainty-weighted averaging (static calibrated weights). RAGAS-evaluated (agentic): **faithfulness 0.940, precision 0.874, relevancy 0.801**. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) · [Evaluation data](docs/eval/) · [Per-system numbers](docs/eval/baseline.json)
+  - *Hybrid retrieval* = dense + BM25 fused via RRF inside `search_knowledge` (both modes). *Hybrid mode* = deterministic planner (`search_knowledge` + ≤1 structured tool, 0 planning LLM calls, never retries). *Agentic mode* = free-form tool loop with grounding-gated retry (<0.6).
 
   <video src="https://github.com/user-attachments/assets/aad8a189-0d2e-4de0-9a8f-ff04e8dc6ba3" title="Diagnostic assistant chat interface with example queries" controls></video>
 

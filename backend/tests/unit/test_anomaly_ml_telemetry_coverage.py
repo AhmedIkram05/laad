@@ -54,9 +54,7 @@ class TestTelemetry:
     def test_record_trace_db_failure_never_raises(self):
         from backend.src.rag import telemetry
 
-        with patch.object(
-            telemetry, "get_cursor", side_effect=RuntimeError("db down")
-        ):
+        with patch.object(telemetry, "get_cursor", side_effect=RuntimeError("db down")):
             telemetry.record_trace(9, {"mode": "x"})
 
     def test_record_trace_no_jsonl_side_channel(self, tmp_path):
@@ -137,8 +135,12 @@ class TestRagGeneratorLeftovers:
 
         def chunk(text):
             return RetrievedChunk(
-                text=text, chunk_id="c", atm_id="ATM-1", timestamp=None,
-                distance=0.1, confidence_score=0.9,
+                text=text,
+                chunk_id="c",
+                atm_id="ATM-1",
+                timestamp=None,
+                distance=0.1,
+                confidence_score=0.9,
             )
 
         assert _extract_anomaly_tag(chunk("[A1] network down")) is None
@@ -183,9 +185,7 @@ class TestRagGeneratorLeftovers:
             gen._generate_fallback("q", chunks, QueryType.DIAGNOSTIC), str
         )
         assert isinstance(gen._generate_stats_fallback(chunks), str)
-        assert isinstance(
-            gen._generate_troubleshooting_fallback("fix it", chunks), str
-        )
+        assert isinstance(gen._generate_troubleshooting_fallback("fix it", chunks), str)
         assert gen._generate_fallback("q", [], QueryType.GENERAL) != ""
 
     def test_generate_uses_llm_and_fallback(self):
@@ -228,8 +228,9 @@ class TestRagGeneratorLeftovers:
         from backend.src.rag.utils import QueryType
 
         def resp(text):
-            return LLMResponse(text=text, raw_response={}, model="m",
-                               finish_reason="stop")
+            return LLMResponse(
+                text=text, raw_response={}, model="m", finish_reason="stop"
+            )
 
         gen = RAGGenerator()
         chunks = [
@@ -253,8 +254,9 @@ class TestRagGeneratorLeftovers:
             resp("corrected diagnosis text"),
             resp("0.82"),
         ]
-        out = gen.generate("what is wrong with ATM-GB-0001?", chunks,
-                           query_type=QueryType.DIAGNOSTIC)
+        out = gen.generate(
+            "what is wrong with ATM-GB-0001?", chunks, query_type=QueryType.DIAGNOSTIC
+        )
         assert out.text == "corrected diagnosis text"
         assert out.was_revised is True
         assert out.grounding_score is not None
@@ -312,8 +314,12 @@ class TestRagGeneratorLeftovers:
         from backend.src.rag.utils import QueryType
 
         gen = self._gen()
-        for qt in (QueryType.TROUBLESHOOTING, QueryType.STATS,
-                   QueryType.GENERAL, QueryType.DIAGNOSTIC):
+        for qt in (
+            QueryType.TROUBLESHOOTING,
+            QueryType.STATS,
+            QueryType.GENERAL,
+            QueryType.DIAGNOSTIC,
+        ):
             prompt = gen._build_prompt("q?", "ctx", qt)
             assert "q?" in prompt
 
@@ -322,34 +328,48 @@ class TestRagGeneratorLeftovers:
 
         gen = self._gen()
         gen.llm_client = MagicMock()
-        same = LLMResponse(text="same answer text here", raw_response={},
-                           model="m", finish_reason="stop")
+        same = LLMResponse(
+            text="same answer text here",
+            raw_response={},
+            model="m",
+            finish_reason="stop",
+        )
         gen.llm_client.generate.return_value = same
         score, samples = gen._compute_self_consistency(
-            "q", "ctx", "sys", None, num_samples=3)
+            "q", "ctx", "sys", None, num_samples=3
+        )
         assert score is not None and score > 0.9 and len(samples) == 3
         score1, samples1 = gen._compute_self_consistency(
-            "q", "ctx", "sys", None, num_samples=1)
+            "q", "ctx", "sys", None, num_samples=1
+        )
         assert score1 is None and len(samples1) == 1
         gen.llm_client.generate.side_effect = RuntimeError("x")
         score, samples = gen._compute_self_consistency(
-            "q", "ctx", "sys", None, num_samples=3)
+            "q", "ctx", "sys", None, num_samples=3
+        )
         assert score is None and samples == []
         gen.llm_client.generate.side_effect = None
         gen.llm_client.generate.return_value = LLMResponse(
-            text="0.85", raw_response={}, model="m", finish_reason="stop")
+            text="0.85", raw_response={}, model="m", finish_reason="stop"
+        )
         assert gen._estimate_verbalized_confidence("q", "ctx", "a", "sys") == 0.85
         gen.llm_client.generate.side_effect = RuntimeError("x")
         assert gen._estimate_verbalized_confidence("q", "ctx", "a", "sys") is None
         assert gen._critique_response("q", "ctx", "a", "sys") is None
         gen.llm_client.generate.side_effect = None
         gen.llm_client.generate.return_value = LLMResponse(
-            text="NO_ISSUES_FOUND", raw_response={}, model="m", finish_reason="stop")
+            text="NO_ISSUES_FOUND", raw_response={}, model="m", finish_reason="stop"
+        )
         assert gen._critique_response("q", "ctx", "a", "sys") is None
         gen.llm_client.generate.return_value = LLMResponse(
-            text="claim X lacks evidence", raw_response={}, model="m",
-            finish_reason="stop")
-        assert gen._critique_response("q", "ctx", "a", "sys") == "claim X lacks evidence"
+            text="claim X lacks evidence",
+            raw_response={},
+            model="m",
+            finish_reason="stop",
+        )
+        assert (
+            gen._critique_response("q", "ctx", "a", "sys") == "claim X lacks evidence"
+        )
         regen = gen._regenerate("q", "ctx", "sys", None, "orig", "crit")
         assert regen.text == "claim X lacks evidence"
         gen.llm_client.generate.side_effect = RuntimeError("x")
@@ -378,14 +398,22 @@ class TestAnomalyDetectorPersistence:
             patch.object(ad, "release_conn"),
         ):
             rows = ad._ingestion_errors_in_window(None, None)
-            assert rows == [{"id": 1, "ts": "2026-01-01", "source": "ATM_APP",
-                             "raw_input": "raw", "error_detail": "detail"}]
+            assert rows == [
+                {
+                    "id": 1,
+                    "ts": "2026-01-01",
+                    "source": "ATM_APP",
+                    "raw_input": "raw",
+                    "error_detail": "detail",
+                }
+            ]
         with (
             patch.object(ad, "get_conn", return_value=conn),
             patch.object(ad, "release_conn"),
         ):
             rows = ad._ingestion_errors_in_window(
-                datetime(2026, 1, 1), datetime(2026, 1, 2))
+                datetime(2026, 1, 1), datetime(2026, 1, 2)
+            )
             assert len(rows) == 1
             assert "AND timestamp <=" in cur.execute.call_args[0][0]
         with (
@@ -405,9 +433,7 @@ class TestAnomalyDetectorPersistence:
                 "timestamp": "2026-01-01T10:00:00Z",
             }
         ]
-        with patch.object(
-            ad, "_ingestion_errors_in_window", return_value=[]
-        ):
+        with patch.object(ad, "_ingestion_errors_in_window", return_value=[]):
             out = ad.detect_anomalies_from_window(rows, None, None)
             assert isinstance(out, list)
 
@@ -427,8 +453,12 @@ class TestAnomalyDetectorPersistence:
             n = det.save_anomalies(
                 [
                     {"anomaly_type": "A1", "atm_id": None},
-                    {"anomaly_type": "A2", "atm_id": "ATM-1",
-                     "severity": "CRITICAL", "title": "t"},
+                    {
+                        "anomaly_type": "A2",
+                        "atm_id": "ATM-1",
+                        "severity": "CRITICAL",
+                        "title": "t",
+                    },
                 ]
             )
             assert n == 1
@@ -596,8 +626,7 @@ class TestTrainHelpers:
         import backend.src.anomaly_detection.ml.train as tr
 
         p = tmp_path / "data.json"
-        p.write_text(json.dumps([{"timestamp": "2026-01-01T00:00:00+00:00",
-                                  "a": 1}]))
+        p.write_text(json.dumps([{"timestamp": "2026-01-01T00:00:00+00:00", "a": 1}]))
         with patch.object(tr, "TRAINING_DATA", p):
             rows = tr.load_offline_dataset()
             assert rows[0]["a"] == 1

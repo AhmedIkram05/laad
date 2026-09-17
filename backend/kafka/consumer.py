@@ -98,9 +98,7 @@ def _extract_parent(headers) -> Context:
     carrier = {}
     for key, value in headers or []:
         key = key.decode("utf-8", "replace") if isinstance(key, bytes) else key
-        value = (
-            value.decode("utf-8", "replace") if isinstance(value, bytes) else value
-        )
+        value = value.decode("utf-8", "replace") if isinstance(value, bytes) else value
         if key and value is not None:
             carrier[str(key)] = value
     return _propagator.extract(carrier=carrier)
@@ -145,9 +143,7 @@ def _trigger_anomaly_detection() -> None:
             if sm:
                 span.set_attribute("laad.sm_crosscheck.ok", bool(sm.get("ok")))
                 span.set_attribute("laad.sm_crosscheck.endpoint", sm["endpoint"])
-                span.set_attribute(
-                    "laad.sm_crosscheck.latency_ms", sm["latency_ms"]
-                )
+                span.set_attribute("laad.sm_crosscheck.latency_ms", sm["latency_ms"])
         except Exception as exc:
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))

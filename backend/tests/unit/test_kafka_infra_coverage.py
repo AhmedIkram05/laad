@@ -74,8 +74,18 @@ class TestChromaBuffer:
         buf = self._buffer()
         buf._chunker = None
         buf._buffers["ATM-1"] = [
-            {"text": "err", "timestamp": "t1", "severity": "ERROR", "anomaly_tag": "A1"},
-            {"text": "warn", "timestamp": "t2", "severity": "WARNING", "anomaly_tag": "A1"},
+            {
+                "text": "err",
+                "timestamp": "t1",
+                "severity": "ERROR",
+                "anomaly_tag": "A1",
+            },
+            {
+                "text": "warn",
+                "timestamp": "t2",
+                "severity": "WARNING",
+                "anomaly_tag": "A1",
+            },
         ]
         buf._flush_atm("ATM-1")
         assert buf._collection.upsert.called
@@ -89,18 +99,24 @@ class TestChromaBuffer:
         doc.page_content = "chunk text"
         buf._chunker = MagicMock()
         buf._chunker.create_documents.return_value = [doc]
-        buf._buffers["ATM-2"] = [{"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}]
+        buf._buffers["ATM-2"] = [
+            {"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}
+        ]
         buf._flush_atm("ATM-2")
         assert buf._collection.upsert.called
         buf._chunker.create_documents.return_value = []
-        buf._buffers["ATM-3"] = [{"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}]
+        buf._buffers["ATM-3"] = [
+            {"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}
+        ]
         buf._flush_atm("ATM-3")
 
     def test_flush_upsert_failure_swallowed(self):
         buf = self._buffer()
         buf._chunker = None
         buf._collection.upsert.side_effect = RuntimeError("chroma down")
-        buf._buffers["ATM-9"] = [{"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}]
+        buf._buffers["ATM-9"] = [
+            {"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}
+        ]
         buf._flush_atm("ATM-9")
 
     def test_dominant_severity(self):
@@ -113,7 +129,9 @@ class TestChromaBuffer:
     def test_flush_all(self):
         buf = self._buffer()
         buf._chunker = None
-        buf._buffers["A"] = [{"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}]
+        buf._buffers["A"] = [
+            {"text": "x", "timestamp": "t", "severity": None, "anomaly_tag": None}
+        ]
         buf.flush_all()
         assert "A" not in buf._buffers
 
@@ -121,8 +139,13 @@ class TestChromaBuffer:
         from backend.kafka.chroma_buffer import format_event_text
 
         assert "ATM_APP" in format_event_text(
-            {"timestamp": "t", "source": "ATM_APP", "event_type": "E", "message": "m",
-             "payload": {"a": 1, "b": 2}}
+            {
+                "timestamp": "t",
+                "source": "ATM_APP",
+                "event_type": "E",
+                "message": "m",
+                "payload": {"a": 1, "b": 2},
+            }
         )
         assert isinstance(format_event_text({}), str)
         assert "kv" not in format_event_text({"payload": "not-a-dict"})
@@ -142,9 +165,15 @@ class TestAnomalySyncerLeftovers:
         syncer._synced_ids = {1, 2}
         cur = MagicMock()
         cur.fetchall.return_value = [
-            {"id": 3, "detected_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
-             "anomaly_type": "A1", "atm_id": "ATM-1", "severity": "CRITICAL",
-             "title": "t", "explanation": "e"}
+            {
+                "id": 3,
+                "detected_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "anomaly_type": "A1",
+                "atm_id": "ATM-1",
+                "severity": "CRITICAL",
+                "title": "t",
+                "explanation": "e",
+            }
         ]
         with patch.object(sync_mod, "get_cursor", return_value=_ctx(cur)):
             rows = syncer._get_unsynced_anomalies()
@@ -155,13 +184,20 @@ class TestAnomalySyncerLeftovers:
 
     def test_format_variants(self):
         syncer = self._syncer()
-        base = {"anomaly_type": "A2", "atm_id": "ATM-1", "title": "t",
-                "detected_at": None, "explanation": None}
+        base = {
+            "anomaly_type": "A2",
+            "atm_id": "ATM-1",
+            "title": "t",
+            "detected_at": None,
+            "explanation": None,
+        }
         assert "ATM-1" in syncer._format_anomaly_text(dict(base))
         assert "Details" in syncer._format_anomaly_text(
-            {**base, "explanation": "x" * 600})
+            {**base, "explanation": "x" * 600}
+        )
         assert "k=v" in syncer._format_anomaly_text(
-            {**base, "explanation": {"k": "v", "empty": ""}})
+            {**base, "explanation": {"k": "v", "empty": ""}}
+        )
 
     def test_sync_once_states(self):
         syncer = self._syncer()
@@ -180,11 +216,24 @@ class TestAnomalySyncerLeftovers:
         buf._ready = True
         syncer._chroma_buffer = buf
         rows = [
-            {"id": 1, "detected_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
-             "anomaly_type": "A1", "atm_id": "ATM-1", "severity": "CRITICAL",
-             "title": "t", "explanation": "e"},
-            {"id": 2, "detected_at": None, "anomaly_type": "A2",
-             "atm_id": "ATM-2", "severity": None, "title": "t2", "explanation": None},
+            {
+                "id": 1,
+                "detected_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "anomaly_type": "A1",
+                "atm_id": "ATM-1",
+                "severity": "CRITICAL",
+                "title": "t",
+                "explanation": "e",
+            },
+            {
+                "id": 2,
+                "detected_at": None,
+                "anomaly_type": "A2",
+                "atm_id": "ATM-2",
+                "severity": None,
+                "title": "t2",
+                "explanation": None,
+            },
         ]
         with patch.object(syncer, "_get_unsynced_anomalies", return_value=rows):
             out = syncer.sync_once()
@@ -210,8 +259,9 @@ class TestAnomalySyncerLeftovers:
                 syncer.run(interval=1)
         with (
             patch("backend.kafka.anomaly_syncer.ChromaBuffer"),
-            patch.object(sync_mod.AnomalySyncer, "sync_once",
-                         return_value={"synced": 0}),
+            patch.object(
+                sync_mod.AnomalySyncer, "sync_once", return_value={"synced": 0}
+            ),
             patch("time.sleep", side_effect=KeyboardInterrupt),
         ):
             with pytest.raises(KeyboardInterrupt):
@@ -264,8 +314,10 @@ class TestConsumerHelpers:
         det = MagicMock()
         det.detect_and_save.return_value = 0
         with (
-            patch("backend.src.anomaly_detection.ml.ml_detector.MLAnomalyDetector",
-                  return_value=det),
+            patch(
+                "backend.src.anomaly_detection.ml.ml_detector.MLAnomalyDetector",
+                return_value=det,
+            ),
             patch("backend.src.alerts.pubsub.publish_anomaly"),
         ):
             consumer._trigger_anomaly_detection()
@@ -380,16 +432,37 @@ class TestDedupDlqProducer:
             client.xread.return_value = []
             assert dlq.process_dlq_batch() == 0
             client.xread.return_value = [
-                ("ingestion:dlq", [
-                    ("1-0", {"retry_count": "0", "status": "pending",
-                             "created_at": "0"}),
-                    ("1-1", {"retry_count": "9", "status": "pending",
-                             "created_at": "0"}),
-                    ("1-2", {"retry_count": "0", "status": "exhausted"}),
-                    ("1-3", {"retry_count": "0", "status": "retrying"}),
-                    ("1-4", {"retry_count": "0", "status": "pending",
-                             "created_at": str(1e12)}),
-                ])
+                (
+                    "ingestion:dlq",
+                    [
+                        (
+                            "1-0",
+                            {
+                                "retry_count": "0",
+                                "status": "pending",
+                                "created_at": "0",
+                            },
+                        ),
+                        (
+                            "1-1",
+                            {
+                                "retry_count": "9",
+                                "status": "pending",
+                                "created_at": "0",
+                            },
+                        ),
+                        ("1-2", {"retry_count": "0", "status": "exhausted"}),
+                        ("1-3", {"retry_count": "0", "status": "retrying"}),
+                        (
+                            "1-4",
+                            {
+                                "retry_count": "0",
+                                "status": "pending",
+                                "created_at": str(1e12),
+                            },
+                        ),
+                    ],
+                )
             ]
             assert dlq.process_dlq_batch() == 2
         bad = MagicMock()
@@ -412,8 +485,9 @@ class TestDedupDlqProducer:
             p.close()
             kp.assert_called()
         assert prod._serialise({"a": 1}) == json.dumps({"a": 1}).encode()
-        with patch("backend.kafka.producer.KafkaProducer",
-                   side_effect=RuntimeError("no kafka")):
+        with patch(
+            "backend.kafka.producer.KafkaProducer", side_effect=RuntimeError("no kafka")
+        ):
             with pytest.raises(RuntimeError):
                 prod.ATMProducer()
         with patch("backend.kafka.producer.KafkaProducer"):
@@ -422,9 +496,15 @@ class TestDedupDlqProducer:
 
 class TestHandlers:
     def _msg(self, **over):
-        base = {"message_id": "m1", "timestamp": "2026-01-01T12:00:00+00:00",
-                "source": "ATM_APP", "severity": "ERROR", "atm_id": "ATM-1",
-                "message": "boom", "payload": {"_anomaly_tag": "A1"}}
+        base = {
+            "message_id": "m1",
+            "timestamp": "2026-01-01T12:00:00+00:00",
+            "source": "ATM_APP",
+            "severity": "ERROR",
+            "atm_id": "ATM-1",
+            "message": "boom",
+            "payload": {"_anomaly_tag": "A1"},
+        }
         base.update(over)
         return base
 
@@ -439,8 +519,9 @@ class TestHandlers:
         from backend.kafka.handlers import event_handler as eh
 
         with patch.object(eh, "_route_to_ingestion_errors") as route:
-            assert eh.handle_event(
-                self._msg(timestamp="not-a-date"), MagicMock()) is False
+            assert (
+                eh.handle_event(self._msg(timestamp="not-a-date"), MagicMock()) is False
+            )
             route.assert_called_once()
 
     def test_event_db_failure(self):
@@ -486,9 +567,14 @@ class TestHandlers:
     def test_metric_paths(self):
         from backend.kafka.handlers import metric_handler as mh
 
-        good = {"message_id": "m", "timestamp": "2026-01-01T12:00:00+00:00",
-                "source": "KAFKA", "entity_id": "ATM-1", "metric_name": "cpu",
-                "metric_value": 1.0}
+        good = {
+            "message_id": "m",
+            "timestamp": "2026-01-01T12:00:00+00:00",
+            "source": "KAFKA",
+            "entity_id": "ATM-1",
+            "metric_name": "cpu",
+            "metric_value": 1.0,
+        }
         with patch.object(mh, "_route_to_ingestion_errors") as route:
             assert mh.handle_metric({"source": "X"}) is False
             route.assert_called_once()
@@ -661,20 +747,29 @@ class TestAdminLeftovers:
         conn, _ = self._conn()
         with pytest.raises(HTTPException):
             ar.admin_create_user(
-                ar.AdminCreateUserRequest(username="u", password="a",
-                                         confirm_password="b"),
-                conn=conn, current_user={"sub": "admin"})
+                ar.AdminCreateUserRequest(
+                    username="u", password="a", confirm_password="b"
+                ),
+                conn=conn,
+                current_user={"sub": "admin"},
+            )
         with pytest.raises(HTTPException):
             ar.admin_create_user(
-                ar.AdminCreateUserRequest(username="u", password="a",
-                                         confirm_password="a", role="super"),
-                conn=conn, current_user={"sub": "admin"})
+                ar.AdminCreateUserRequest(
+                    username="u", password="a", confirm_password="a", role="super"
+                ),
+                conn=conn,
+                current_user={"sub": "admin"},
+            )
         with patch("bcrypt.hashpw", side_effect=RuntimeError("no bcrypt")):
             with pytest.raises(HTTPException):
                 ar.admin_create_user(
-                    ar.AdminCreateUserRequest(username="u", password="a",
-                                             confirm_password="a"),
-                    conn=conn, current_user={"sub": "admin"})
+                    ar.AdminCreateUserRequest(
+                        username="u", password="a", confirm_password="a"
+                    ),
+                    conn=conn,
+                    current_user={"sub": "admin"},
+                )
 
     def test_create_user_conflict(self):
         import psycopg2
@@ -686,9 +781,12 @@ class TestAdminLeftovers:
         conn.cursor.side_effect = psycopg2.IntegrityError("dup")
         with pytest.raises(HTTPException) as exc:
             ar.admin_create_user(
-                ar.AdminCreateUserRequest(username="u", password="a",
-                                         confirm_password="a"),
-                conn=conn, current_user={"sub": "admin"})
+                ar.AdminCreateUserRequest(
+                    username="u", password="a", confirm_password="a"
+                ),
+                conn=conn,
+                current_user={"sub": "admin"},
+            )
         assert exc.value.status_code == 409
 
     def test_training_task(self):
@@ -698,8 +796,10 @@ class TestAdminLeftovers:
         out = ar.trigger_training(background_tasks=tasks)
         assert out.status == "started"
         fn = tasks.add_task.call_args[0][0]
-        with patch("backend.src.anomaly_detection.ml.train.train",
-                   side_effect=RuntimeError("boom")):
+        with patch(
+            "backend.src.anomaly_detection.ml.train.train",
+            side_effect=RuntimeError("boom"),
+        ):
             fn()
         with patch("backend.src.anomaly_detection.ml.train.train") as tr:
             fn()
@@ -714,8 +814,10 @@ class TestPubsub:
             assert pubsub.publish_anomaly({"anomaly_type": "A1"}) is False
         client = MagicMock()
         with patch.object(pubsub, "get_redis_client", return_value=client):
-            assert pubsub.publish_anomaly(
-                {"anomaly_type": "A1", "atm_id": "ATM-1"}) is True
+            assert (
+                pubsub.publish_anomaly({"anomaly_type": "A1", "atm_id": "ATM-1"})
+                is True
+            )
             assert pubsub.publish_anomaly({"anomaly_type": "A1"}) is True
         bad = MagicMock()
         bad.publish.side_effect = RuntimeError("redis")
@@ -730,8 +832,7 @@ class TestPubsub:
         client = MagicMock()
         client.zrevrange.return_value = [("ATM-1", 3.0)]
         with patch.object(pubsub, "get_redis_client", return_value=client):
-            assert pubsub.get_top_anomalous_atms() == [
-                {"atm_id": "ATM-1", "count": 3}]
+            assert pubsub.get_top_anomalous_atms() == [{"atm_id": "ATM-1", "count": 3}]
         bad = MagicMock()
         bad.zrevrange.side_effect = RuntimeError("redis")
         with patch.object(pubsub, "get_redis_client", return_value=bad):
@@ -777,8 +878,7 @@ class TestSmallRagModules:
         from backend.src.rag import llm_client as llc
 
         client = llc.LLMClient()
-        provider = {"model": "m", "api_key": "k", "base_url": "http://x",
-                    "name": "llm"}
+        provider = {"model": "m", "api_key": "k", "base_url": "http://x", "name": "llm"}
         with patch("requests.post", side_effect=RuntimeError("net")):
             with pytest.raises(RuntimeError):
                 client._call_llm(provider, "p", None, 0.5, 10)
@@ -803,17 +903,28 @@ class TestSmallRagModules:
             r = RAGRetriever()
             r.collection = MagicMock()
             r.client = MagicMock()
+            r._sparse_cache = {}
             assert r._calculate_confidence(0.0) >= r._calculate_confidence(5.0)
             assert r._calculate_confidence(None) == 0.5
             from backend.src.rag.retriever import RetrievedChunk
 
             chunks = [
-                RetrievedChunk(text="t", chunk_id="c", atm_id="A",
-                               timestamp="2026-05-01T12:00:00+00:00",
-                               distance=0.1, confidence_score=0.9),
-                RetrievedChunk(text="t", chunk_id="c2", atm_id="A",
-                               timestamp="not-a-date",
-                               distance=0.2, confidence_score=0.8),
+                RetrievedChunk(
+                    text="t",
+                    chunk_id="c",
+                    atm_id="A",
+                    timestamp="2026-05-01T12:00:00+00:00",
+                    distance=0.1,
+                    confidence_score=0.9,
+                ),
+                RetrievedChunk(
+                    text="t",
+                    chunk_id="c2",
+                    atm_id="A",
+                    timestamp="not-a-date",
+                    distance=0.2,
+                    confidence_score=0.8,
+                ),
             ]
             assert len(r._apply_temporal_boost(chunks)) == 2
             assert r._sort_by_most_recent(chunks)[0].chunk_id == "c"
@@ -840,9 +951,16 @@ class TestSmallRagModules:
         with patch.object(RAGRetriever, "__init__", lambda self: None):
             r = RAGRetriever()
             r._cross_encoder = None
-            chunks = [RetrievedChunk(text="t", chunk_id="c", atm_id="A",
-                                     timestamp=None, distance=0.1,
-                                     confidence_score=0.9)]
+            chunks = [
+                RetrievedChunk(
+                    text="t",
+                    chunk_id="c",
+                    atm_id="A",
+                    timestamp=None,
+                    distance=0.1,
+                    confidence_score=0.9,
+                )
+            ]
             assert r._rerank_with_cross_encoder("q", chunks) == chunks
             r._cross_encoder = MagicMock()
             r._cross_encoder.predict.side_effect = RuntimeError("ce")
@@ -870,8 +988,10 @@ class TestSmallRagModules:
         import backend.src.rag.config as cfg_mod
 
         with (
-            patch.dict("os.environ", {"CHROMA_PORT": "bad", "REDIS_PORT": "bad",
-                                      "RAG_TOP_K": "bad"}),
+            patch.dict(
+                "os.environ",
+                {"CHROMA_PORT": "bad", "REDIS_PORT": "bad", "RAG_TOP_K": "bad"},
+            ),
             patch.object(cfg_mod.RAGConfig, "_check_configured", lambda self: None),
         ):
             c = cfg_mod.RAGConfig()
@@ -890,11 +1010,14 @@ class TestGapClosers:
         fake_chroma = MagicMock()
         fake_ollama = MagicMock()
         fake_splitter = MagicMock()
-        with patch.dict(sys.modules, {
-            "chromadb": fake_chroma,
-            "langchain_ollama": fake_ollama,
-            "langchain_experimental.text_splitter": fake_splitter,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "chromadb": fake_chroma,
+                "langchain_ollama": fake_ollama,
+                "langchain_experimental.text_splitter": fake_splitter,
+            },
+        ):
             cb._build_chroma_client()
             fake_chroma.HttpClient.assert_called_once()
             cb._build_embeddings()
@@ -942,7 +1065,9 @@ class TestGapClosers:
         with patch("backend.kafka.anomaly_syncer.ChromaBuffer"):
             syncer = sync_mod.AnomalySyncer()
         with (
-            patch.object(syncer, "sync_once", side_effect=[RuntimeError("boom"), {"synced": 0}]),
+            patch.object(
+                syncer, "sync_once", side_effect=[RuntimeError("boom"), {"synced": 0}]
+            ),
             patch("time.sleep", side_effect=KeyboardInterrupt),
         ):
             with pytest.raises(KeyboardInterrupt):
@@ -1006,16 +1131,25 @@ class TestGapClosers:
         from backend.kafka.handlers import event_handler as eh
         from backend.kafka.handlers import metric_handler as mh
 
-        naive_event = {"message_id": "m", "timestamp": "2026-01-01T12:00:00",
-                       "source": "ATM_APP", "severity": "INFO"}
+        naive_event = {
+            "message_id": "m",
+            "timestamp": "2026-01-01T12:00:00",
+            "source": "ATM_APP",
+            "severity": "INFO",
+        }
         with (
             patch.object(eh, "get_cursor", return_value=_ctx()),
             patch.object(eh, "increment_event_counter"),
         ):
             assert eh.handle_event(dict(naive_event), MagicMock()) is True
-        naive_metric = {"message_id": "m", "timestamp": "2026-01-01T12:00:00",
-                        "source": "KAFKA", "entity_id": "SRV-1",
-                        "metric_name": "cpu", "metric_value": 1.5}
+        naive_metric = {
+            "message_id": "m",
+            "timestamp": "2026-01-01T12:00:00",
+            "source": "KAFKA",
+            "entity_id": "SRV-1",
+            "metric_name": "cpu",
+            "metric_value": 1.5,
+        }
         with (
             patch.object(mh, "get_cursor", return_value=_ctx()),
             patch.object(mh, "increment_event_counter"),
@@ -1039,9 +1173,15 @@ class TestGapClosers:
         conn = MagicMock()
         conn.cursor.return_value = ctx
         out = ar.admin_create_user(
-            ar.AdminCreateUserRequest(username="bob", password="pw123456",
-                                     confirm_password="pw123456", role="user"),
-            conn=conn, current_user={"sub": "admin"})
+            ar.AdminCreateUserRequest(
+                username="bob",
+                password="pw123456",
+                confirm_password="pw123456",
+                role="user",
+            ),
+            conn=conn,
+            current_user={"sub": "admin"},
+        )
         assert out == {"id": 42, "username": "bob", "role": "user"}
         conn.commit.assert_called_once()
 
@@ -1061,8 +1201,11 @@ class TestGapClosers:
         miss_client.get.return_value = None
         with patch.object(cache, "get_redis_client", return_value=miss_client):
             assert cache.get_cached_response("nope") is None
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("LLM_API_KEY", "WANDB_API_KEY")}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in ("LLM_API_KEY", "WANDB_API_KEY")
+        }
         with patch.dict("os.environ", env, clear=True):
             c = cfg_mod.RAGConfig()
             assert c.is_configured is False
@@ -1070,8 +1213,14 @@ class TestGapClosers:
     def test_utils_classify_and_extract_variants(self):
         from backend.src.rag import utils
 
-        assert utils.classify_query_type("how to fix the dispenser") == utils.QueryType.TROUBLESHOOTING
-        assert utils.classify_query_type("why is ATM-1 down?") == utils.QueryType.DIAGNOSTIC
+        assert (
+            utils.classify_query_type("how to fix the dispenser")
+            == utils.QueryType.TROUBLESHOOTING
+        )
+        assert (
+            utils.classify_query_type("why is ATM-1 down?")
+            == utils.QueryType.DIAGNOSTIC
+        )
         assert utils.extract_atm_id_from_query("ATM 1 is down") == "ATM-GB-0001"
         assert utils.extract_atm_id_from_query("check ATM-0002 please") == "ATM-GB-0002"
         assert utils._extract_anomaly_type_from_query("network timeout storm") == "A1"
@@ -1103,15 +1252,25 @@ class TestGapClosers:
             "documents": [["doc one", "doc two"]],
             "ids": [["id1"]],
             "distances": [[0.2, 0.4]],
-            "metadatas": [[{"atm_id": "ATM-1", "last_timestamp": "2020-01-01T00:00:00+00:00"},
-                           {"atm_id": "ATM-2", "last_timestamp": "2020-01-02T00:00:00+00:00"}]],
+            "metadatas": [
+                [
+                    {"atm_id": "ATM-1", "last_timestamp": "2020-01-01T00:00:00+00:00"},
+                    {"atm_id": "ATM-2", "last_timestamp": "2020-01-02T00:00:00+00:00"},
+                ]
+            ],
         }
         r = located(collection=MagicMock(), client=MagicMock(), _cross_encoder=None)
         r.collection.query.return_value = payload
         with patch.object(RAGRetriever, "_load_cross_encoder", lambda self: None):
-            chunks = r.retrieve("q", atm_id="ATM-1", anomaly_type="A7", top_k=2,
-                                temporal_boost=False, error_only=True,
-                                most_recent_first=True)
+            chunks = r.retrieve(
+                "q",
+                atm_id="ATM-1",
+                anomaly_type="A7",
+                top_k=2,
+                temporal_boost=False,
+                error_only=True,
+                most_recent_first=True,
+            )
         assert [c.chunk_id for c in chunks] == ["chunk_1", "id1"]
         where = r.collection.query.call_args[1]["where"]
         assert where["$and"][0] == {"atm_id": "ATM-1"}
@@ -1144,7 +1303,8 @@ class TestGapClosers:
             assert r.retrieve_by_atm("ATM-1") == []
             r.collection = MagicMock()
             r.collection.get.return_value = {
-                "documents": ["d1"], "metadatas": [{"last_timestamp": "t"}],
+                "documents": ["d1"],
+                "metadatas": [{"last_timestamp": "t"}],
                 "ids": ["i1"],
             }
             chunks = r.retrieve_by_atm("ATM-1")
@@ -1163,6 +1323,7 @@ class TestGapClosers:
                 r._load_cross_encoder()
                 assert r._cross_encoder is None
         import backend.src.rag.retriever as ret_mod
+
         with patch.object(ret_mod, "_retriever", None):
             with patch.object(RAGRetriever, "__init__", lambda self: None):
                 inst = get_retriever()

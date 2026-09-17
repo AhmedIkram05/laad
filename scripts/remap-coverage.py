@@ -75,9 +75,21 @@ def main(src: str, dst: str) -> None:
     tree.write(dst)
     pct = round(100.0 * hits / total, 2) if total else 0.0
     print(
-        "mapped " + str(rewritten + kept) + " files (" + str(rewritten)
-        + " rewritten, " + str(kept) + " already ok), dropped " + str(dropped)
-        + " empty, lines " + str(hits) + "/" + str(total) + " (" + str(pct) + "%)"
+        "mapped "
+        + str(rewritten + kept)
+        + " files ("
+        + str(rewritten)
+        + " rewritten, "
+        + str(kept)
+        + " already ok), dropped "
+        + str(dropped)
+        + " empty, lines "
+        + str(hits)
+        + "/"
+        + str(total)
+        + " ("
+        + str(pct)
+        + "%)"
     )
 
 

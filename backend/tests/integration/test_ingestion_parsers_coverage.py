@@ -22,7 +22,18 @@ TS = "2026-03-05T09:15:00Z"
 
 def _prom_line(metric_value="12.5", metric_name="my_metric", ts=TS, extra=None):
     # timestamp,metric_name,metric_type,metric_value,service,pod,container,area,env,help
-    parts = [ts, metric_name, "gauge", metric_value, "svc", "pod-1", "cid-1", "area", "prod", "help"]
+    parts = [
+        ts,
+        metric_name,
+        "gauge",
+        metric_value,
+        "svc",
+        "pod-1",
+        "cid-1",
+        "area",
+        "prod",
+        "help",
+    ]
     if extra:
         parts.extend(extra)
     # quote fields containing commas
@@ -34,15 +45,54 @@ def _prom_line(metric_value="12.5", metric_name="my_metric", ts=TS, extra=None):
 
 def _win_line(cpu="42.5", ts=TS, atm="ATM-GB-0001", osv="10.0.1"):
     # 17 cols per WINDOWS_HEADERS
-    row = [ts, atm, "host1", osv, cpu, "4000", "8000", "50",
-           "100", "200", "99", "10", "20", "0", "80", "12345", "0"]
+    row = [
+        ts,
+        atm,
+        "host1",
+        osv,
+        cpu,
+        "4000",
+        "8000",
+        "50",
+        "100",
+        "200",
+        "99",
+        "10",
+        "20",
+        "0",
+        "80",
+        "12345",
+        "0",
+    ]
     return ",".join(row)
 
 
-def _gcp_line(metric_name="cpu_usage", metric_value="3.25", ts=TS, resource="res-1", project="proj-1"):
-    row = [ts, project, "gke_container", resource, "zone-a", metric_name,
-           metric_value, "units", "10", "100", "200", "1", "2", "0",
-           "app", "prod", "v1"]
+def _gcp_line(
+    metric_name="cpu_usage",
+    metric_value="3.25",
+    ts=TS,
+    resource="res-1",
+    project="proj-1",
+):
+    row = [
+        ts,
+        project,
+        "gke_container",
+        resource,
+        "zone-a",
+        metric_name,
+        metric_value,
+        "units",
+        "10",
+        "100",
+        "200",
+        "1",
+        "2",
+        "0",
+        "app",
+        "prod",
+        "v1",
+    ]
     return ",".join(row)
 
 
@@ -178,7 +228,25 @@ class TestGcpRemaining:
     def test_no_metric_value(self):
         p = GcpCloudMetricsParser()
         # both metric_value and cpu_usage_percent empty
-        row = [TS, "proj-1", "t", "res-1", "z", "", "", "u", "", "", "", "", "", "", "", "", ""]
+        row = [
+            TS,
+            "proj-1",
+            "t",
+            "res-1",
+            "z",
+            "",
+            "",
+            "u",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ]
         with pytest.raises(ValueError, match="no metric value"):
             p.parse_line(",".join(row))
 
@@ -186,7 +254,25 @@ class TestGcpRemaining:
         p = GcpCloudMetricsParser()
         # metric_name empty but cpu_usage_percent present; metric_value empty,
         # so value comes from the cpu column and the name falls back:
-        row2 = [TS, "proj-1", "t", "res-1", "z", "", "", "u", "9.5", "", "", "", "", "", "", "", ""]
+        row2 = [
+            TS,
+            "proj-1",
+            "t",
+            "res-1",
+            "z",
+            "",
+            "",
+            "u",
+            "9.5",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ]
         out = p.parse_line(",".join(row2))
         assert out["metric_name"] == "cpu_usage_percent"
         assert out["metric_value"] == pytest.approx(9.5)
@@ -203,7 +289,25 @@ class TestGcpRemaining:
 
     def test_entity_unknown(self):
         p = GcpCloudMetricsParser()
-        row = [TS, "", "t", "", "z", "m", "1.0", "u", "", "", "", "", "", "", "", "", ""]
+        row = [
+            TS,
+            "",
+            "t",
+            "",
+            "z",
+            "m",
+            "1.0",
+            "u",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ]
         out = p.parse_line(",".join(row))
         assert out["entity_id"] == "unknown"
 
@@ -218,7 +322,9 @@ class TestGcpRemaining:
 class TestKafkaRemaining:
     def test_invalid_timestamp(self):
         p = KafkaMetricsParser()
-        line = json.dumps({"timestamp": "bad", "transaction_rate_tps": 5, "atm_id": "A1"})
+        line = json.dumps(
+            {"timestamp": "bad", "transaction_rate_tps": 5, "atm_id": "A1"}
+        )
         with pytest.raises(ValueError, match="invalid timestamp"):
             p.parse_line(line)
 
@@ -230,20 +336,26 @@ class TestKafkaRemaining:
 
     def test_fallback_to_response_time(self):
         p = KafkaMetricsParser()
-        line = json.dumps({"timestamp": TS, "response_time_ms": 123.0, "atm_id": "ATM-1"})
+        line = json.dumps(
+            {"timestamp": TS, "response_time_ms": 123.0, "atm_id": "ATM-1"}
+        )
         out = p.parse_line(line)
         assert out["metric_name"] == "response_time_ms"
         assert out["metric_value"] == pytest.approx(123.0)
 
     def test_entity_id_alias(self):
         p = KafkaMetricsParser()
-        line = json.dumps({"timestamp": TS, "transaction_rate_tps": 9, "entity_id": "E-9"})
+        line = json.dumps(
+            {"timestamp": TS, "transaction_rate_tps": 9, "entity_id": "E-9"}
+        )
         out = p.parse_line(line)
         assert out["entity_id"] == "E-9"
 
     def test_payload_excludes_timestamp_and_atm(self):
         p = KafkaMetricsParser()
-        line = json.dumps({"timestamp": TS, "transaction_rate_tps": 9, "atm_id": "A1", "extra": "x"})
+        line = json.dumps(
+            {"timestamp": TS, "transaction_rate_tps": 9, "atm_id": "A1", "extra": "x"}
+        )
         out = p.parse_line(line)
         payload = json.loads(out["payload"])
         assert "timestamp" not in payload

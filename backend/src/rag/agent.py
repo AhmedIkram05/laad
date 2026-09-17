@@ -614,7 +614,9 @@ async def run_agent_query(
         sok = _current_root_span.set(span)
         try:
             graph = await (
-                _get_agentic_graph() if mode is AgentMode.AGENTIC else _get_hybrid_graph()
+                _get_agentic_graph()
+                if mode is AgentMode.AGENTIC
+                else _get_hybrid_graph()
             )
             system_message = SystemMessage(
                 content=_SYSTEM_PROMPT
@@ -685,7 +687,9 @@ async def run_agent_query(
                 planning_s += time.perf_counter() - t_graph2
                 tools_s = sum(c.duration_s for c in trace.tool_calls)
                 t_gen2 = time.perf_counter()
-                response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
+                response, uncertainty, chunks = _generate(
+                    query, atm_id, evidence, top_k
+                )
                 generation_s += time.perf_counter() - t_gen2
                 result = _build_result(
                     query,
@@ -701,7 +705,9 @@ async def run_agent_query(
             trace.latencies["total"] = round(time.perf_counter() - t_start, 4)
             # agentic graph doesn't plan explicitly; record the tools actually used
             if not trace.selected_tools and trace.tool_calls:
-                trace.selected_tools = list(dict.fromkeys(c.tool for c in trace.tool_calls))
+                trace.selected_tools = list(
+                    dict.fromkeys(c.tool for c in trace.tool_calls)
+                )
             result["agent_trace"] = asdict(trace)
             latencies = trace.latencies
             span.set_attribute("planning_s", latencies.get("planning_s", 0.0))

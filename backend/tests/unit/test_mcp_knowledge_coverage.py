@@ -63,7 +63,10 @@ class TestCollectionStats:
 
     def test_success_passthrough(self, monkeypatch):
         fake = MagicMock()
-        fake.get_collection_stats.return_value = {"total_chunks": 42, "collection_name": "laad"}
+        fake.get_collection_stats.return_value = {
+            "total_chunks": 42,
+            "collection_name": "laad",
+        }
         monkeypatch.setattr(_mod, "get_retriever", lambda: fake)
         out = _mod.get_rag_collection_stats()
         assert out == {"total_chunks": 42, "collection_name": "laad"}

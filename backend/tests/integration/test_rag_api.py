@@ -257,9 +257,10 @@ class TestRAGRouter:
         )
         token = token_resp.json()["access_token"]
 
-        with patch(
-            "backend.src.rag.router.get_redis_client", return_value=None
-        ), patch.object(rag_router.config, "champion", "legacy"):
+        with (
+            patch("backend.src.rag.router.get_redis_client", return_value=None),
+            patch.object(rag_router.config, "champion", "legacy"),
+        ):
             resp = client.post(
                 "/api/rag/query",
                 json={"query": "test query"},
@@ -455,6 +456,5 @@ class TestAgentEndpoint:
         assert resp.status_code == 500
         # The endpoint logs internals but never leaks them in the response.
         assert (
-            resp.json()["detail"]
-            == "Query processing failed due to an internal error."
+            resp.json()["detail"] == "Query processing failed due to an internal error."
         )

@@ -76,13 +76,11 @@ class TestUpsertRef:
     def test_batch_trigger_flushes_with_conn(self):
         p = _MemParser(batch_size=1)
         conn, _ = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn"
-        ) as mock_rel, patch(
-            "backend.src.ingestion.write_helper.write_batch"
-        ) as mock_wb:
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch("backend.src.database.connection.release_conn") as mock_rel,
+            patch("backend.src.ingestion.write_helper.write_batch") as mock_wb,
+        ):
             p._upsert_atm_reference("ATM-3", os_version="v9")
             assert mock_wb.called
             assert mock_rel.called
@@ -91,12 +89,14 @@ class TestUpsertRef:
     def test_batch_trigger_release_failure_swallowed(self):
         p = _MemParser(batch_size=1)
         conn, _ = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn",
-            side_effect=RuntimeError("gone"),
-        ), patch("backend.src.ingestion.write_helper.write_batch"):
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch(
+                "backend.src.database.connection.release_conn",
+                side_effect=RuntimeError("gone"),
+            ),
+            patch("backend.src.ingestion.write_helper.write_batch"),
+        ):
             # must not raise
             p._upsert_atm_reference("ATM-4", os_version="v2")
             assert p.ref_buffer == []
@@ -182,11 +182,10 @@ class TestInsertError:
     def test_success_writes_and_releases(self):
         p = _MemParser()
         conn, cur = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn"
-        ) as mock_rel:
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch("backend.src.database.connection.release_conn") as mock_rel,
+        ):
             p.insert_ingestion_error("detail", "raw", source="SRC")
             assert cur.execute.called
             assert conn.commit.called
@@ -203,11 +202,12 @@ class TestInsertError:
     def test_release_failure_swallowed(self):
         p = _MemParser()
         conn, _ = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn",
-            side_effect=RuntimeError("gone"),
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch(
+                "backend.src.database.connection.release_conn",
+                side_effect=RuntimeError("gone"),
+            ),
         ):
             p.insert_ingestion_error("d", "r")  # must not raise
 
@@ -256,15 +256,12 @@ class TestEventFlush:
             }
         ]
         conn, _ = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn"
-        ), patch(
-            "backend.src.ingestion.write_helper.write_batch"
-        ) as mock_wb, patch.object(
-            p, "_flush_ref_buffer"
-        ) as mock_ref:
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch("backend.src.database.connection.release_conn"),
+            patch("backend.src.ingestion.write_helper.write_batch") as mock_wb,
+            patch.object(p, "_flush_ref_buffer") as mock_ref,
+        ):
             p.flush()
             mock_wb.assert_called_once()
             mock_ref.assert_called_once_with(conn)
@@ -273,10 +270,13 @@ class TestEventFlush:
     def test_failure_records_ingestion_errors(self):
         p = _EventParser()
         p._buffer = [{"timestamp": "t", "source": "ATM_APP"}]
-        with patch(
-            "backend.src.database.connection.get_conn",
-            side_effect=RuntimeError("down"),
-        ), patch.object(p, "insert_ingestion_error") as mock_err:
+        with (
+            patch(
+                "backend.src.database.connection.get_conn",
+                side_effect=RuntimeError("down"),
+            ),
+            patch.object(p, "insert_ingestion_error") as mock_err,
+        ):
             p.flush()
             mock_err.assert_called()
             assert p._buffer == []
@@ -284,11 +284,14 @@ class TestEventFlush:
     def test_failure_inner_insert_raises_is_swallowed(self):
         p = _EventParser()
         p._buffer = [{"timestamp": "t", "source": "ATM_APP"}]
-        with patch(
-            "backend.src.database.connection.get_conn",
-            side_effect=RuntimeError("down"),
-        ), patch.object(
-            p, "insert_ingestion_error", side_effect=RuntimeError("also down")
+        with (
+            patch(
+                "backend.src.database.connection.get_conn",
+                side_effect=RuntimeError("down"),
+            ),
+            patch.object(
+                p, "insert_ingestion_error", side_effect=RuntimeError("also down")
+            ),
         ):
             p.flush()  # must not raise
             assert p._buffer == []
@@ -297,12 +300,14 @@ class TestEventFlush:
         p = _EventParser()
         p._buffer = [{"timestamp": "t", "source": "ATM_APP"}]
         conn, _ = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn",
-            side_effect=RuntimeError("gone"),
-        ), patch("backend.src.ingestion.write_helper.write_batch"):
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch(
+                "backend.src.database.connection.release_conn",
+                side_effect=RuntimeError("gone"),
+            ),
+            patch("backend.src.ingestion.write_helper.write_batch"),
+        ):
             p.flush()
             assert p._buffer == []
 
@@ -327,15 +332,12 @@ class TestMetricFlush:
             }
         ]
         conn, _ = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn"
-        ), patch(
-            "backend.src.ingestion.write_helper.write_batch"
-        ) as mock_wb, patch.object(
-            p, "_flush_ref_buffer"
-        ) as mock_ref:
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch("backend.src.database.connection.release_conn"),
+            patch("backend.src.ingestion.write_helper.write_batch") as mock_wb,
+            patch.object(p, "_flush_ref_buffer") as mock_ref,
+        ):
             p.flush()
             mock_wb.assert_called_once()
             mock_ref.assert_called_once_with(conn)
@@ -344,10 +346,13 @@ class TestMetricFlush:
     def test_failure_records_errors(self):
         p = _MetricParser()
         p._buffer = [{"timestamp": "t", "source": "METRIC"}]
-        with patch(
-            "backend.src.database.connection.get_conn",
-            side_effect=RuntimeError("down"),
-        ), patch.object(p, "insert_ingestion_error") as mock_err:
+        with (
+            patch(
+                "backend.src.database.connection.get_conn",
+                side_effect=RuntimeError("down"),
+            ),
+            patch.object(p, "insert_ingestion_error") as mock_err,
+        ):
             p.flush()
             mock_err.assert_called()
             assert p._buffer == []
@@ -355,11 +360,12 @@ class TestMetricFlush:
     def test_failure_inner_insert_raises_swallowed(self):
         p = _MetricParser()
         p._buffer = [{"timestamp": "t"}]
-        with patch(
-            "backend.src.database.connection.get_conn",
-            side_effect=RuntimeError("down"),
-        ), patch.object(
-            p, "insert_ingestion_error", side_effect=RuntimeError("x")
+        with (
+            patch(
+                "backend.src.database.connection.get_conn",
+                side_effect=RuntimeError("down"),
+            ),
+            patch.object(p, "insert_ingestion_error", side_effect=RuntimeError("x")),
         ):
             p.flush()
             assert p._buffer == []
@@ -368,23 +374,31 @@ class TestMetricFlush:
         p = _MetricParser()
         p._buffer = [{"timestamp": "t", "source": "M"}]
         conn, _ = _fake_conn()
-        with patch(
-            "backend.src.database.connection.get_conn", return_value=conn
-        ), patch(
-            "backend.src.database.connection.release_conn",
-            side_effect=RuntimeError("gone"),
-        ), patch("backend.src.ingestion.write_helper.write_batch"):
+        with (
+            patch("backend.src.database.connection.get_conn", return_value=conn),
+            patch(
+                "backend.src.database.connection.release_conn",
+                side_effect=RuntimeError("gone"),
+            ),
+            patch("backend.src.ingestion.write_helper.write_batch"),
+        ):
             p.flush()
             assert p._buffer == []
 
     def test_default_source_when_missing(self):
         p = _MetricParser()
         p._buffer = [{"timestamp": "t"}]
-        with patch(
-            "backend.src.database.connection.get_conn",
-            side_effect=RuntimeError("down"),
-        ), patch.object(p, "insert_ingestion_error") as mock_err:
+        with (
+            patch(
+                "backend.src.database.connection.get_conn",
+                side_effect=RuntimeError("down"),
+            ),
+            patch.object(p, "insert_ingestion_error") as mock_err,
+        ):
             p.flush()
             _, kwargs = mock_err.call_args
-            assert kwargs.get("source", mock_err.call_args[0][2] if len(mock_err.call_args[0]) > 2 else None) in (None, "METRIC")
+            assert kwargs.get(
+                "source",
+                mock_err.call_args[0][2] if len(mock_err.call_args[0]) > 2 else None,
+            ) in (None, "METRIC")
             assert p._buffer == []

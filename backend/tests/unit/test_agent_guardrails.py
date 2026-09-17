@@ -14,7 +14,12 @@ from langchain_core.messages import AIMessage
 
 from backend.src.rag.agent import reset_graphs, run_agent_query
 from backend.src.rag.agent_types import AgentMode
-from backend.tests.unit.test_agent_loop import _fake_generator, _make_tool, _patch_env, _run
+from backend.tests.unit.test_agent_loop import (
+    _fake_generator,
+    _make_tool,
+    _patch_env,
+    _run,
+)
 
 pytestmark = [pytest.mark.rag]
 

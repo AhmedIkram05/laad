@@ -257,8 +257,9 @@ Implemented by wrapping existing `RAGRetriever.retrieve(...)` (+ cross-encoder).
 ```python
 # backend/src/rag/agent_types.py
 class AgentMode(str, Enum):
-    AGENTIC = "agentic"   # full ReAct loop, max 2 rounds
-    HYBRID = "hybrid"     # parallel first pass only, no loop
+    AGENTIC = "agentic"  # full ReAct loop, max 2 rounds
+    HYBRID = "hybrid"  # parallel first pass only, no loop
+
 
 @dataclass
 class ToolCallRecord:
@@ -267,7 +268,8 @@ class ToolCallRecord:
     round_index: int
     duration_s: float
     ok: bool
-    char_len: int          # evidence size
+    char_len: int  # evidence size
+
 
 @dataclass
 class AgentTrace:
@@ -275,17 +277,20 @@ class AgentTrace:
     tool_calls: list[ToolCallRecord]
     rounds: int
     model_calls: int
-    latencies: dict        # planning_s, tools_s, generation_s, reflexion_s, total
+    latencies: dict  # planning_s, tools_s, generation_s, reflexion_s, total
     selected_tools: list[str]
-    retries: int = 0               # D13 grounding-gate re-retrieval rounds used
+    retries: int = 0  # D13 grounding-gate re-retrieval rounds used
     retry_trigger: float | None = None  # grounding_score that fired the gate
-    model_calls_truncated: bool = False  # agent_max_llm_calls tripped → best-so-far returned
+    model_calls_truncated: bool = (
+        False  # agent_max_llm_calls tripped → best-so-far returned
+    )
+
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     atm_id: str | None
     trace: AgentTrace
-    fused_evidence: list[dict]   # {kind: "chunk"|"row", content, source_tool}
+    fused_evidence: list[dict]  # {kind: "chunk"|"row", content, source_tool}
     final_answer: dict | None
 ```
 
@@ -299,11 +304,14 @@ Design: the adapter picks a transport from `MCP_SERVER_URL` (SSE container) vs u
 # backend/src/mcp/adapter.py
 from mcp.client import Client  # in-process fallback (D17); SDK ≥ 2.0
 
+
 async def get_langchain_tools() -> list[BaseTool]:
-    mcp_server = get_mcp_server()                     # FastMCP instance from server.py
-    async with Client(mcp_server._mcp_server) as client:     # pass the low-level Server
-        session = await client.session()              # ClientSession handle — NOT the Client
-        tools = (await session.list_tools()).tools    # ListToolsResult → .tools (never the result object)
+    mcp_server = get_mcp_server()  # FastMCP instance from server.py
+    async with Client(mcp_server._mcp_server) as client:  # pass the low-level Server
+        session = await client.session()  # ClientSession handle — NOT the Client
+        tools = (
+            await session.list_tools()
+        ).tools  # ListToolsResult → .tools (never the result object)
         return [await convert_mcp_tool_to_langchain_tool(session, t) for t in tools]
 ```
 
@@ -318,8 +326,8 @@ async def get_langchain_tools() -> list[BaseTool]:
 ```python
 # backend/src/rag/agent.py
 def build_agent_graph(mode: AgentMode) -> CompiledGraph:
-    tools = get_langchain_tools()                 # module-level lazy singleton, see below
-    model = get_llm_chat_model()                 # ChatOpenAI(base_url=config.llm_base_url, api_key=config.llm_api_key, model=config.llm_model)
+    tools = get_langchain_tools()  # module-level lazy singleton, see below
+    model = get_llm_chat_model()  # ChatOpenAI(base_url=config.llm_base_url, api_key=config.llm_api_key, model=config.llm_model)
     if mode == AgentMode.AGENTIC:
         # prebuilt agent (create_react_agent / create_agent per §2.2),
         # tools=langchain_tools, recursion_limit ≈ 8–10 (see below)
@@ -416,12 +424,12 @@ Each query must be **run against the seeded test DB + Chroma** (not production d
 ```python
 @dataclass
 class SystemResult:
-    system: str            # "baseline" | "hybrid" | "agentic"
+    system: str  # "baseline" | "hybrid" | "agentic"
     query_id: str
     query: str
     reference_answer: str
     answer: str
-    retrieved_contexts: list[str]   # as given to the generator (text snippets)
+    retrieved_contexts: list[str]  # as given to the generator (text snippets)
     agent_trace: AgentTrace | None
 ```
 
