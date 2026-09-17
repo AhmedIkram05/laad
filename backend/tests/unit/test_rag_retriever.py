@@ -330,3 +330,89 @@ class TestRetrievedChunk:
                     chunks = retriever.retrieve(query="test")
 
         assert len(chunks) == 1
+
+
+def _hybrid_test_retriever(mock_collection):
+    from backend.src.rag.retriever import RAGRetriever
+
+    retriever = RAGRetriever.__new__(RAGRetriever)
+    retriever.client = MagicMock()
+    retriever.collection = mock_collection
+    retriever._cross_encoder = None
+    retriever._sparse_cache = {}
+    return retriever
+
+
+class TestHybridRetrieval:
+    """Tests for stdlib BM25+RRF hybrid fusion."""
+
+    def test_bm25_scores_orders_relevant_first(self):
+        from backend.src.rag.retriever import _bm25_scores, _tokenize
+
+        query = _tokenize("atm cash dispenser error")
+        docs = [
+            _tokenize("atm cash dispenser error fault failure"),
+            _tokenize("weather sunny picnic park"),
+        ]
+        scores = _bm25_scores(query, docs)
+        assert scores[0] > scores[1]
+        repeated = _bm25_scores(_tokenize("error error error"), docs)
+        single = _bm25_scores(_tokenize("error"), docs)
+        assert repeated == single
+
+    def test_rrf_fuse_prefers_in_both(self):
+        from backend.src.rag.retriever import _rrf_fuse
+
+        fused = _rrf_fuse([["a", "b", "c"], ["c", "x", "y"]])
+        assert fused[0] == "c"
+
+    def test_hybrid_fallback_on_large_collection(self):
+        from backend.src.rag.retriever import RetrievedChunk
+
+        mock_collection = MagicMock()
+        mock_collection.count.return_value = 6000
+        retriever = _hybrid_test_retriever(mock_collection)
+        dense = [
+            RetrievedChunk(
+                text="dense only",
+                chunk_id="doc_1",
+                atm_id="ATM-GB-0001",
+                timestamp="2026-05-15T10:00:00Z",
+                distance=0.2,
+                confidence_score=0.8,
+            )
+        ]
+        out = retriever._fuse_hybrid("test query", dense, None, 6)
+        assert out == dense
+        mock_collection.get.assert_not_called()
+
+    def test_retrieve_enable_hybrid_false_legacy(self):
+        from backend.src.rag.retriever import RAGRetriever
+
+        mock_collection = MagicMock()
+        mock_collection.query.return_value = {
+            "documents": [["log entry"]],
+            "metadatas": [
+                [{"atm_id": "ATM-GB-0001", "last_timestamp": "2026-05-15T10:00:00Z"}]
+            ],
+            "distances": [[0.3]],
+            "ids": [["doc_1"]],
+        }
+        retriever = _hybrid_test_retriever(mock_collection)
+        with patch.object(RAGRetriever, "_fuse_hybrid") as mock_fuse:
+            with patch("backend.src.rag.retriever.config") as mock_config:
+                mock_config.cross_encoder_enabled = False
+                mock_config.retrieval_top_k = 3
+                mock_config.error_only = False
+                mock_config.most_recent_first = False
+                chunks = retriever.retrieve(
+                    query="test",
+                    top_k=1,
+                    temporal_boost=False,
+                    most_recent_first=False,
+                    enable_hybrid=False,
+                )
+        mock_fuse.assert_not_called()
+        assert len(chunks) == 1
+        assert chunks[0].chunk_id == "doc_1"
+        mock_collection.get.assert_not_called()
