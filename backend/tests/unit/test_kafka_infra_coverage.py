@@ -903,6 +903,7 @@ class TestSmallRagModules:
             r = RAGRetriever()
             r.collection = MagicMock()
             r.client = MagicMock()
+            r._sparse_cache = {}
             assert r._calculate_confidence(0.0) >= r._calculate_confidence(5.0)
             assert r._calculate_confidence(None) == 0.5
             from backend.src.rag.retriever import RetrievedChunk

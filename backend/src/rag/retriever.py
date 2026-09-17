@@ -205,9 +205,11 @@ class RAGRetriever:
                 filtered = -1
             if not isinstance(filtered, int) or isinstance(filtered, bool):
                 filtered = -1
+            if not isinstance(getattr(self, "_sparse_cache", None), dict):
+                self._sparse_cache = {}
             key = repr(where_filter)
             cached = self._sparse_cache.get(key)
-            if cached is not None and total != -1:
+            if cached is not None and total != -1:  # noqa: SIM102
                 if cached[0] == total and (filtered == -1 or cached[1] == filtered):
                     return cached[2]
             fetched = self.collection.get(
@@ -556,7 +558,8 @@ class RAGRetriever:
                 name=config.chroma_collection,
                 metadata={"hnsw:space": "cosine"},
             )
-            self._sparse_cache.clear()
+            if isinstance(getattr(self, "_sparse_cache", None), dict):
+                self._sparse_cache.clear()
             logger.warning(
                 "Cleared and recreated ChromaDB collection: %s",
                 config.chroma_collection,
@@ -588,7 +591,8 @@ class RAGRetriever:
                 name=config.chroma_collection,
                 metadata={"hnsw:space": "cosine"},
             )
-            self._sparse_cache.clear()
+            if isinstance(getattr(self, "_sparse_cache", None), dict):
+                self._sparse_cache.clear()
             logger.info("Rebuilt ChromaDB collection: %s", config.chroma_collection)
             return {
                 "success": True,
