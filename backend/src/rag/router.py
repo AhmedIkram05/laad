@@ -124,9 +124,7 @@ async def _run_champion_query(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="No relevant logs found for your query. Try rephrasing or check if the data generator is running.",
                 )
-            logger.error(
-                "Agentic champion failed: %s", agent_result.get("error")
-            )
+            logger.error("Agentic champion failed: %s", agent_result.get("error"))
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Query processing failed due to an internal error.",
@@ -264,9 +262,7 @@ def _run_legacy_query(
         self_consistency_score=response.self_consistency_score,
         verbalized_confidence=response.verbalized_confidence,
         grounding_score=response.grounding_score,
-        generation_variance=uncertainty.generation_variance
-        if uncertainty
-        else None,
+        generation_variance=uncertainty.generation_variance if uncertainty else None,
         cross_encoder_used=response.cross_encoder_used,
         was_revised=response.was_revised,
         critique_text=response.critique_text if response.critique_text else None,
@@ -286,9 +282,7 @@ def _run_legacy_query(
             for c in response.sources
         ],
         "uncertainty_score": uncertainty.final_confidence if uncertainty else 0.5,
-        "confidence_level": uncertainty.confidence_level
-        if uncertainty
-        else "medium",
+        "confidence_level": uncertainty.confidence_level if uncertainty else "medium",
         "is_uncertain": uncertainty.is_uncertain if uncertainty else False,
         "recommendation": uncertainty.recommendation
         if uncertainty

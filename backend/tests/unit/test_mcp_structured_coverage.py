@@ -105,12 +105,23 @@ class TestQueryAnomalies:
                 end="2026-02-01T00:00:00+00:00",
             )
             assert out["count"] == 1
-            for frag in ("atm_id = %s", "anomaly_type = %s", "severity = %s",
-                         "is_active = %s", "detected_at >=", "detected_at <="):
+            for frag in (
+                "atm_id = %s",
+                "anomaly_type = %s",
+                "severity = %s",
+                "is_active = %s",
+                "detected_at >=",
+                "detected_at <=",
+            ):
                 assert frag in cur.sql
-            assert cur.params[:-1] == ["ATM-1", "A3", "CRITICAL", 1,
-                                       "2026-01-01T00:00:00+00:00",
-                                       "2026-02-01T00:00:00+00:00"]
+            assert cur.params[:-1] == [
+                "ATM-1",
+                "A3",
+                "CRITICAL",
+                1,
+                "2026-01-01T00:00:00+00:00",
+                "2026-02-01T00:00:00+00:00",
+            ]
 
     def test_is_active_false_and_limit_clamps(self, monkeypatch):
         with _cursor(monkeypatch, rows=[]) as cur:
@@ -160,7 +171,9 @@ class TestAtmMetrics:
 
     def test_all_filters_and_clamp(self, monkeypatch):
         with _cursor(monkeypatch, rows=[{"metric_name": "m"}]) as cur:
-            out = _mod.get_atm_metrics("E1", metric_name="cpu", start="s", end="e", limit=0)
+            out = _mod.get_atm_metrics(
+                "E1", metric_name="cpu", start="s", end="e", limit=0
+            )
             assert out["count"] == 1
             assert "metric_name = %s" in cur.sql
             assert cur.params == ["E1", "cpu", "s", "e", 1]
@@ -186,7 +199,9 @@ class TestStatistics:
             assert "WHERE" not in cur.executions[0][0]
 
     def test_hours_and_active_filters(self, monkeypatch):
-        with _cursor(monkeypatch, rows=[], zweiten_one={"total": 0, "active": 0, "resolved": 0}) as cur:
+        with _cursor(
+            monkeypatch, rows=[], zweiten_one={"total": 0, "active": 0, "resolved": 0}
+        ) as cur:
             _mod.get_statistics(hours=48, group_by="severity", is_active=False)
             sql = cur.executions[0][0]
             assert "detected_at >=" in sql
@@ -194,7 +209,9 @@ class TestStatistics:
             assert cur.executions[0][1] == ["48 hours", 0]
 
     def test_hours_clamped(self, monkeypatch):
-        with _cursor(monkeypatch, rows=[], zweiten_one={"total": 0, "active": 0, "resolved": 0}) as cur:
+        with _cursor(
+            monkeypatch, rows=[], zweiten_one={"total": 0, "active": 0, "resolved": 0}
+        ) as cur:
             _mod.get_statistics(hours=24 * 400)
             assert cur.executions[0][1] == [f"{24 * 365} hours"]
 
@@ -209,8 +226,9 @@ class TestSearchEvents:
     def test_all_filters(self, monkeypatch):
         rows = [{"id": 1, "message": "hi"}]
         with _cursor(monkeypatch, rows=rows) as cur:
-            out = _mod.search_events(source="OS", atm_id="A1", severity="ERROR",
-                                     start="s", end="e", limit=5)
+            out = _mod.search_events(
+                source="OS", atm_id="A1", severity="ERROR", start="s", end="e", limit=5
+            )
             assert out["count"] == 1
             for frag in ("source = %s", "atm_id = %s", "severity = %s"):
                 assert frag in cur.sql
@@ -293,7 +311,12 @@ class TestCompareAtms:
     def test_anomaly_branch_no_type(self, monkeypatch):
         with _cursor(monkeypatch, rows=[]) as cur:
             out = _mod.compare_atms()
-            assert out == {"rows": [], "overall_mean": 0.0, "overall_std": 0.0, "outliers": []}
+            assert out == {
+                "rows": [],
+                "overall_mean": 0.0,
+                "overall_std": 0.0,
+                "outliers": [],
+            }
             assert "anomaly_type" not in cur.sql
 
     def test_outlier_detection(self, monkeypatch):

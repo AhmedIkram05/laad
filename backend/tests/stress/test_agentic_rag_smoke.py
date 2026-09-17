@@ -99,7 +99,10 @@ def test_ragas_import_and_evaluate():
     from ragas.dataset_schema import EvaluationDataset  # noqa: E402
     from ragas.embeddings.base import LangchainEmbeddingsWrapper  # noqa: E402
     from ragas.llms.base import llm_factory  # noqa: E402
-    from ragas.metrics.collections import LLMContextRecall, LLMContextPrecisionWithReference  # noqa: E402
+    from ragas.metrics.collections import (
+        LLMContextRecall,
+        LLMContextPrecisionWithReference,
+    )  # noqa: E402
     from langchain_ollama import OllamaEmbeddings  # noqa: E402
 
     ds = EvaluationDataset.from_dict(

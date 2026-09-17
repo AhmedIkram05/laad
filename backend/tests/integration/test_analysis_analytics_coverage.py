@@ -50,9 +50,7 @@ class TestAnalysisHelpers:
     def test_to_datetime_variants(self):
         dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
         assert analysis._to_datetime(dt) is dt
-        assert analysis._to_datetime("2026-01-01T12:00:00+00:00") == dt.replace(
-            hour=12
-        )
+        assert analysis._to_datetime("2026-01-01T12:00:00+00:00") == dt.replace(hour=12)
         with pytest.raises(TypeError):
             analysis._to_datetime(12345)
 
@@ -202,10 +200,18 @@ class TestAnalysisHelpers:
             row("A5", classifier),
             row("A6"),
             row("A7"),
-            row("UNKNOWN", _json.dumps({"source": "ZSCORE", "max_z_score": 4.5,
-                                        "n_features_deviating": 3})),
-            row("UNKNOWN", _json.dumps({"if_score": -0.8, "xgb_predicted": "A1",
-                                        "xgb_confidence": 0.4})),
+            row(
+                "UNKNOWN",
+                _json.dumps(
+                    {"source": "ZSCORE", "max_z_score": 4.5, "n_features_deviating": 3}
+                ),
+            ),
+            row(
+                "UNKNOWN",
+                _json.dumps(
+                    {"if_score": -0.8, "xgb_predicted": "A1", "xgb_confidence": 0.4}
+                ),
+            ),
         ]
         out = analysis.build_detailed_table(rows)
         assert len(out) == len(rows)
@@ -240,9 +246,7 @@ class TestAnalysisRouter:
                 "get_time_bucketed_anomalies",
                 return_value=[{"b": 1}],
             ),
-            patch.object(
-                analysis_router, "get_anomaly_summary", return_value={"t": 2}
-            ),
+            patch.object(analysis_router, "get_anomaly_summary", return_value={"t": 2}),
         ):
             resp = client.get(
                 "/analysis/metrics?hours=24&bucket_minutes=60&anomaly_type=A1&severity=CRITICAL&is_active=1"
@@ -409,9 +413,7 @@ class TestAnalyticsCounters:
 
     def test_counters_redis_success_and_failure(self):
         client = MagicMock()
-        with patch.object(
-            analytics_router, "get_redis_client", return_value=client
-        ):
+        with patch.object(analytics_router, "get_redis_client", return_value=client):
             analytics_router.increment_event_counter("ATM_APP", "2026-01-01T12")
             analytics_router.increment_anomaly_counter("A1", "2026-01-01T12")
             analytics_router.track_unique_atm("ATM-1")
@@ -456,9 +458,7 @@ class TestRealtimeStats:
         atms_conn = self._db()
         with (
             patch.object(analytics_router, "get_redis_client", return_value=redis),
-            patch.object(
-                analytics_router, "get_conn", return_value=atms_conn
-            ),
+            patch.object(analytics_router, "get_conn", return_value=atms_conn),
             patch.object(analytics_router, "release_conn"),
         ):
             body = client.get("/api/analytics/stats/realtime?hours=24").json()
@@ -511,9 +511,7 @@ class TestRealtimeStats:
         fail_conn.cursor.return_value = fail_ctx
         with (
             patch.object(analytics_router, "get_redis_client", return_value=None),
-            patch.object(
-                analytics_router, "get_conn", side_effect=[conn, fail_conn]
-            ),
+            patch.object(analytics_router, "get_conn", side_effect=[conn, fail_conn]),
             patch.object(analytics_router, "release_conn"),
         ):
             body = client.get("/api/analytics/stats/realtime?hours=5").json()

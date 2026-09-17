@@ -32,9 +32,7 @@ class TestGenericException:
         cur.execute.side_effect = ValueError("boom")
         # execute_values path calls cur.execute internally via mock;
         # force executemany path for determinism.
-        with patch(
-            "psycopg2.extras.execute_values", side_effect=ValueError("boom")
-        ):
+        with patch("psycopg2.extras.execute_values", side_effect=ValueError("boom")):
             with pytest.raises(ValueError, match="boom"):
                 write_batch(conn, "INSERT INTO t (a) VALUES %s", [("x",)])
         assert conn.rollback.called
@@ -42,9 +40,7 @@ class TestGenericException:
     def test_unexpected_error_rollback_failure_swallowed(self):
         conn, cur = _conn()
         conn.rollback.side_effect = RuntimeError("rollback gone")
-        with patch(
-            "psycopg2.extras.execute_values", side_effect=ValueError("boom")
-        ):
+        with patch("psycopg2.extras.execute_values", side_effect=ValueError("boom")):
             with pytest.raises(ValueError):
                 write_batch(conn, "INSERT INTO t (a) VALUES %s", [("x",)])
 

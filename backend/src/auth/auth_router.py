@@ -59,9 +59,7 @@ ACCESS_TOKEN_EXPIRE_HOURS = 8
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-_optional_oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/auth/login", auto_error=False
-)
+_optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 AUTH_COOKIE_NAME = "access_token"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
