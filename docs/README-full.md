@@ -206,11 +206,11 @@ flowchart TD
 | **Messaging** | Apache Kafka (KRaft) with gzip, acks=all, 7-day retention | Decouples ingestion from processing - zero data loss on restart, offset replay for backfill |
 | **RAG Pipeline** | LangChain + ChromaDB + cross-encoder reranking + 4-signal confidence fusion | Self-hosted vector store keeps data private; 4-signal fusion prevents hallucinated responses |
 | **MLOps** | MLflow v3 on AWS (RDS + S3) with champion aliases | Full experiment lineage, auto-retrain on corruption, 7 artifacts tracked per MLflow 3.x API |
-| **Deployment** | Terraform (10 modules, 114 resources + 6 bootstrap) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 75 Terraform test assertions |
+| **Deployment** | Terraform (10 modules, 114 resources + 6 bootstrap) + ECS Fargate + SageMaker + CI/CD | Full IaC with automated pipelines, zero-downtime deployments, 30 Terraform test runs (104 asserts) |
 | **Data Storage** | PostgreSQL 16 with JSONB + unified events/metrics tables | Adding a log source = new parser - no schema changes, no detector modifications |
 | **Distributed Coordination** | 8 Redis patterns from a single connection pool | Rate limiting, dedup, locking, Pub/Sub, caching, DLQ, analytics - all gracefully degrade |
 | **Container Strategy** | Multi-stage Docker + health check cascading | 17 services (13 app, 4 test), 7 named volumes, profile-based separation, frontend in ~25MB nginx image |
-| **Testing** | pytest (10 tiers) + vitest + Playwright + Terraform test + checkov | 1,880 tests across all layers, CI-gated at every PR |
+| **Testing** | pytest (10 tiers) + vitest + Playwright + Terraform test + checkov | 1,846 tests across all layers, CI-gated at every PR |
 
 ---
 
@@ -234,11 +234,11 @@ flowchart TD
 | | Frontend pages | 9 (React 19 + Vite 8 + Tailwind v4) |
 | | Redis patterns | 8 distinct |
 | | LLM providers | 1 (W&B Serverless Inference) |
-| **Testing** | Total tests | 1,880 |
-| | Backend (pytest) | 1,300 across 10 tiers (1,292 non-stress + 8 stress) |
+| **Testing** | Total tests | 1,846 (base 1,802) |
+| | Backend (pytest) | 1,311 expanded across 10 tiers (1,267 base + 44 param) |
 | | Frontend (vitest) | 495 across 55 suites |
 | | E2E (Playwright) | 10 across 5 specs |
-| | Terraform assertions | 75 across 9 modules |
+| | Terraform runs | 30 runs (104 asserts) across 12 files |
 | **Deployment** | CI/CD pipelines | 3 (CI, CD, CD-SHOULD-DEPLOY) |
 | | Cloud services | 5 (ECS, RDS, S3, SageMaker, Secrets Manager) |
 | | AWS infrastructure modules | 10 Terraform modules |
@@ -268,7 +268,7 @@ Multi-AZ VPC with ECS Fargate, Kafka on EC2, RDS PostgreSQL for MLflow, SageMake
 
 ![CI pipeline](docs/demos/ci.png) | ![CD pipeline](docs/demos/cd.png)
 ---|---
-CI - Python lint, checkov, pytest (1,292 non-stress), vitest (495), Playwright E2E (10) | CD - Terraform plan → apply → ECS rolling update on merge to main
+CI - Python lint, checkov, pytest (1,311 expanded [1,267 base + 44 param]), vitest (495), Playwright E2E (10) | CD - Terraform plan → apply → ECS rolling update on merge to main
 
 ![CD-SHOULD-DEPLOY gate](docs/demos/cd-should-deploy.png) | ![Terraform apply](docs/demos/terraform.png)
 ---|---
@@ -1144,7 +1144,7 @@ flowchart TD
     end
 
     subgraph CI_CD ["GitHub Actions"]
-        CI_PIPE["ci.yml<br/>1,880 tests + checkov<br/>pytest + vitest + TF"]
+        CI_PIPE["ci.yml<br/>1,846 tests + checkov<br/>pytest + vitest + TF"]
         CD_PIPE["cd.yml<br/>Terraform plan/apply<br/>ECS rolling update"]
         CD_GATE["cd-should-deploy.yml<br/>Path-based gate<br/>Skip on docs only"]
     end
@@ -1202,7 +1202,7 @@ flowchart TD
 | **Storage** | 3 S3 buckets: frontend hosting (static assets), MLflow artifacts (model binaries), Terraform state (infrastructure state) | Frontend bucket serves React app via CloudFront. MLflow artifacts bucket stores model files (XGBoost, Isolation Forest, scalers, encoders). Terraform state bucket is versioned with DynamoDB locking. |
 | **ML Inference** | SageMaker endpoint `laad-xgb-champion` on ml.t2.medium | XGBoost 1.7-1 container, 49-feature model, 8-class softmax probabilities (`multi:softprob`), ~100ms inference. CloudWatch logs enabled, model deployed from MLflow artifact store via automated upload script. |
 | **CDN** | CloudFront distribution backed by S3 origin | Edge caching for React frontend, HTTPS enforcement, custom error pages. Argo-powered CDN with origin shield. |
-| **CI/CD** | GitHub Actions - 3 pipelines (CI, CD, CD-SHOULD-DEPLOY) | OIDC-based AWS authentication (no static keys). CI runs 945 tests + checkov. CD applies Terraform and triggers ECS rolling updates. CD-SHOULD-DEPLOY gates deployment to path changes. |
+| **CI/CD** | GitHub Actions - 3 pipelines (CI, CD, CD-SHOULD-DEPLOY) | OIDC-based AWS authentication (no static keys). CI runs 1,846 tests + checkov. CD applies Terraform and triggers ECS rolling updates. CD-SHOULD-DEPLOY gates deployment to path changes. |
 | **Security** | 4 IAM roles (least-privilege), Secrets Manager (8 secrets), no hardcoded credentials | GitHub Actions OIDC role, ECS execution role, ECS task role, SageMaker execution role. Secrets: DB credentials, Kafka config, JWT secret, API keys, SageMaker config, MLflow URIs, admin credentials, Redis password. |
 
 ### Complete Infrastructure Inventory
@@ -1258,7 +1258,7 @@ Key architectural decisions that shaped the platform, beyond what the Engineerin
 
 ## Testing & Quality
 
-**1,880 tests** across all layers - backend, frontend, E2E, and infrastructure - gated at every PR by GitHub Actions CI.
+**1,846 tests** (1,311 pytest expanded · 495 vitest · 10 Playwright · 30 Terraform) across all layers - backend, frontend, E2E, and infrastructure - gated at every PR by GitHub Actions CI.
 
 **CI/CD Pipeline Flow:**
 
@@ -1276,7 +1276,7 @@ flowchart TD
         INTEG["Integration: 40+ tests<br/>Real PostgreSQL<br/>Real Kafka fixtures"]
         SECURITY["Security: 26 tests<br/>SQL injection<br/>JWT tampering<br/>Auth bypass"]
         ML_RAG["ML + RAG: 170+ tests<br/>Model loading<br/>Feature extraction<br/>RAG pipeline"]
-        STRESS["Stress: 5 tests<br/>100x concurrent<br/>Excluded from CI"]
+        STRESS["Stress: 8 tests<br/>100x concurrent<br/>Excluded from CI"]
     end
 
     subgraph FRONTEND_TESTS ["Frontend (vitest)"]
@@ -1288,7 +1288,7 @@ flowchart TD
     end
 
     subgraph TF_TESTS ["Infrastructure (terraform)"]
-        TF_TEST["terraform test: 75 assertions<br/>9 modules<br/>No cloud credentials needed"]
+        TF_TEST["terraform test: 30 runs (104 asserts)<br/>12 files<br/>No cloud credentials needed"]
     end
 
     subgraph CD_PIPELINE ["CD (merge to main - OIDC)"]
@@ -1325,20 +1325,20 @@ flowchart TD
 
 | Suite | Tests | Tools | CI Gate |
 | --- | --- | --- | --- |
-| Backend unit + integration | 1,292 | pytest (10 tiers), pytest-cov, mock Redis/Kafka | ✅ Required |
+| Backend unit + integration | 1,267 base (1,311 expanded) | pytest (10 tiers), pytest-cov, mock Redis/Kafka | ✅ Required |
 | Frontend component | 495 | vitest 4, @testing-library/react 16 | ✅ Required |
 | Playwright E2E | 10 | Playwright Chromium | ✅ Required |
-| Terraform IaC | 75 | terraform test (9 modules) | ✅ On terraform/ changes |
+| Terraform IaC | 30 runs (104 asserts) | terraform test (12 files) | ✅ On terraform/ changes |
 | Security | 26 | pytest (SQL injection, auth bypass, JWT tampering) | ✅ Required |
 | Load / stress | 8 | pytest + httpx + Kafka throughput benchmarks (excluded from CI) | ⏰ Nightly |
 | IaC compliance | 5 | checkov (inline skips, baseline clean) | ✅ In CI lint job |
 
 ```bash
-make test              # Full test suite (1,880 tests)
-make test-backend      # Backend: 1,300 (pytest: 1,292 non-stress + 8 stress)
+make test              # Full test suite (1,846 tests, base 1,802)
+make test-backend      # Backend: 1,311 expanded (pytest: 1,267 base + 44 param)
 make test-frontend     # Frontend: 495 (vitest 4)
 make test-e2e          # Playwright E2E (10 tests)
-make test-terraform    # Terraform test (75 IaC assertions)
+make test-terraform    # Terraform test (30 runs, 104 asserts)
 ```
 
 | Metric | Value |
@@ -1346,13 +1346,13 @@ make test-terraform    # Terraform test (75 IaC assertions)
 | Test DB | Isolated (`atm_platform_test`, port 5433) |
 | Backend test tiers | 10 (unit, integration, stress, security, ML, RAG, Redis, Kafka, generators, parsers) |
 | Frontend test files | 55 suite files |
-| Terraform modules tested | 9 (VPC, ECR, Secrets, Monitoring, Kafka, RDS, IAM, ECS, Frontend) |
+| Terraform modules tested | 12 files (30 runs, 104 asserts) |
 
-### Backend Test Suite - 1,300 tests across 10 tiers (1,292 non-stress + 8 stress)
+### Backend Test Suite - 1,311 tests expanded across 10 tiers (1,267 base + 44 param)
 
-![Backend test suite output showing 1,288 non-stress tests passing with 95% coverage](docs/demos/pytest-output.png)
+![Backend test suite output showing 1,311 expanded tests passing with 95% coverage](docs/demos/pytest-output.png)
 
-> **Non-stress Tests** - 1,288 passed, 4 skipped (checkov - CI-only), 0 warnings. 95% code coverage across 5,949 statements. 95 test files across 10 tiers. Isolated PostgreSQL test database on port 5433.
+> **Backend Tests** - 1,311 expanded (1,267 base + 44 param), 0 warnings. 95% code coverage across 5,949 statements. 174 files total (102 pytest + 55 vitest + 5 e2e + 12 tf) across 10 tiers. Isolated PostgreSQL test database on port 5433.
 
 ![Stress test results showing all 8 concurrent and throughput tests passing](docs/demos/stress-tests.png)
 
@@ -1416,7 +1416,7 @@ Services run on:
 
 Built for **NCR Atleos** as part of CS32002 Industrial Team Project, University of Dundee. See the [Project Report](docs/Project-Report.pdf) for the complete academic submission.
 
-> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion, the comprehensive test suite (1,300 backend + 495 frontend + 10 E2E + 75 Terraform = 1,880 tests), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
+> **Contribution note:** The original submitted version included only rule-based detection and a basic single-script generator that wrote directly to the database. The Kafka message bus (producer/consumer pipeline with deduplication), 3-layer ML detection engine (XGBoost + Isolation Forest + Z-score + Signal Correlator), MLOps integration (MLflow experiment tracking, model registry with champion alias), the RAG diagnostic assistant with 4-signal confidence fusion, the comprehensive test suite (1,311 backend expanded + 495 frontend + 10 E2E + 30 Terraform = 1,846 tests, base 1,802), the full API surface (30 endpoints, 6 routers), and the entire AWS infrastructure (Terraform IaC, ECS Fargate, SageMaker endpoint, CI/CD pipelines, IAM, Secrets Manager, CloudFront) were designed, implemented, and deployed by **Ahmed Ikram** as an independent post-submission extension.
 
 ---
 
