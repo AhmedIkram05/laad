@@ -109,7 +109,7 @@ flowchart LR
 | RAG quality (RAGAS, agentic) | faithfulness **0.940** · precision **0.874** · relevancy **0.801** |
 | Throughput | **~100 msgs/sec** sustained on one consumer · **2.5M+** events processed |
 | API surface | **30 endpoints** across 6 routers |
-| Tests gating every PR | **1,880** (1,300 pytest · 495 vitest · 10 Playwright · 75 Terraform) + 26 security checks |
+| Tests gating every PR | **1,846** (1,311 pytest expanded · 495 vitest · 10 Playwright · 30 Terraform) + 26 security checks |
 | Infrastructure | **10 Terraform modules / 114 resources (+6 bootstrap)** on AWS: ECS Fargate, RDS, SageMaker, CloudFront, VPC |
 | Inference latency | local ~30ms · SageMaker cross-check ~100ms |
 
@@ -163,7 +163,7 @@ The gate close-up is the one worth pausing on - it's the same confidence machine
 | ML inference | SageMaker endpoint deployed from the MLflow `champion` alias - model saved as JSON for the XGBoost 1.7-1 container |
 | Secrets & IAM | Secrets Manager injected straight into ECS task definitions (no `.env` files); least-privilege role per service; GitHub → AWS via OIDC, zero long-lived keys |
 
-- **Quality gates** - **1,880 tests** gating every PR (1,300 pytest: 1,288 passed + 4 skipped + 8 stress, across 10 tiers · 495 vitest · 10 Playwright E2E · 75 Terraform assertions), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
+- **Quality gates** - **1,846 tests** (base 1,802) gating every PR (1,311 pytest expanded [1,267 base + 44 param] across 10 tiers · 495 vitest · 10 Playwright E2E · 30 Terraform runs [104 asserts]), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
 
   <video src="https://github.com/user-attachments/assets/4664af25-f549-45d1-9333-0391a051f27d" title="Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 1288 passed, vitest 495/55 suites, E2E 10, stress 8" controls></video>
 - **Frontend** - React 19 + Vite + Tailwind v4: 9 pages, KPI cards polling every 5s, Chart.js analytics, shipped as a ~25MB nginx image. [Deep dive](docs/README-full.md#frontend-architecture)
@@ -180,7 +180,7 @@ The gate close-up is the one worth pausing on - it's the same confidence machine
 | **Kafka (KRaft) + manual offset commits** | Redis Pub/Sub, auto-commit | Disk persistence and offset replay; auto-commit risks message loss on crash |
 | **Self-hosted ChromaDB + local embeddings** | Pinecone, Weaviate | No per-vector API costs, log data never leaves the network, 768-dim embeddings via local Ollama |
 | **Unified PostgreSQL (no TimescaleDB)** | TimescaleDB for metrics | 100+ msg/s under 100ms queries without extension lock-in; `PARTITION BY RANGE` is one DDL away if throughput grows 10× |
-| **Entire AWS estate in Terraform** | Console/manual provisioning | Rebuildable in one run, state locked + versioned, 75 assertions in CI |
+| **Entire AWS estate in Terraform** | Console/manual provisioning | Rebuildable in one run, state locked + versioned, 30 runs (104 asserts) in CI |
 
 All 11 recorded decisions with the full reasoning: [Design Decisions](docs/README-full.md#design-decisions)
 
@@ -194,7 +194,7 @@ make all   # everything in Docker: frontend, API, Kafka, detection, RAG
 
 Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `:5434`. Default login `admin`/`admin`. [Configuration reference](docs/configuration.md)
 
-> **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 1,300-backend-test count materializes when all extras are present (1,288 passed + 4 skipped, plus 8 stress tests) ([ci.yml](.github/workflows/ci.yml)).
+> **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 1,311-backend-test expanded count (1,267 base + 44 param) materializes when all extras are present ([ci.yml](.github/workflows/ci.yml)).
 
 ## Documentation
 
@@ -203,7 +203,7 @@ Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `
 
 ## About This Project
 
-Started as the CS32002 Industrial Team Project at the University of Dundee, built for **NCR Atleos** (team foundation: rule-based detection and a single-script generator). The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,880-test suite, the 30-endpoint API, and the entire AWS estate above were designed, built, and deployed by **Ahmed Ikram** as an independent post-submission extension. [Team breakdown](docs/README-full.md#team)
+Started as the CS32002 Industrial Team Project at the University of Dundee, built for **NCR Atleos** (team foundation: rule-based detection and a single-script generator). The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,846-test suite, the 30-endpoint API, and the entire AWS estate above were designed, built, and deployed by **Ahmed Ikram** as an independent post-submission extension. [Team breakdown](docs/README-full.md#team)
 
 ## Related Projects
 

@@ -60,6 +60,8 @@ make pytest  # Runs all tests in Docker with isolated test DB
 
 Current test status: **145/145 passing**.
 
+> Historical snapshot at submission; current suite is 1,846 (see root README).
+
 ## Frontend (React + Vite)
 
 ### Setup

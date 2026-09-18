@@ -577,7 +577,7 @@ Response schema: `backend/src/rag/schemas.py` add optional `AgentTrace`-shaped m
 ### README RAG section (rewrite)
 
 - Current: describe the **old** heuristic flow; replace with: architecture diagram (§3), tool table (§5), the 3 evaluated systems, and a results table (filled after first full run): RAGAS 4 metrics × 3 systems + per-category + agent metrics + latency comparison. Note KV: "11–23s uncached" baseline latency should be re-measured for the report.
-- Update the test-count claim (README says 1,402 total; AGENTS.md says 521 backend) with the **re-verified real number** after this work lands.
+- Update the test-count claim (README says 1,846 total; AGENTS.md says 1,311 backend) with the **re-verified real number** after this work lands.
 
 ### `docs/AGENTIC_RAG.md`
 
