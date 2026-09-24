@@ -32,6 +32,8 @@ class TestLoadModels:
         mock_clf = MagicMock()
         mock_le = MagicMock()
         mock_scaler = MagicMock()
+        # Must satisfy the stale-artifact feature-count guard in _load_models.
+        mock_scaler.n_features_in_ = FEATURE_COUNT
 
         with patch(
             "backend.src.anomaly_detection.ml.ml_detector.ARTIFACT_DIR", tmp_path

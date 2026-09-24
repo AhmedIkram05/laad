@@ -42,7 +42,10 @@ import mlflow
 import numpy as np
 
 from backend.src.database.connection import get_cursor
-from backend.src.anomaly_detection.ml.feature_engineering import extract_features
+from backend.src.anomaly_detection.ml.feature_engineering import (
+    FEATURE_COUNT,
+    extract_features,
+)
 from backend.src.anomaly_detection.anomaly_detector import detect_anomalies_from_window
 from backend.src.analytics.analytics_router import increment_anomaly_counter
 
@@ -265,6 +268,19 @@ class MLAnomalyDetector:
             self._clf = joblib.load(ARTIFACT_DIR / "xgb_classifier.joblib")
             self._le = joblib.load(ARTIFACT_DIR / "label_encoder.joblib")
             self._scaler = joblib.load(ARTIFACT_DIR / "scaler.joblib")
+
+            # Stale-artifact guard: artifacts trained with a different feature
+            # count fail confusingly at inference — reject them here instead.
+            n_expected = FEATURE_COUNT
+            n_actual = getattr(self._scaler, "n_features_in_", n_expected)
+            if n_actual != n_expected:
+                log.error(
+                    "Stale model artifacts: scaler expects %d features, code has %d — "
+                    "treating artifacts as missing (retrain required)",
+                    n_actual,
+                    n_expected,
+                )
+                return False
 
             indices_path = ARTIFACT_DIR / "if_feature_indices.json"
             if indices_path.exists():
