@@ -121,7 +121,7 @@ flowchart TD
   end
 
   subgraph Detection ["3-Layer Detection Engine"]
-    CLS["ML_ENSEMBLE<br/>XGBoost + Isolation Forest<br/>49 features / 46 for IF"]
+    CLS["ML_ENSEMBLE<br/>XGBoost + Isolation Forest<br/>48 features / 43 for IF"]
     ZSC["ZSCORE<br/>Rolling 20-window Z-score<br/>>3 sigma threshold"]
     SCC["HEURISTIC<br/>7 deterministic detectors<br/>cross-referencing all sources"]
   end
@@ -202,7 +202,7 @@ flowchart TD
 
 | Area | Decision | Why |
 | --- | --- | --- |
-| **Anomaly Detection** | 3-layer ensemble: XGBoost + Isolation Forest + Z-Score + Heuristic + SageMaker cross-check | Defense in depth - ML catches 8-class patterns at 99.8%, Z-Score detects drift without models, Heuristic is the always-on safety net, SageMaker validates predictions live |
+| **Anomaly Detection** | 3-layer ensemble: XGBoost + Isolation Forest + Z-Score + Heuristic + SageMaker cross-check | Defense in depth - ML catches 8-class patterns at 99.3%, Z-Score detects drift without models, Heuristic is the always-on safety net, SageMaker validates predictions live |
 | **Messaging** | Apache Kafka (KRaft) with gzip, acks=all, 7-day retention | Decouples ingestion from processing - zero data loss on restart, offset replay for backfill |
 | **RAG Pipeline** | LangChain + ChromaDB + cross-encoder reranking + 4-signal confidence fusion | Self-hosted vector store keeps data private; 4-signal fusion prevents hallucinated responses |
 | **MLOps** | MLflow v3 on AWS (RDS + S3) with champion aliases | Full experiment lineage, auto-retrain on corruption, 7 artifacts tracked per MLflow 3.x API |
@@ -226,9 +226,9 @@ flowchart TD
 | | Terraform resources | 114 across 10 modules (+6 bootstrap) |
 | **ML & Detection** | Anomaly types | 7 known (A1-A7) + UNKNOWN |
 | | Detection layers | 3 (ML_ENSEMBLE + ZSCORE + HEURISTIC) + SageMaker cross-check |
-| | ML features | 49 engineered (46 for IF) |
-| | XGBoost CV accuracy | 99.8% +/- 0.1% |
-| | Isolation Forest precision | 97.3% (F1=0.7008 at -0.5199) |
+| | ML features | 48 engineered (43 for IF) |
+| | XGBoost CV accuracy | 99.3% +/- 0.1% |
+| | Isolation Forest precision | 96.8% (F1=0.6889 at -0.5179, validation AUC-ROC 0.8443) |
 | | RAG confidence fusion | 4 signals, uncertainty-weighted average (static calibrated weights) |
 | **Infrastructure** | API endpoints | 30 across 6 routers |
 | | Frontend pages | 9 (React 19 + Vite 8 + Tailwind v4) |
@@ -569,16 +569,16 @@ The core detection system combines ML, statistical analysis, and deterministic r
 flowchart TD
   subgraph Window ["Data Window (600s configurable via ML_WINDOW_SECONDS)"]
     Q["v_unified_analysis query<br/>>=5 rows required"]
-    FE["Feature extraction<br/>49 features in 7 groups"]
+    FE["Feature extraction<br/>48 features in 7 groups"]
     BU["RollingBaseline update<br/>20-vector history"]
   end
 
   subgraph Layer1 ["Layer 1: ML_ENSEMBLE (Primary)"]
     IF["Isolation Forest<br/>predict(features_46dim)"]
     IF_ANOM{"IF anomaly?"}
-    XGB["XGBoost<br/>predict_proba(features_49dim)"]
+    XGB["XGBoost<br/>predict_proba(features_48dim)"]
     HIGH{"confidence >= 0.70<br/>&& class != NORMAL?"}
-    UNKNOWN{"IF score <= -0.5199<br/>F1-maximizing threshold?"}
+    UNKNOWN{"IF score <= -0.5179<br/>F1-maximizing threshold?"}
     SAVE1["Save anomaly (ML_ENSEMBLE)"]
   end
 
@@ -614,9 +614,9 @@ flowchart TD
   DEDUP -->|"active"| END["Cycle complete"]
 ```
 
-**Why 3 layers?** Defense in depth - each layer has independent failure modes. ML_ENSEMBLE catches known/novel patterns at 99.8% CV accuracy. ZSCORE detects statistical distribution shifts without any model dependency. HEURISTIC is the always-active safety net using deterministic multi-source correlation.
+**Why 3 layers?** Defense in depth - each layer has independent failure modes. ML_ENSEMBLE catches known/novel patterns at 99.3% CV accuracy. ZSCORE detects statistical distribution shifts without any model dependency. HEURISTIC is the always-active safety net using deterministic multi-source correlation.
 
-**Feature Engineering - 49 Features in 7 Groups:**
+**Feature Engineering - 48 Features in 7 Groups:**
 
 | Group | Features | Description |
 | --- | --- | --- |
@@ -630,11 +630,11 @@ flowchart TD
 
 Isolation Forest uses a **46-feature subset** (selected by XGBoost feature importance - drops 3 low-importance metric features) to reduce noise in the unsupervised path.
 
-**Layer 1 - ML_ENSEMBLE (Primary):** Two independent feature paths (XGBoost: 49-dim, IF: 46-dim). Decision flow:
+**Layer 1 - ML_ENSEMBLE (Primary):** Two independent feature paths (XGBoost: 48-dim, IF: 43-dim). Decision flow:
 
 - IF predicts anomaly (score ≤ 0) → XGBoost predict_proba
   - Known anomaly if `class != NORMAL` and `confidence >= 0.70` → save as detected type (A1-A7)
-  - Novel pattern if `class == NORMAL` but `IF score <= -0.5199` (F1-maximizing threshold) → save as UNKNOWN
+  - Novel pattern if `class == NORMAL` but `IF score <= -0.5179` (F1-maximizing threshold) → save as UNKNOWN
 - IF predicts normal → propagate to Layer 2 (may still be caught by ZSCORE)
 
 **Layer 2 - ZSCORE (Proactive):** Rolling 20-vector per-feature median/std baseline, completely independent of ML models. `z_i = (x_i - median_i) / std_i`. Features with `|z| > 3.0` are flagged. Confidence = `min(|z|/5.0, 1.0)`. This layer catches distribution shifts the models weren't trained on - concept drift, new hardware behaviours, environmental changes.
@@ -653,7 +653,7 @@ Isolation Forest uses a **46-feature subset** (selected by XGBoost feature impor
 
 Cross-layer dedup via `(anomaly_type, atm_id)` pairs ensures the same anomaly isn't saved twice across layers. A 10-min dedup window prevents repeated saves across 30s detection cycles.
 
-**SageMaker Cross-Check:** After ML ensemble detection, a call to the SageMaker endpoint validates the prediction - an identical XGBoost model (49 features, 8 classes) on ml.t2.medium providing independent cloud-side verification. The cross-check is logged alongside the local prediction for audit and model drift monitoring but does NOT override the primary detection decision.
+**SageMaker Cross-Check:** After ML ensemble detection, a call to the SageMaker endpoint validates the prediction - an identical XGBoost model (48 features, 8 classes) on ml.t2.medium providing independent cloud-side verification. The cross-check is logged alongside the local prediction for audit and model drift monitoring but does NOT override the primary detection decision.
 
 ### 7 anomaly types
 
@@ -664,7 +664,7 @@ A4 (MAJOR) - Container Restart Loop: restart>0 + ≥2 STARTUP/FATAL, 40% server.
 A5 (MAJOR) - Response Time Spike: ≥2 Kafka RT > 3000ms + success < 90%.
 A6 (MAJOR) - OS Memory Pressure: memory ≥ 90% OR >30% increase + ThreadAbortException, 40% server.
 A7 (HIGH) - Out-of-Order Kafka: offset gaps + null fields + malformed values.
-UNKNOWN (HIGH): IF score ≤ -0.5199 OR Z > 3 sigma.
+UNKNOWN (HIGH): IF score ≤ -0.5179 OR Z > 3 sigma.
 
 > For detailed signal-level specifications, correlation IDs, and cross-channel correlation opportunities, see the [Anomaly Detection Guide](docs/anomaly_detection_guide.md).
 
@@ -675,18 +675,18 @@ UNKNOWN (HIGH): IF score ≤ -0.5199 OR Z > 3 sigma.
 ```mermaid
 flowchart TD
   subgraph Data ["Data Preparation"]
-    SYNTH["Synthetic Training Data<br/>training_data.json<br/>868K rows, 24h, all 8 classes"]
+    SYNTH["Synthetic Training Data<br/>training_data.json<br/>2.6M rows, 24h, all 8 classes"]
     WIN["Sliding Windows<br/>60s window, 30s step<br/>Min 5 rows per window"]
-    FE["Feature Extraction<br/>49 features per window"]
+    FE["Feature Extraction<br/>48 features per window"]
   end
 
   subgraph Training ["Model Training"]
     XGB_TRAIN["XGBoost Classifier<br/>100 estimators, max_depth=6<br/>lr=0.1, subsample=0.8"]
-    CV["StratifiedKFold CV<br/>Up to 5 folds<br/>99.8% +/- 0.1% accuracy"]
+    CV["StratifiedKFold CV<br/>Up to 5 folds<br/>99.3% +/- 0.1% accuracy"]
     BAL["Class Balancing<br/>sample_weight = normal_count / class_count"]
     IF_TRAIN["Isolation Forest<br/>Grid search 14 fits<br/>n_estimators=200"]
-    FS["Feature Selection<br/>XGBoost importance -> 46/49<br/>for IF subset"]
-    TC["Threshold Calibration<br/>F1-maximizing sweep<br/>200 thresholds -> -0.5199"]
+    FS["Feature Selection<br/>XGBoost importance -> 43/48<br/>for IF subset"]
+    TC["Threshold Calibration<br/>F1-maximizing sweep<br/>200 thresholds -> -0.5179"]
   end
 
   subgraph Registry ["Model Registry (MLflow)"]
@@ -708,41 +708,41 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 
 | Attribute | Value |
 | --- | --- |
-| Total rows | 868,000 |
+| Total rows | 2,592,708 |
 | Time span | 24 hours |
 | Window size | 60 seconds |
 | Window step | 30 seconds |
 | Total windows (≥5 rows) | 7,190 |
 | Classes | 8 (NORMAL + A1-A7) |
-| Features per window | 49 (full), 46 (IF subset) |
+| Features per window | 48 (full), 43 (IF subset) |
 | Class balancing | `sample_weight = normal_count / class_count` |
 
 **Cross-Validation Results (StratifiedKFold, up to 5 folds):**
 
-| Class | Precision | Recall | F1-Score | Support (avg) |
+| Class | Precision | Recall | F1-Score | Support |
 | --- | --- | --- | --- | --- |
-| NORMAL | 1.0 | 1.0 | 1.0 | 4,480 |
-| A1 (Network Timeout) | 1.0 | 1.0 | 1.0 | 192 |
-| A2 (Cash Cassette) | 1.0 | 1.0 | 1.0 | 144 |
-| A3 (JVM Memory Leak) | 1.0 | 1.0 | 1.0 | 216 |
-| A4 (Container Restart) | 1.0 | 1.0 | 1.0 | 168 |
-| A5 (Response Time Spike) | 1.0 | 1.0 | 1.0 | 240 |
-| A6 (OS Memory Pressure) | 1.0 | 1.0 | 1.0 | 192 |
-| A7 (Out-of-Order Kafka) | 1.0 | 1.0 | 1.0 | 168 |
-| **Weighted avg** | **1.0** | **1.0** | **1.0** | **7,190** |
-| **CV accuracy** | | | **99.8% ± 0.1%** | |
-
-> **Provenance note:** The per-class values above come from the recorded champion run's classification report, which pre-dates the label-leakage fix — the `anomaly_tag_count` feature was removed from `feature_engineering.py`, and per-class metrics are now computed on held-out predictions via `cross_val_predict` (logged as `xgb_cv_macro_f1` / `xgb_cv_balanced_accuracy`, with a confusion-matrix artifact). Re-run training to regenerate this table from held-out folds.
+| NORMAL | 0.996 | 1.0 | 0.998 | 6,813 |
+| A1 (Network Timeout) | 1.0 | 1.0 | 1.0 | 6 |
+| A2 (Cash Cassette) | 0.0 | 0.0 | 0.0 | 7 |
+| A3 (JVM Memory Leak) | 1.0 | 1.0 | 1.0 | 180 |
+| A4 (Container Restart) | 0.92 | 0.89 | 0.91 | 27 |
+| A5 (Response Time Spike) | 1.0 | 0.75 | 0.86 | 8 |
+| A6 (OS Memory Pressure) | 1.0 | 0.96 | 0.98 | 137 |
+| A7 (Out-of-Order Kafka) | 0.0 | 0.0 | 0.0 | 12 |
+| **Macro avg** | **0.740** | **0.699** | **0.717** | **7,190** |
+| **Weighted avg** | **0.993** | **0.996** | **0.994** | **7,190** |
+| **CV accuracy** | | | **99.3% ± 0.1%** | |
 
 **Isolation Forest (unsupervised):**
 
 | Metric | Value |
 | --- | --- |
-| AUC-ROC | 0.9502 |
-| Precision | 97.3% |
-| Optimal threshold (F1-maximizing) | -0.5199 |
+| AUC-ROC (grid-search validation) | 0.8443 |
+| PR-AUC | 0.6176 |
+| Precision | 96.8% |
+| Optimal threshold (F1-maximizing) | -0.5179 |
 | Thresholds evaluated | 200 (grid sweep) |
-| Max F1 at threshold | 0.7008 |
+| Max F1 at threshold | 0.6889 |
 
 **Hyperparameter Details:**
 
@@ -756,21 +756,23 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 | | `objective` | `multi:softprob` | Required for 8-class |
 | | `eval_metric` | `mlogloss` | Standard |
 | Isolation Forest | `n_estimators` | 200 | Grid search (14 fits) |
-| | `max_samples` | `'auto'` | Default |
+| | `max_samples` | `0.7` | Grid search |
+| | `max_features` | `0.1` | Grid search |
 | | `contamination` | `'auto'` | Grid search |
-| | `bootstrap` | `False` | Grid search |
+| | `bootstrap` | `True` | Grid search |
 
-**7 MLflow Artifacts:**
+**8 MLflow Artifacts:**
 
 | Artifact | Type | Purpose |
 | --- | --- | --- |
-| `xgb_classifier.joblib` | Pickle | Trained XGBoost model (49 features, 8 classes) |
-| `isolation_forest.joblib` | Pickle | Trained Isolation Forest model (46 features) |
+| `xgb_classifier.joblib` | Pickle | Trained XGBoost model (48 features, 8 classes) |
+| `isolation_forest.joblib` | Pickle | Trained Isolation Forest model (43 features) |
 | `label_encoder.joblib` | Pickle | Encodes anomaly type strings ↔ integers |
-| `scaler.joblib` | Pickle | StandardScaler fitted on training data (49 dims) |
-| `feature_names.json` | JSON | List of all 49 feature names in order |
-| `if_feature_indices.json` | JSON | Indices of the 46 features used by IF |
-| `if_unknown_threshold.json` | JSON | F1-maximizing optimal threshold (-0.5199) |
+| `scaler.joblib` | Pickle | StandardScaler fitted on training data (48 dims) |
+| `feature_names.json` | JSON | List of all 48 feature names in order |
+| `if_feature_indices.json` | JSON | Indices of the 43 features used by IF |
+| `if_unknown_threshold.json` | JSON | F1-maximizing optimal threshold (-0.5179) |
+| `xgb_confusion_matrix.json` | JSON | Held-out 8×8 confusion matrix |
 
 **MLflow MLOps Workflow:**
 
@@ -1130,7 +1132,7 @@ flowchart TD
         end
 
         subgraph SageMaker_["AWS SageMaker"]
-            SM_ENDPOINT["laad-xgb-champion<br/>ml.t2.medium<br/>XGBoost 1.7-1<br/>49 features, 8 classes"]
+            SM_ENDPOINT["laad-xgb-champion<br/>ml.t2.medium<br/>XGBoost 1.7-1<br/>48 features, 8 classes"]
         end
 
         subgraph Secrets_["Secrets Manager"]
@@ -1202,7 +1204,7 @@ flowchart TD
 | **Kafka + Supporting** | EC2 instance in private subnet hosting Kafka (KRaft), Redis 7, ChromaDB, Ollama | Single EC2 hosts 4 services. Kafka persists events with 7-day retention; Redis provides 8 distributed patterns; ChromaDB stores vector embeddings for RAG. |
 | **Databases** | RDS PostgreSQL 18.4 (MLflow tracking backend) + PostgreSQL 16 Docker (app database) | App DB on EC2 for cost optimisation, MLflow on RDS for reliability with automated backups. 10 tables + 3 views + 15 indexes. |
 | **Storage** | 3 S3 buckets: frontend hosting (static assets), MLflow artifacts (model binaries), Terraform state (infrastructure state) | Frontend bucket serves React app via CloudFront. MLflow artifacts bucket stores model files (XGBoost, Isolation Forest, scalers, encoders). Terraform state bucket is versioned with DynamoDB locking. |
-| **ML Inference** | SageMaker endpoint `laad-xgb-champion` on ml.t2.medium | XGBoost 1.7-1 container, 49-feature model, 8-class softmax probabilities (`multi:softprob`), ~100ms inference. CloudWatch logs enabled, model deployed from MLflow artifact store via automated upload script. |
+| **ML Inference** | SageMaker endpoint `laad-xgb-champion` on ml.t2.medium | XGBoost 1.7-1 container, 48-feature model, 8-class softmax probabilities (`multi:softprob`), ~100ms inference. CloudWatch logs enabled, model deployed from MLflow artifact store via automated upload script. |
 | **CDN** | CloudFront distribution backed by S3 origin | Edge caching for React frontend, HTTPS enforcement, custom error pages. Argo-powered CDN with origin shield. |
 | **CI/CD** | GitHub Actions - 3 pipelines (CI, CD, CD-SHOULD-DEPLOY) | OIDC-based AWS authentication (no static keys). CI runs 1,846 tests + checkov. CD applies Terraform and triggers ECS rolling updates. CD-SHOULD-DEPLOY gates deployment to path changes. |
 | **Security** | 4 IAM roles (least-privilege), Secrets Manager (8 secrets), no hardcoded credentials | GitHub Actions OIDC role, ECS execution role, ECS task role, SageMaker execution role. Secrets: DB credentials, Kafka config, JWT secret, API keys, SageMaker config, MLflow URIs, admin credentials, Redis password. |
@@ -1245,7 +1247,7 @@ Key architectural decisions that shaped the platform, beyond what the Engineerin
 | Decision | Alternative Considered | Why This Won |
 | --- | --- | --- |
 | **Kafka (KRaft) over Redis PubSub** | Redis Pub/Sub + Redis Streams for message bus | Kafka persists to disk with configurable retention (7 days) and offset replay for backfill. Redis PubSub loses messages with no active subscriber. At 100+ msg/s, Kafka's batching and compression (gzip, 65% ratio) significantly reduce network I/O. |
-| **3 detection layers (not just ML)** | ML-only, pure heuristic-only | Each layer has independent failure modes. ML_ENSEMBLE catches 8-class patterns at 99.8% but misses novel drift. ZSCORE catches drift without models. HEURISTIC is the always-on safety net. Defense in depth - no single failure mode goes undetected. |
+| **3 detection layers (not just ML)** | ML-only, pure heuristic-only | Each layer has independent failure modes. ML_ENSEMBLE catches 8-class patterns at 99.3% but misses novel drift. ZSCORE catches drift without models. HEURISTIC is the always-on safety net. Defense in depth - no single failure mode goes undetected. |
 | **XGBoost + Isolation Forest (two-model ensemble)** | Single XGBoost classifier, deep learning (LSTM) | XGBoost provides interpretable 8-class classification with soft probabilities. Isolation Forest adds unsupervised anomaly detection for novel patterns not in the 8 training classes. The two-model ensemble distinguishes "known anomaly type" from "something is wrong but I don't know what" - a critical operational distinction. LSTM would require sequence-order sensitivity that adds complexity without improving detection at this scale. |
 | **ChromaDB over Pinecone / Weaviate** | Pinecone (managed), Weaviate (self-hosted) | Self-hosted ChromaDB in Docker - no per-vector API costs, 50K+ docs fit in RAM, log data never leaves the local network. Ollama `nomic-embed-text` (768-dim) for local embeddings eliminates network round-trip and per-token API costs. |
 | **4-signal confidence fusion over single confidence** | LLM-only confidence, retrieval-only score | No single signal is reliable enough to trust alone. Retrieval can miss relevant chunks. LLM verbalized confidence is systematically overconfident. Self-consistency is expensive. Grounding is sparse. Fusing all 4 via uncertainty-weighted averaging (static calibrated weights, renormalised when a signal is missing) produces a robust confidence estimate that degrades gracefully when any signal is missing. |
