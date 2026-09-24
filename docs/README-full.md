@@ -578,7 +578,7 @@ flowchart TD
     IF_ANOM{"IF anomaly?"}
     XGB["XGBoost<br/>predict_proba(features_49dim)"]
     HIGH{"confidence >= 0.70<br/>&& class != NORMAL?"}
-    UNKNOWN{"IF score <= -0.5199<br/>Youden's J threshold?"}
+    UNKNOWN{"IF score <= -0.5199<br/>F1-maximizing threshold?"}
     SAVE1["Save anomaly (ML_ENSEMBLE)"]
   end
 
@@ -634,7 +634,7 @@ Isolation Forest uses a **46-feature subset** (selected by XGBoost feature impor
 
 - IF predicts anomaly (score ≤ 0) → XGBoost predict_proba
   - Known anomaly if `class != NORMAL` and `confidence >= 0.70` → save as detected type (A1-A7)
-  - Novel pattern if `class == NORMAL` but `IF score <= -0.5199` (Youden's J threshold) → save as UNKNOWN
+  - Novel pattern if `class == NORMAL` but `IF score <= -0.5199` (F1-maximizing threshold) → save as UNKNOWN
 - IF predicts normal → propagate to Layer 2 (may still be caught by ZSCORE)
 
 **Layer 2 - ZSCORE (Proactive):** Rolling 20-vector per-feature median/std baseline, completely independent of ML models. `z_i = (x_i - median_i) / std_i`. Features with `|z| > 3.0` are flagged. Confidence = `min(|z|/5.0, 1.0)`. This layer catches distribution shifts the models weren't trained on - concept drift, new hardware behaviours, environmental changes.
@@ -686,7 +686,7 @@ flowchart TD
     BAL["Class Balancing<br/>sample_weight = normal_count / class_count"]
     IF_TRAIN["Isolation Forest<br/>Grid search 14 fits<br/>n_estimators=200"]
     FS["Feature Selection<br/>XGBoost importance -> 46/49<br/>for IF subset"]
-    TC["Threshold Calibration<br/>Youden's J sweep<br/>200 thresholds -> -0.5199"]
+    TC["Threshold Calibration<br/>F1-maximizing sweep<br/>200 thresholds -> -0.5199"]
   end
 
   subgraph Registry ["Model Registry (MLflow)"]
@@ -732,13 +732,15 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 | **Weighted avg** | **1.0** | **1.0** | **1.0** | **7,190** |
 | **CV accuracy** | | | **99.8% ± 0.1%** | |
 
+> **Provenance note:** The per-class values above come from the recorded champion run's classification report, which pre-dates the label-leakage fix — the `anomaly_tag_count` feature was removed from `feature_engineering.py`, and per-class metrics are now computed on held-out predictions via `cross_val_predict` (logged as `xgb_cv_macro_f1` / `xgb_cv_balanced_accuracy`, with a confusion-matrix artifact). Re-run training to regenerate this table from held-out folds.
+
 **Isolation Forest (unsupervised):**
 
 | Metric | Value |
 | --- | --- |
 | AUC-ROC | 0.9502 |
 | Precision | 97.3% |
-| Optimal threshold (Youden's J) | -0.5199 |
+| Optimal threshold (F1-maximizing) | -0.5199 |
 | Thresholds evaluated | 200 (grid sweep) |
 | Max F1 at threshold | 0.7008 |
 
@@ -768,7 +770,7 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 | `scaler.joblib` | Pickle | StandardScaler fitted on training data (49 dims) |
 | `feature_names.json` | JSON | List of all 49 feature names in order |
 | `if_feature_indices.json` | JSON | Indices of the 46 features used by IF |
-| `if_unknown_threshold.json` | JSON | Youden's J optimal threshold (-0.5199) |
+| `if_unknown_threshold.json` | JSON | F1-maximizing optimal threshold (-0.5199) |
 
 **MLflow MLOps Workflow:**
 
