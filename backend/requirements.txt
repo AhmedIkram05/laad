@@ -23,6 +23,10 @@ langchain>=0.2.0
 langchain-core>=1.5.3
 langchain-ollama>=1.1.0
 langchain-openai>=1.4.3
+# openai pinned <3: instructor (via ragas) requires openai<3.0.0,>=2.0.0
+# while langchain-openai allows <4 — unpinned, pip backtracks 3.19→2.x (~19min).
+# Proven working in .venv: 2.54.0
+openai==2.54.0
 langchain-mcp-adapters>=0.3.2
 langchain-experimental>=0.4.2
 langgraph>=1.2.11
