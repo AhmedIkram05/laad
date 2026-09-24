@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from typing import Any
 
 FEATURE_NAMES = [
@@ -72,13 +73,12 @@ FEATURE_NAMES = [
     # Severity-weighted features (2)
     "fatal_critical_weighted_sum",
     "error_event_count",
-    # Cross-source / anomaly flags (7)
+    # Cross-source / anomaly flags (6)
     "sources_with_errors",
     "has_oom_event",
     "has_network_disconnect",
     "has_timeout",
     "kafka_out_of_order",
-    "anomaly_tag_count",
     "atm_unique_count",
 ]
 FEATURE_COUNT = len(FEATURE_NAMES)
@@ -281,17 +281,28 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
     has_network_disconnect = int((atm_app["event_type"] == "NETWORK_DISCONNECT").any())
     has_timeout = int((df["event_type"] == "TIMEOUT").any())
 
-    kafka_oo = int(
-        kafka_df["raw_payload"]
-        .apply(lambda p: parse_payload(p).get("_anomaly_tag") == "A7_OUT_OF_ORDER")
-        .sum()
-    )
-
-    anomaly_tag_count = int(
-        df["raw_payload"]
-        .apply(lambda p: bool(parse_payload(p).get("_anomaly_tag")))
-        .sum()
-    )
+    # Out-of-order detection mirrors the rule detector (anomaly_detector.py):
+    # sort Kafka rows by offset and flag a timestamp regression of >= 60s.
+    # Never reads the generator's _anomaly_tag label channel.
+    kafka_oo = 0
+    if "timestamp" in kafka_df.columns:
+        kafka_seq = []
+        for payload, ts in zip(kafka_df["raw_payload"], kafka_df["timestamp"]):
+            off = parse_payload(payload).get("offset")
+            if off is not None and not isinstance(off, str) and off != -1 and ts:
+                kafka_seq.append((float(off), str(ts)))
+        kafka_seq.sort(key=lambda x: x[0])
+        for i in range(1, len(kafka_seq)):
+            try:
+                prev_dt = datetime.fromisoformat(
+                    kafka_seq[i - 1][1].replace("Z", "+00:00")
+                )
+                cur_dt = datetime.fromisoformat(kafka_seq[i][1].replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if cur_dt < prev_dt and (prev_dt - cur_dt).total_seconds() >= 60:
+                kafka_oo = 1
+                break
 
     atm_unique_count = int(df["atm_id"].dropna().nunique())
 
@@ -344,13 +355,12 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
             # Severity-weighted features (2)
             fatal_critical_weighted,
             atm_app_errors_all,
-            # Cross-source / anomaly flags (7)
+            # Cross-source / anomaly flags (6)
             len(error_sources),
             has_oom,
             has_network_disconnect,
             has_timeout,
             kafka_oo,
-            anomaly_tag_count,
             atm_unique_count,
         ],
         dtype=np.float32,
