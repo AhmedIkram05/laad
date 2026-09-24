@@ -32,8 +32,20 @@ import pandas as pd
 import joblib
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.model_selection import (
+    StratifiedKFold,
+    cross_val_predict,
+    cross_val_score,
+    train_test_split,
+)
+from sklearn.metrics import (
+    average_precision_score,
+    balanced_accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    roc_auc_score,
+)
 from collections import Counter
 
 from backend.src.database.connection import get_cursor
@@ -362,6 +374,7 @@ def train() -> None:
         )
         clf.fit(X_all, y, sample_weight=sample_weights)
 
+        macro_f1 = None
         cv_n_splits = min(5, min(class_counts.values()))
         if cv_n_splits < 2:
             log.warning(
@@ -373,6 +386,13 @@ def train() -> None:
             cv_scores = cross_val_score(
                 clf, X_all, y, cv=cv, scoring="accuracy", n_jobs=-1
             )
+            # Held-out predictions across all data — per-class metrics must
+            # never be computed from predictions on the training set.
+            y_pred_cv = cross_val_predict(
+                clf, X_all, y, cv=cv, n_jobs=-1, params={"sample_weight": sample_weights}
+            )
+            macro_f1 = float(f1_score(y, y_pred_cv, average="macro"))
+            balanced_acc = float(balanced_accuracy_score(y, y_pred_cv))
 
         cv_mean = float(cv_scores.mean()) if not np.isnan(cv_scores.mean()) else 0.0
         cv_std = float(cv_scores.std()) if not np.isnan(cv_scores.std()) else 0.0
@@ -380,17 +400,27 @@ def train() -> None:
         mlflow.log_metric("xgb_cv_accuracy_std", cv_std)
         print(f"XGBoost CV accuracy: {cv_mean:.3f} ± {cv_std:.3f}")
 
-        y_pred = clf.predict(X_all)
-        report = classification_report(
-            y, y_pred, target_names=le.classes_, output_dict=True, zero_division=0
-        )
-        for cls, metrics in report.items():
-            if isinstance(metrics, dict):
-                for metric, val in metrics.items():
-                    if not np.isnan(float(val)):
-                        mlflow.log_metric(
-                            f"xgb_{cls}_{metric}".replace(" ", "_"), float(val)
-                        )
+        if macro_f1 is not None:
+            mlflow.log_metric("xgb_cv_macro_f1", macro_f1)
+            mlflow.log_metric("xgb_cv_balanced_accuracy", balanced_acc)
+            print(
+                f"XGBoost held-out macro-F1: {macro_f1:.3f} "
+                f"· balanced accuracy: {balanced_acc:.3f}"
+            )
+            report = classification_report(
+                y, y_pred_cv, target_names=le.classes_, output_dict=True, zero_division=0
+            )
+            for cls, metrics in report.items():
+                if isinstance(metrics, dict):
+                    for metric, val in metrics.items():
+                        if not np.isnan(float(val)):
+                            mlflow.log_metric(
+                                f"xgb_{cls}_{metric}".replace(" ", "_"), float(val)
+                            )
+            cm = confusion_matrix(y, y_pred_cv).tolist()
+            with open(ARTIFACT_DIR / "xgb_confusion_matrix.json", "w") as f:
+                json.dump({"classes": le.classes_.tolist(), "matrix": cm}, f)
+            mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_confusion_matrix.json"))
 
         # ─────────────────────────────────────────────────────────────────────
         # Feature selection for IF — use top-K features from XGBoost importance
@@ -415,7 +445,7 @@ def train() -> None:
         # ─────────────────────────────────────────────────────────────────────
         # Isolation Forest training with grid search and threshold calibration
         # ─────────────────────────────────────────────────────────────────────
-        # Fit scaler on ALL 49 features (inference pipeline scales before subsetting)
+        # Fit scaler on all features (inference pipeline scales before subsetting)
         scaler = StandardScaler()
         scaler.fit(X_normal)
 
@@ -481,6 +511,12 @@ def train() -> None:
         unknown_threshold = _calibrate_unknown_threshold(
             all_if_density_scores, y_anomaly_binary
         )
+        if len(np.unique(y_anomaly_binary)) > 1:
+            pr_auc = float(
+                average_precision_score(y_anomaly_binary, -all_if_density_scores)
+            )
+            mlflow.log_metric("if_pr_auc", pr_auc)
+            print(f"Isolation Forest PR-AUC: {pr_auc:.4f}")
 
         with open(ARTIFACT_DIR / "if_unknown_threshold.json", "w") as f:
             json.dump({"threshold": unknown_threshold}, f)
@@ -536,10 +572,11 @@ def train() -> None:
             IF_MODEL_NAME, "champion", version=str(if_reg.version)
         )
 
+        macro_txt = f", held-out macro-F1={macro_f1:.3f}" if macro_f1 is not None else ""
         description = (
             f"XGBoost classifier trained on {len(X_all)} samples, "
             f"{FEATURE_COUNT} features, "
-            f"CV accuracy={cv_mean:.3f} +/- {cv_std:.3f}, git_sha={git_sha}"
+            f"CV accuracy={cv_mean:.3f} +/- {cv_std:.3f}{macro_txt}, git_sha={git_sha}"
         )
         client.update_model_version(
             XGB_MODEL_NAME, version=str(xgb_reg.version), description=description
