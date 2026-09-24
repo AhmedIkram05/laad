@@ -161,33 +161,3 @@ eval-ragas:
 	docker compose run --rm pytest sh -c "PYTHONPATH=/app python -m backend.tests.eval.run_ragas $(FLAGS)"
 	@echo ""
 	@echo "✓ RAG evaluation complete! See backend/tests/eval/results.json"
-
-# ── IaC Compliance ─────────────────────────────────────────────────────────
-
-checkov:
-	@echo "==> Running checkov IaC compliance checks..."
-	python3 scripts/checkov-compliance.py
-	@echo ""
-	@echo "✓ checkov compliance checks complete!"
-
-# ── Upload Coverage ─────────────────────────────────────────────────────────
-
-# Push full-suite coverage.xml (produced by `make test-backend`) to Codecov for
-# the current HEAD under the backend-full flag. CI's per-commit subset upload
-# can't cover kafka/chroma/rag markers (no services); the union of both flags
-# is the true total, and carryforward keeps backend-full alive across commits,
-# so re-run this only when backend code changes materially. Requires:
-# export CODECOV_TOKEN=<repo upload token> and a pushed commit.
-coverage-upload:
-	@command -v codecov >/dev/null 2>&1 || (echo "==> Installing Codecov CLI..." && curl -sL --retry 3 --retry-all-errors https://cli.codecov.io/latest/macos/codecov -o /usr/local/bin/codecov && chmod +x /usr/local/bin/codecov)
-	@test -f backend/coverage.xml || (echo "!! backend/coverage.xml missing — run make test-backend first" && exit 1)
-	@test -n "$(CODECOV_TOKEN)" || (echo "!! CODECOV_TOKEN not set" && exit 1)
-	@echo "==> Uploading coverage for $$(git rev-parse --short HEAD)..."
-	@echo "==> Remapping container-relative paths to repo paths..."
-	@python3 scripts/remap-coverage.py backend/coverage.xml /tmp/coverage-clean.xml
-	@codecov create-commit -t "$(CODECOV_TOKEN)" --git-service github -C $$(git rev-parse HEAD) -B $$(git rev-parse --abbrev-ref HEAD) && \
-	codecov create-report -t "$(CODECOV_TOKEN)" -C $$(git rev-parse HEAD) && \
-	codecov do-upload -t "$(CODECOV_TOKEN)" -C $$(git rev-parse HEAD) -F backend-full -f /tmp/coverage-clean.xml
-	@rm -f /tmp/coverage-clean.xml
-	@echo ""
-	@echo "✓ Coverage uploaded! Badge updates in a few minutes."
