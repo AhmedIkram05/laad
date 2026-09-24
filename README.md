@@ -105,7 +105,7 @@ flowchart LR
 
 | Metric | Value |
 | --- | --- |
-| Anomaly detection | XGBoost 8-class CV **99.8%** (±0.1%, 868K rows) · Isolation Forest **97.3%** precision, F1 0.70 |
+| Anomaly detection | XGBoost 8-class CV **99.3%** (held-out macro-F1 0.72, 7,190 windows) · Isolation Forest **96.8%** precision, F1 0.69 |
 | RAG quality (RAGAS, agentic) | faithfulness **0.940** · precision **0.874** · relevancy **0.801** |
 | Throughput | **~100 msgs/sec** sustained on one consumer · **2.5M+** events processed |
 | API surface | **30 endpoints** across 6 routers |
@@ -117,7 +117,7 @@ flowchart LR
 
 ## AI - detection & diagnostics
 
-- **3-layer detector** - XGBoost 8-class classifier at **99.8% CV (±0.1%, 868K rows)** plus an Isolation Forest sidecar (**97.3% precision, F1 0.70**) for out-of-class novelty, Z-score drift detection, and always-on heuristics. SageMaker (`ml.t2.medium`) validates predictions live. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1)
+- **3-layer detector** - XGBoost 8-class classifier at **99.3% CV accuracy (held-out macro-F1 0.72)** plus an Isolation Forest sidecar (**96.8% precision, F1 0.69**, 0.84 AUC-ROC) for out-of-class novelty, Z-score drift detection, and always-on heuristics. SageMaker (`ml.t2.medium`) validates predictions live. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1)
 - **Agentic Hybrid RAG** - True-hybrid retrieval (dense `nomic-embed-text` + BM25 sparse → RRF k=60 → temporal boost → cross-encoder `ms-marco-MiniLM-L-2-v2`), LangGraph with 12 MCP tools, 4-stage reasoning, and 4-signal confidence fusion via uncertainty-weighted averaging (static calibrated weights). RAGAS-evaluated (agentic): **faithfulness 0.940, precision 0.874, relevancy 0.801**. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) · [Evaluation data](docs/eval/) · [Per-system numbers](docs/eval/baseline.json)
   - *Hybrid retrieval* = dense + BM25 fused via RRF inside `search_knowledge` (both modes). *Hybrid mode* = deterministic planner (`search_knowledge` + ≤1 structured tool, 0 planning LLM calls, never retries). *Agentic mode* = free-form tool loop with grounding-gated retry (<0.6).
 
