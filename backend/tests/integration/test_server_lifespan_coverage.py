@@ -181,12 +181,47 @@ class TestCheckAndRetrainOnStartup:
         mock_do_retrain = MagicMock()
         monkeypatch.setattr(server_module, "_do_retrain", mock_do_retrain)
 
+        from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
+
+        mock_scaler = MagicMock()
+        mock_scaler.n_features_in_ = FEATURE_COUNT
         mock_joblib = MagicMock()
+        mock_joblib.load.return_value = mock_scaler
         with patch.dict(sys.modules, {"joblib": mock_joblib}):
             server_module._check_and_retrain_on_startup()
 
         mock_do_retrain.assert_not_called()
-        assert mock_joblib.load.call_count == 3
+        assert mock_joblib.load.call_count == 4
+
+    def test_stale_scaler_feature_count_triggers_retrain(self, monkeypatch):
+        """A scaler trained with a different feature count triggers retrain."""
+        import backend.src.api.server as server_module
+
+        from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
+
+        monkeypatch.setattr(
+            server_module,
+            "ARTIFACT_DIR",
+            _FakeArtifactDir(
+                {
+                    "xgb_classifier.joblib": True,
+                    "isolation_forest.joblib": True,
+                    "label_encoder.joblib": True,
+                }
+            ),
+        )
+
+        mock_do_retrain = MagicMock()
+        monkeypatch.setattr(server_module, "_do_retrain", mock_do_retrain)
+
+        mock_scaler = MagicMock()
+        mock_scaler.n_features_in_ = FEATURE_COUNT + 1
+        mock_joblib = MagicMock()
+        mock_joblib.load.return_value = mock_scaler
+        with patch.dict(sys.modules, {"joblib": mock_joblib}):
+            server_module._check_and_retrain_on_startup()
+
+        mock_do_retrain.assert_called_once()
 
     def test_corrupted_model_files_trigger_retrain(self, monkeypatch):
         """When joblib.load raises on first file, retrain is triggered."""
