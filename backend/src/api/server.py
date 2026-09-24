@@ -97,9 +97,18 @@ def _check_and_retrain_on_startup() -> None:
     try:
         import joblib
 
+        from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
+
         joblib.load(model_file)
         joblib.load(ARTIFACT_DIR / "isolation_forest.joblib")
         joblib.load(ARTIFACT_DIR / "label_encoder.joblib")
+        scaler = joblib.load(ARTIFACT_DIR / "scaler.joblib")
+        n_actual = getattr(scaler, "n_features_in_", FEATURE_COUNT)
+        if n_actual != FEATURE_COUNT:
+            raise ValueError(
+                f"stale artifacts: scaler expects {n_actual} features, "
+                f"code has {FEATURE_COUNT}"
+            )
         logger.info("Model artifacts are valid — using existing models")
         return
     except Exception as e:
