@@ -65,13 +65,9 @@ class TestExtractFeatures:
         feat = extract_features(rows)
         assert feat.shape == (len(FEATURE_NAMES),)
         idx_ndc = FEATURE_NAMES.index("network_disconnect_count")
-        idx_tag = FEATURE_NAMES.index("anomaly_tag_count")
         idx_has_nd = FEATURE_NAMES.index("has_network_disconnect")
         assert feat[idx_ndc] == 1.0, (
             f"network_disconnect_count should be 1, got {feat[idx_ndc]}"
-        )
-        assert feat[idx_tag] == 1.0, (
-            f"anomaly_tag_count should be 1, got {feat[idx_tag]}"
         )
         assert feat[idx_has_nd] == 1.0, (
             f"has_network_disconnect should be 1, got {feat[idx_has_nd]}"
@@ -213,6 +209,9 @@ class TestExtractFeatures:
         assert feat[idx] == 1.0, f"kafka_offline_count should be 1, got {feat[idx]}"
 
     def test_out_of_order_a7_detected(self):
+        # Mirrors the real generator signature: a backdated event (higher
+        # offset, timestamp 5 min in the past) inside an in-order stream.
+        # No _anomaly_tag — detection must be structural, not label-derived.
         rows = [
             {
                 "source": "KAFKA",
@@ -221,16 +220,23 @@ class TestExtractFeatures:
                 "metric_value": None,
                 "event_type": "METRIC",
                 "severity": "INFO",
-                "raw_payload": {"_anomaly_tag": "A7_OUT_OF_ORDER", "offset": -1},
-            }
+                "raw_payload": {"offset": 4051},
+                "timestamp": "2026-01-01T10:05:00+00:00",
+            },
+            {
+                "source": "KAFKA",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": None,
+                "metric_value": None,
+                "event_type": "METRIC",
+                "severity": "INFO",
+                "raw_payload": {"offset": 4052},
+                "timestamp": "2026-01-01T10:00:00+00:00",
+            },
         ]
         feat = extract_features(rows)
         idx = FEATURE_NAMES.index("kafka_out_of_order")
         assert feat[idx] == 1.0, f"kafka_out_of_order should be 1, got {feat[idx]}"
-        idx_tag = FEATURE_NAMES.index("anomaly_tag_count")
-        assert feat[idx_tag] == 1.0, (
-            f"anomaly_tag_count should be 1, got {feat[idx_tag]}"
-        )
 
     def test_has_oom_event(self):
         rows = [
