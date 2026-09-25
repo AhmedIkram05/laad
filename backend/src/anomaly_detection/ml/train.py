@@ -337,9 +337,6 @@ def train() -> None:
             log.error("No training data found. Ensure the generator has been running.")
             return
 
-        window_delta = timedelta(seconds=WINDOW_SECONDS)
-        step_delta = timedelta(seconds=STEP_SECONDS)
-
         X_all, labels, times = _build_windows(all_rows)
         if X_all.shape[0] == 0:
             log.error(

@@ -22,7 +22,6 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
 from backend.src.anomaly_detection.ml.train import (
     ARTIFACT_DIR,
     _build_windows,
