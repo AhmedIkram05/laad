@@ -129,3 +129,56 @@ class TestGenerate:
             assert len(data) > 0
         finally:
             Path(output_path).unlink(missing_ok=True)
+
+
+class TestBuildSchedule:
+    def _min_gap_per_type(self, schedule):
+        import datetime
+
+        by_type: dict[str, list[datetime.datetime]] = {}
+        for ts, a_type in schedule:
+            by_type.setdefault(a_type, []).append(ts)
+        return {
+            t: min(
+                (later - earlier for earlier, later in zip(sorted(v), v[1:])),
+                default=None,
+            )
+            for t, v in by_type.items()
+        }
+
+    def test_per_type_counts_match_periods(self):
+        import datetime
+        import random
+
+        from backend.generator.training_dataset import INJECTION_PERIODS, _build_schedule
+
+        hours = 6
+        start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        schedule = _build_schedule(random.Random(42), hours, INJECTION_PERIODS, start)
+
+        by_type: dict[str, int] = {}
+        for _, a_type in schedule:
+            by_type[a_type] = by_type.get(a_type, 0) + 1
+        for a_type, period_h in INJECTION_PERIODS.items():
+            expected = round(hours / period_h)
+            assert by_type[a_type] == pytest.approx(expected, abs=1)
+
+    def test_schedule_sorted_and_spacing(self):
+        import datetime
+        import random
+
+        from backend.generator.training_dataset import INJECTION_PERIODS, _build_schedule
+
+        start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+        schedule = _build_schedule(random.Random(42), 6, INJECTION_PERIODS, start)
+
+        timestamps = [ts for ts, _ in schedule]
+        assert timestamps == sorted(timestamps)
+
+        gaps = self._min_gap_per_type(schedule)
+        for a_type, period_h in INJECTION_PERIODS.items():
+            min_gap = gaps[a_type]
+            assert min_gap is not None, f"{a_type} scheduled only once"
+            assert min_gap > datetime.timedelta(hours=period_h / 2), (
+                f"{a_type} min gap {min_gap} too small for period {period_h}h"
+            )
