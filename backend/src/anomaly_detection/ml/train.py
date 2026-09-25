@@ -208,6 +208,18 @@ def _calibrate_unknown_threshold(
     return best_threshold
 
 
+def _temporal_split(
+    times: list[datetime], train_frac: float = 0.8
+) -> tuple[np.ndarray, np.ndarray]:
+    """Boolean masks: train = window starts before the train_frac quantile."""
+    if not times:
+        return np.zeros(0, dtype=bool), np.zeros(0, dtype=bool)
+    epoch = np.array([t.timestamp() for t in times])
+    cutoff = np.quantile(epoch, train_frac)
+    train_mask = epoch < cutoff
+    return train_mask, ~train_mask
+
+
 def train() -> None:
     """Run the full training pipeline."""
     import subprocess
@@ -294,6 +306,7 @@ def train() -> None:
 
         X_list: list[np.ndarray] = []
         labels: list[str | None] = []
+        times: list[datetime] = []
 
         for entity_id, entity_rows in atm_groups.items():
             if len(entity_rows) < 5:
@@ -311,6 +324,7 @@ def train() -> None:
                     if len(feats) == FEATURE_COUNT:
                         X_list.append(feats)
                         labels.append(extract_label(window_rows))
+                        times.append(t)
                 t += step_delta
 
         if not X_list:
@@ -372,10 +386,18 @@ def train() -> None:
             random_state=42,
             n_jobs=-1,
         )
-        clf.fit(X_all, y, sample_weight=sample_weights)
+        # Fit on the train portion first so CV and the temporal holdout are
+        # both honest; the shipped champion is refit on all data below.
+        train_mask, test_mask = _temporal_split(times)
+        X_tr, y_tr = X_all[train_mask], y[train_mask]
+        w_tr = sample_weights[train_mask]
+        clf.fit(X_tr, y_tr, sample_weight=w_tr)
 
         macro_f1 = None
-        cv_n_splits = min(5, min(class_counts.values()))
+        train_class_counts = Counter(
+            lb for lb, keep in zip(label_strings, train_mask) if keep
+        )
+        cv_n_splits = min(5, min(train_class_counts.values()))
         if cv_n_splits < 2:
             log.warning(
                 "Not enough samples per class for CV. Skipping cross-validation."
@@ -384,15 +406,15 @@ def train() -> None:
         else:
             cv = StratifiedKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
             cv_scores = cross_val_score(
-                clf, X_all, y, cv=cv, scoring="accuracy", n_jobs=-1
+                clf, X_tr, y_tr, cv=cv, scoring="accuracy", n_jobs=-1
             )
-            # Held-out predictions across all data — per-class metrics must
-            # never be computed from predictions on the training set.
+            # Held-out predictions across the train portion — per-class metrics
+            # must never be computed from predictions on the training set.
             y_pred_cv = cross_val_predict(
-                clf, X_all, y, cv=cv, n_jobs=-1, params={"sample_weight": sample_weights}
+                clf, X_tr, y_tr, cv=cv, n_jobs=-1, params={"sample_weight": w_tr}
             )
-            macro_f1 = float(f1_score(y, y_pred_cv, average="macro"))
-            balanced_acc = float(balanced_accuracy_score(y, y_pred_cv))
+            macro_f1 = float(f1_score(y_tr, y_pred_cv, average="macro"))
+            balanced_acc = float(balanced_accuracy_score(y_tr, y_pred_cv))
 
         cv_mean = float(cv_scores.mean()) if not np.isnan(cv_scores.mean()) else 0.0
         cv_std = float(cv_scores.std()) if not np.isnan(cv_scores.std()) else 0.0
@@ -408,7 +430,7 @@ def train() -> None:
                 f"· balanced accuracy: {balanced_acc:.3f}"
             )
             report = classification_report(
-                y, y_pred_cv, target_names=le.classes_, output_dict=True, zero_division=0
+                y_tr, y_pred_cv, target_names=le.classes_, output_dict=True, zero_division=0
             )
             for cls, metrics in report.items():
                 if isinstance(metrics, dict):
@@ -417,10 +439,49 @@ def train() -> None:
                             mlflow.log_metric(
                                 f"xgb_{cls}_{metric}".replace(" ", "_"), float(val)
                             )
-            cm = confusion_matrix(y, y_pred_cv).tolist()
+            cm = confusion_matrix(y_tr, y_pred_cv).tolist()
             with open(ARTIFACT_DIR / "xgb_confusion_matrix.json", "w") as f:
                 json.dump({"classes": le.classes_.tolist(), "matrix": cm}, f)
             mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_confusion_matrix.json"))
+
+        # Temporal holdout: evaluate on the last 20% of wall-clock windows the
+        # model never saw, then refit the champion on all data.
+        temporal_f1 = None
+        if len(np.unique(y[test_mask])) > 0 and len(test_mask) > 0:
+            y_pred_t = clf.predict(X_all[test_mask])
+            temporal_f1 = float(f1_score(y[test_mask], y_pred_t, average="macro"))
+            temporal_bacc = float(balanced_accuracy_score(y[test_mask], y_pred_t))
+            mlflow.log_metric("xgb_temporal_macro_f1", temporal_f1)
+            mlflow.log_metric("xgb_temporal_balanced_accuracy", temporal_bacc)
+            print(
+                f"XGBoost temporal holdout macro-F1: {temporal_f1:.3f} "
+                f"· balanced accuracy: {temporal_bacc:.3f}"
+            )
+            report_t = classification_report(
+                y[test_mask],
+                y_pred_t,
+                target_names=le.classes_,
+                output_dict=True,
+                zero_division=0,
+            )
+            for cls, metrics in report_t.items():
+                if isinstance(metrics, dict):
+                    for metric, val in metrics.items():
+                        if not np.isnan(float(val)):
+                            mlflow.log_metric(
+                                f"xgb_temporal_{cls}_{metric}".replace(" ", "_"),
+                                float(val),
+                            )
+            cm_t = confusion_matrix(
+                y[test_mask], y_pred_t, labels=range(len(le.classes_))
+            ).tolist()
+            with open(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json", "w") as f:
+                json.dump({"classes": le.classes_.tolist(), "matrix": cm_t}, f)
+            mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json"))
+
+        # Refit champion on ALL windows — shipped model behavior unchanged.
+        clf.fit(X_all, y, sample_weight=sample_weights)
+        print("Refit XGBoost on all windows for the shipped champion model.")
 
         # ─────────────────────────────────────────────────────────────────────
         # Feature selection for IF — use top-K features from XGBoost importance
@@ -573,10 +634,13 @@ def train() -> None:
         )
 
         macro_txt = f", held-out macro-F1={macro_f1:.3f}" if macro_f1 is not None else ""
+        temporal_txt = (
+            f", temporal macro-F1={temporal_f1:.3f}" if temporal_f1 is not None else ""
+        )
         description = (
             f"XGBoost classifier trained on {len(X_all)} samples, "
             f"{FEATURE_COUNT} features, "
-            f"CV accuracy={cv_mean:.3f} +/- {cv_std:.3f}{macro_txt}, git_sha={git_sha}"
+            f"CV accuracy={cv_mean:.3f} +/- {cv_std:.3f}{macro_txt}{temporal_txt}, git_sha={git_sha}"
         )
         client.update_model_version(
             XGB_MODEL_NAME, version=str(xgb_reg.version), description=description
