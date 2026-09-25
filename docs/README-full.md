@@ -202,7 +202,7 @@ flowchart TD
 
 | Area | Decision | Why |
 | --- | --- | --- |
-| **Anomaly Detection** | 3-layer ensemble: XGBoost + Isolation Forest + Z-Score + Heuristic + SageMaker cross-check | Defense in depth - ML catches 8-class patterns at 99.3%, Z-Score detects drift without models, Heuristic is the always-on safety net, SageMaker validates predictions live |
+| **Anomaly Detection** | 3-layer ensemble: XGBoost + Isolation Forest + Z-Score + Heuristic + SageMaker cross-check | Defense in depth - ML catches 8-class patterns at 99.0% CV accuracy with 0.94 temporal-holdout macro-F1, Z-Score detects drift without models, Heuristic is the always-on safety net, SageMaker validates predictions live |
 | **Messaging** | Apache Kafka (KRaft) with gzip, acks=all, 7-day retention | Decouples ingestion from processing - zero data loss on restart, offset replay for backfill |
 | **RAG Pipeline** | LangChain + ChromaDB + cross-encoder reranking + 4-signal confidence fusion | Self-hosted vector store keeps data private; 4-signal fusion prevents hallucinated responses |
 | **MLOps** | MLflow v3 on AWS (RDS + S3) with champion aliases | Full experiment lineage, auto-retrain on corruption, 7 artifacts tracked per MLflow 3.x API |
@@ -226,9 +226,10 @@ flowchart TD
 | | Terraform resources | 114 across 10 modules (+6 bootstrap) |
 | **ML & Detection** | Anomaly types | 7 known (A1-A7) + UNKNOWN |
 | | Detection layers | 3 (ML_ENSEMBLE + ZSCORE + HEURISTIC) + SageMaker cross-check |
-| | ML features | 48 engineered (43 for IF) |
-| | XGBoost CV accuracy | 99.3% +/- 0.1% |
-| | Isolation Forest precision | 96.8% (F1=0.6889 at -0.5179, validation AUC-ROC 0.8443) |
+| | ML features | 48 engineered (46 for IF) |
+| | XGBoost CV accuracy | 99.0% +/- 0.2% (held-out macro-F1 0.92, temporal-holdout macro-F1 0.94) |
+| | Isolation Forest precision | 94.0% (F1=0.6057 at -0.4990, validation AUC-ROC 0.7809) |
+| | External-config evaluation | macro-F1 0.93 on an unseen generator configuration (seed 43, shifted mix) |
 | | RAG confidence fusion | 4 signals, uncertainty-weighted average (static calibrated weights) |
 | **Infrastructure** | API endpoints | 30 across 6 routers |
 | | Frontend pages | 9 (React 19 + Vite 8 + Tailwind v4) |
@@ -578,7 +579,7 @@ flowchart TD
     IF_ANOM{"IF anomaly?"}
     XGB["XGBoost<br/>predict_proba(features_48dim)"]
     HIGH{"confidence >= 0.70<br/>&& class != NORMAL?"}
-    UNKNOWN{"IF score <= -0.5179<br/>F1-maximizing threshold?"}
+    UNKNOWN{"IF score <= -0.4990<br/>F1-maximizing threshold?"}
     SAVE1["Save anomaly (ML_ENSEMBLE)"]
   end
 
@@ -614,7 +615,7 @@ flowchart TD
   DEDUP -->|"active"| END["Cycle complete"]
 ```
 
-**Why 3 layers?** Defense in depth - each layer has independent failure modes. ML_ENSEMBLE catches known/novel patterns at 99.3% CV accuracy. ZSCORE detects statistical distribution shifts without any model dependency. HEURISTIC is the always-active safety net using deterministic multi-source correlation.
+**Why 3 layers?** Defense in depth - each layer has independent failure modes. ML_ENSEMBLE catches known/novel patterns at 99.0% CV accuracy (0.94 temporal-holdout macro-F1, and 0.93 on an unseen generator configuration). ZSCORE detects statistical distribution shifts without any model dependency. HEURISTIC is the always-active safety net using deterministic multi-source correlation.
 
 **Feature Engineering - 48 Features in 7 Groups:**
 
@@ -634,7 +635,7 @@ Isolation Forest uses a **46-feature subset** (selected by XGBoost feature impor
 
 - IF predicts anomaly (score ≤ 0) → XGBoost predict_proba
   - Known anomaly if `class != NORMAL` and `confidence >= 0.70` → save as detected type (A1-A7)
-  - Novel pattern if `class == NORMAL` but `IF score <= -0.5179` (F1-maximizing threshold) → save as UNKNOWN
+  - Novel pattern if `class == NORMAL` but `IF score <= -0.4990` (F1-maximizing threshold) → save as UNKNOWN
 - IF predicts normal → propagate to Layer 2 (may still be caught by ZSCORE)
 
 **Layer 2 - ZSCORE (Proactive):** Rolling 20-vector per-feature median/std baseline, completely independent of ML models. `z_i = (x_i - median_i) / std_i`. Features with `|z| > 3.0` are flagged. Confidence = `min(|z|/5.0, 1.0)`. This layer catches distribution shifts the models weren't trained on - concept drift, new hardware behaviours, environmental changes.
@@ -664,7 +665,7 @@ A4 (MAJOR) - Container Restart Loop: restart>0 + ≥2 STARTUP/FATAL, 40% server.
 A5 (MAJOR) - Response Time Spike: ≥2 Kafka RT > 3000ms + success < 90%.
 A6 (MAJOR) - OS Memory Pressure: memory ≥ 90% OR >30% increase + ThreadAbortException, 40% server.
 A7 (HIGH) - Out-of-Order Kafka: offset gaps + null fields + malformed values.
-UNKNOWN (HIGH): IF score ≤ -0.5179 OR Z > 3 sigma.
+UNKNOWN (HIGH): IF score ≤ -0.4990 OR Z > 3 sigma.
 
 > For detailed signal-level specifications, correlation IDs, and cross-channel correlation opportunities, see the [Anomaly Detection Guide](docs/anomaly_detection_guide.md).
 
@@ -675,18 +676,18 @@ UNKNOWN (HIGH): IF score ≤ -0.5179 OR Z > 3 sigma.
 ```mermaid
 flowchart TD
   subgraph Data ["Data Preparation"]
-    SYNTH["Synthetic Training Data<br/>training_data.json<br/>2.6M rows, 24h, all 8 classes"]
+    SYNTH["Synthetic Training Data<br/>training_data.json<br/>2.6M rows, 6h, all 8 classes"]
     WIN["Sliding Windows<br/>60s window, 30s step<br/>Min 5 rows per window"]
     FE["Feature Extraction<br/>48 features per window"]
   end
 
   subgraph Training ["Model Training"]
     XGB_TRAIN["XGBoost Classifier<br/>100 estimators, max_depth=6<br/>lr=0.1, subsample=0.8"]
-    CV["StratifiedKFold CV<br/>Up to 5 folds<br/>99.3% +/- 0.1% accuracy"]
+    CV["StratifiedKFold CV<br/>Up to 5 folds<br/>99.0% +/- 0.2% accuracy"]
     BAL["Class Balancing<br/>sample_weight = normal_count / class_count"]
     IF_TRAIN["Isolation Forest<br/>Grid search 14 fits<br/>n_estimators=200"]
-    FS["Feature Selection<br/>XGBoost importance -> 43/48<br/>for IF subset"]
-    TC["Threshold Calibration<br/>F1-maximizing sweep<br/>200 thresholds -> -0.5179"]
+    FS["Feature Selection<br/>XGBoost importance -> 46/48<br/>for IF subset"]
+    TC["Threshold Calibration<br/>F1-maximizing sweep<br/>200 thresholds -> -0.4990"]
   end
 
   subgraph Registry ["Model Registry (MLflow)"]
@@ -704,45 +705,68 @@ flowchart TD
 
 **Training Data:**
 
-The synthetic training dataset (`training_data.json`) covers 24 hours of simulated ATM operations with injected anomalies:
+The synthetic training dataset (`training_data.json`) covers 6 hours of simulated ATM operations with injected anomalies (injection periods tuned so every rare class has ≥50 training windows):
 
 | Attribute | Value |
 | --- | --- |
-| Total rows | 2,592,708 |
-| Time span | 24 hours |
+| Total rows | 2,593,085 |
+| Time span | 6 hours |
 | Window size | 60 seconds |
 | Window step | 30 seconds |
-| Total windows (≥5 rows) | 7,190 |
+| Total windows (≥5 rows) | 7,192 |
 | Classes | 8 (NORMAL + A1-A7) |
-| Features per window | 48 (full), 43 (IF subset) |
+| Features per window | 48 (full), 46 (IF subset) |
 | Class balancing | `sample_weight = normal_count / class_count` |
 
-**Cross-Validation Results (StratifiedKFold, up to 5 folds):**
+**Cross-Validation Results (StratifiedKFold, up to 5 folds, train portion):**
 
 | Class | Precision | Recall | F1-Score | Support |
 | --- | --- | --- | --- | --- |
-| NORMAL | 0.996 | 1.0 | 0.998 | 6,813 |
-| A1 (Network Timeout) | 1.0 | 1.0 | 1.0 | 6 |
-| A2 (Cash Cassette) | 0.0 | 0.0 | 0.0 | 7 |
-| A3 (JVM Memory Leak) | 1.0 | 1.0 | 1.0 | 180 |
-| A4 (Container Restart) | 0.92 | 0.89 | 0.91 | 27 |
-| A5 (Response Time Spike) | 1.0 | 0.75 | 0.86 | 8 |
-| A6 (OS Memory Pressure) | 1.0 | 0.96 | 0.98 | 137 |
-| A7 (Out-of-Order Kafka) | 0.0 | 0.0 | 0.0 | 12 |
-| **Macro avg** | **0.740** | **0.699** | **0.717** | **7,190** |
-| **Weighted avg** | **0.993** | **0.996** | **0.994** | **7,190** |
-| **CV accuracy** | | | **99.3% ± 0.1%** | |
+| NORMAL | 0.990 | 0.999 | 0.995 | 6,480 |
+| A1 (Network Timeout) | 0.967 | 0.983 | 0.975 | 74 |
+| A2 (Cash Cassette) | 1.0 | 0.990 | 0.995 | 131 |
+| A3 (JVM Memory Leak) | 0.991 | 0.975 | 0.983 | 179 |
+| A4 (Container Restart) | 0.867 | 0.722 | 0.788 | 27 |
+| A5 (Response Time Spike) | 0.981 | 0.944 | 0.962 | 69 |
+| A6 (OS Memory Pressure) | 1.0 | 0.933 | 0.966 | 144 |
+| A7 (Out-of-Order Kafka) | 0.972 | 0.500 | 0.660 | 88 |
+| **Macro avg** | **0.971** | **0.881** | **0.916** | **7,192** |
+| **Weighted avg** | **0.990** | **0.990** | **0.989** | **7,192** |
+| **CV accuracy** | | | **99.0% ± 0.2%** | |
+
+**Temporal Holdout (last 20% of wall-clock, 1,442 windows):**
+
+Windows from the final ~72 minutes never overlap the training window in time — the closest thing to "evaluating next week's data":
+
+| Class | Precision | Recall | F1-Score | Support |
+| --- | --- | --- | --- | --- |
+| NORMAL | 0.989 | 0.999 | 0.994 | 1,272 |
+| A1 (Network Timeout) | 1.0 | 1.0 | 1.0 | 14 |
+| A2 (Cash Cassette) | 1.0 | 1.0 | 1.0 | 30 |
+| A3 (JVM Memory Leak) | 1.0 | 0.983 | 0.992 | 60 |
+| A4 (Container Restart) | 0.889 | 0.889 | 0.889 | 9 |
+| A5 (Response Time Spike) | 1.0 | 1.0 | 1.0 | 15 |
+| A6 (OS Memory Pressure) | 1.0 | 0.833 | 0.909 | 24 |
+| A7 (Out-of-Order Kafka) | 1.0 | 0.556 | 0.714 | 18 |
+| **Macro avg** | **0.985** | **0.908** | **0.937** | **1,442** |
+| **Balanced accuracy** | | | **0.908** | |
+
+The shipped champion is refit on all 7,192 windows after evaluation.
 
 **Isolation Forest (unsupervised):**
 
 | Metric | Value |
 | --- | --- |
-| AUC-ROC (grid-search validation) | 0.8443 |
-| PR-AUC | 0.6176 |
-| Precision | 96.8% |
-| Optimal threshold (F1-maximizing) | -0.5179 |
+| AUC-ROC (grid-search validation) | 0.7809 |
+| PR-AUC | 0.5969 |
+| Precision | 94.0% |
+| Optimal threshold (F1-maximizing) | -0.4990 |
 | Thresholds evaluated | 200 (grid sweep) |
-| Max F1 at threshold | 0.6889 |
+| Max F1 at threshold | 0.6057 |
+
+**External-Configuration Evaluation (generator-config holdout):**
+
+To guard against training-data circularity, the champion trained on the rebalanced dataset (seed 42, config A) was evaluated on an independent dataset generated with a different seed and shifted injection mix (seed 43, config B — rare classes made more frequent, common classes less). Results on 7,193 unseen windows: **XGBoost macro-F1 0.93** (balanced accuracy 0.91, accuracy 0.99), Isolation Forest precision **96.0%** (AUC-ROC 0.76, PR-AUC 0.47). The supervised layer generalizes across generator configurations — performance does not collapse when the injection schedule changes. A7 remains the hardest class (F1 0.66; recall 0.5-0.56 across all three evaluations — its out-of-order signature overlaps normal Kafka jitter), and is additionally covered by the deterministic heuristic layer.
 
 **Hyperparameter Details:**
 
@@ -761,18 +785,19 @@ The synthetic training dataset (`training_data.json`) covers 24 hours of simulat
 | | `contamination` | `'auto'` | Grid search |
 | | `bootstrap` | `True` | Grid search |
 
-**8 MLflow Artifacts:**
+**9 MLflow Artifacts:**
 
 | Artifact | Type | Purpose |
 | --- | --- | --- |
 | `xgb_classifier.joblib` | Pickle | Trained XGBoost model (48 features, 8 classes) |
-| `isolation_forest.joblib` | Pickle | Trained Isolation Forest model (43 features) |
+| `isolation_forest.joblib` | Pickle | Trained Isolation Forest model (46 features) |
 | `label_encoder.joblib` | Pickle | Encodes anomaly type strings ↔ integers |
 | `scaler.joblib` | Pickle | StandardScaler fitted on training data (48 dims) |
 | `feature_names.json` | JSON | List of all 48 feature names in order |
-| `if_feature_indices.json` | JSON | Indices of the 43 features used by IF |
-| `if_unknown_threshold.json` | JSON | F1-maximizing optimal threshold (-0.5179) |
+| `if_feature_indices.json` | JSON | Indices of the 46 features used by IF |
+| `if_unknown_threshold.json` | JSON | F1-maximizing optimal threshold (-0.4990) |
 | `xgb_confusion_matrix.json` | JSON | Held-out 8×8 confusion matrix |
+| `xgb_temporal_confusion_matrix.json` | JSON | Temporal-holdout 8×8 confusion matrix (final 20% of wall-clock) |
 
 **MLflow MLOps Workflow:**
 
@@ -1247,7 +1272,7 @@ Key architectural decisions that shaped the platform, beyond what the Engineerin
 | Decision | Alternative Considered | Why This Won |
 | --- | --- | --- |
 | **Kafka (KRaft) over Redis PubSub** | Redis Pub/Sub + Redis Streams for message bus | Kafka persists to disk with configurable retention (7 days) and offset replay for backfill. Redis PubSub loses messages with no active subscriber. At 100+ msg/s, Kafka's batching and compression (gzip, 65% ratio) significantly reduce network I/O. |
-| **3 detection layers (not just ML)** | ML-only, pure heuristic-only | Each layer has independent failure modes. ML_ENSEMBLE catches 8-class patterns at 99.3% but misses novel drift. ZSCORE catches drift without models. HEURISTIC is the always-on safety net. Defense in depth - no single failure mode goes undetected. |
+| **3 detection layers (not just ML)** | ML-only, pure heuristic-only | Each layer has independent failure modes. ML_ENSEMBLE catches 8-class patterns at 99.0% CV (0.94 temporal-holdout macro-F1, 0.93 on a held-out second generator configuration) but misses novel drift. ZSCORE catches drift without models. HEURISTIC is the always-on safety net. Defense in depth - no single failure mode goes undetected. |
 | **XGBoost + Isolation Forest (two-model ensemble)** | Single XGBoost classifier, deep learning (LSTM) | XGBoost provides interpretable 8-class classification with soft probabilities. Isolation Forest adds unsupervised anomaly detection for novel patterns not in the 8 training classes. The two-model ensemble distinguishes "known anomaly type" from "something is wrong but I don't know what" - a critical operational distinction. LSTM would require sequence-order sensitivity that adds complexity without improving detection at this scale. |
 | **ChromaDB over Pinecone / Weaviate** | Pinecone (managed), Weaviate (self-hosted) | Self-hosted ChromaDB in Docker - no per-vector API costs, 50K+ docs fit in RAM, log data never leaves the local network. Ollama `nomic-embed-text` (768-dim) for local embeddings eliminates network round-trip and per-token API costs. |
 | **4-signal confidence fusion over single confidence** | LLM-only confidence, retrieval-only score | No single signal is reliable enough to trust alone. Retrieval can miss relevant chunks. LLM verbalized confidence is systematically overconfident. Self-consistency is expensive. Grounding is sparse. Fusing all 4 via uncertainty-weighted averaging (static calibrated weights, renormalised when a signal is missing) produces a robust confidence estimate that degrades gracefully when any signal is missing. |

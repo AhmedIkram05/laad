@@ -804,7 +804,7 @@ ANOMALY_INJECTORS = {
 }
 ANOMALY_COOLDOWNS = {
     "A1": 300,
-    "A2": 600,
+    "A2": 300,
     "A3": 3600,
     "A4": 300,
     "A5": 300,
@@ -812,9 +812,46 @@ ANOMALY_COOLDOWNS = {
     "A7": 300,
 }
 
+INJECTION_PERIODS = {  # hours between injections per anomaly type
+    "A1": 0.2,
+    "A2": 0.25,
+    "A3": 2.0,
+    "A4": 2.0,
+    "A5": 0.25,
+    "A6": 2.0,
+    "A7": 0.25,
+}
 
-def generate(hours: int = 6, output_path: Path | None = None) -> int:
-    rng = random.Random(42)
+
+def _build_schedule(
+    rng: random.Random, hours: int, periods: dict[str, float], start: datetime
+) -> list[tuple[datetime, str]]:
+    """One injection per type per period, jittered so consecutive same-type
+    spacing is at least half the period."""
+    schedule: list[tuple[datetime, str]] = []
+    for a_type, period_h in periods.items():
+        offset = 0.0
+        while offset < hours:
+            jitter = period_h / 2 + rng.random() * period_h / 2
+            schedule.append(
+                (
+                    start + timedelta(hours=offset + jitter, seconds=rng.randint(0, 30)),
+                    a_type,
+                )
+            )
+            offset += period_h
+    schedule.sort(key=lambda x: x[0])
+    return schedule
+
+
+def generate(
+    hours: int = 6,
+    output_path: Path | None = None,
+    seed: int = 42,
+    periods: dict[str, float] | None = None,
+) -> int:
+    rng = random.Random(seed)
+    periods = periods or INJECTION_PERIODS
     start = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     end = start + timedelta(hours=hours)
     anomaly_last: dict[str, datetime] = {}
@@ -823,19 +860,7 @@ def generate(hours: int = 6, output_path: Path | None = None) -> int:
     tick = 0
     row_count = 0
 
-    schedule = []
-    for a_type in ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]:
-        for offset_h in range(0, hours, 2):
-            schedule.append(
-                (
-                    start
-                    + timedelta(
-                        hours=offset_h + rng.random(), seconds=rng.randint(0, 3600)
-                    ),
-                    a_type,
-                )
-            )
-    schedule.sort(key=lambda x: x[0])
+    schedule = _build_schedule(rng, hours, periods, start)
     schedule_idx = 0
 
     print(f"Generating {hours}h of training data ({total_ticks:,} ticks)...")

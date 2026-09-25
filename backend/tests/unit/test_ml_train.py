@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import numpy as np
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -26,6 +27,37 @@ class TestLoadOfflineDataset:
 
     def test_offline_flag_is_false_by_default(self):
         assert USE_OFFLINE_DATA is False
+
+
+class TestTemporalSplit:
+    def test_monotonic_times_get_80_20_split(self):
+        from backend.src.anomaly_detection.ml.train import _temporal_split
+
+        base = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        times = [base + timedelta(minutes=i) for i in range(100)]
+        train_mask, test_mask = _temporal_split(times)
+
+        assert train_mask.sum() + test_mask.sum() == 100
+        assert not np.any(train_mask & test_mask)
+        # Roughly 80/20: train = times before the 80th-percentile cutoff.
+        assert 75 <= train_mask.sum() <= 85
+        # Every train window starts no later than every test window.
+        train_ts = [times[i] for i in range(100) if train_mask[i]]
+        test_ts = [times[i] for i in range(100) if test_mask[i]]
+        assert max(train_ts) <= min(test_ts)
+
+    def test_tied_timestamps_do_not_crash(self):
+        from backend.src.anomaly_detection.ml.train import _temporal_split
+
+        t = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        train_mask, test_mask = _temporal_split([t] * 10)
+        assert train_mask.sum() + test_mask.sum() == 10
+
+    def test_empty_times_returns_empty_masks(self):
+        from backend.src.anomaly_detection.ml.train import _temporal_split
+
+        train_mask, test_mask = _temporal_split([])
+        assert len(train_mask) == 0 and len(test_mask) == 0
 
 
 class TestTrain:
