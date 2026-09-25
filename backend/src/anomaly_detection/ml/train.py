@@ -73,14 +73,15 @@ MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000"
 IF_FEATURE_SELECTION_K = 20
 
 
-def load_offline_dataset() -> list[dict]:
-    """Load the pre-generated training dataset from disk."""
-    if not TRAINING_DATA.exists():
+def load_offline_dataset(path: Path | None = None) -> list[dict]:
+    """Load a pre-generated training dataset from disk."""
+    data_path = path or TRAINING_DATA
+    if not data_path.exists():
         log.warning(
-            "Offline training dataset not found at %s — skipping", TRAINING_DATA
+            "Offline training dataset not found at %s — skipping", data_path
         )
         return []
-    with open(TRAINING_DATA) as f:
+    with open(data_path) as f:
         rows = [
             {
                 "timestamp": datetime.fromisoformat(
@@ -90,7 +91,7 @@ def load_offline_dataset() -> list[dict]:
             }
             for r in json.load(f)
         ]
-    log.info("Loaded %d offline training rows from %s", len(rows), TRAINING_DATA)
+    log.info("Loaded %d offline training rows from %s", len(rows), data_path)
     return rows
 
 
@@ -220,6 +221,46 @@ def _temporal_split(
     return train_mask, ~train_mask
 
 
+def _build_windows(
+    all_rows: list[dict],
+) -> tuple[np.ndarray, list[str | None], list[datetime]]:
+    """Group rows by ATM, cut 60s windows at 30s step, extract features/labels."""
+    window_delta = timedelta(seconds=WINDOW_SECONDS)
+    step_delta = timedelta(seconds=STEP_SECONDS)
+
+    atm_groups: dict[str | None, list[dict]] = {}
+    for r in all_rows:
+        key = r.get("atm_id")
+        atm_groups.setdefault(key, []).append(r)
+
+    X_list: list[np.ndarray] = []
+    labels: list[str | None] = []
+    times: list[datetime] = []
+
+    for entity_id, entity_rows in atm_groups.items():
+        if len(entity_rows) < 5:
+            continue
+        entity_rows.sort(key=lambda r: r["timestamp"])
+        e_start = entity_rows[0]["timestamp"]
+        e_end = entity_rows[-1]["timestamp"]
+        t = e_start
+        while t + window_delta <= e_end + timedelta(seconds=1):
+            window_rows = [
+                r for r in entity_rows if t <= r["timestamp"] < t + window_delta
+            ]
+            if len(window_rows) >= 5:
+                feats = extract_features(window_rows)
+                if len(feats) == FEATURE_COUNT:
+                    X_list.append(feats)
+                    labels.append(extract_label(window_rows))
+                    times.append(t)
+            t += step_delta
+
+    if not X_list:
+        return np.empty((0, FEATURE_COUNT)), [], []
+    return np.stack(X_list), labels, times
+
+
 def train() -> None:
     """Run the full training pipeline."""
     import subprocess
@@ -299,41 +340,13 @@ def train() -> None:
         window_delta = timedelta(seconds=WINDOW_SECONDS)
         step_delta = timedelta(seconds=STEP_SECONDS)
 
-        atm_groups: dict[str | None, list[dict]] = {}
-        for r in all_rows:
-            key = r.get("atm_id")
-            atm_groups.setdefault(key, []).append(r)
-
-        X_list: list[np.ndarray] = []
-        labels: list[str | None] = []
-        times: list[datetime] = []
-
-        for entity_id, entity_rows in atm_groups.items():
-            if len(entity_rows) < 5:
-                continue
-            entity_rows.sort(key=lambda r: r["timestamp"])
-            e_start = entity_rows[0]["timestamp"]
-            e_end = entity_rows[-1]["timestamp"]
-            t = e_start
-            while t + window_delta <= e_end + timedelta(seconds=1):
-                window_rows = [
-                    r for r in entity_rows if t <= r["timestamp"] < t + window_delta
-                ]
-                if len(window_rows) >= 5:
-                    feats = extract_features(window_rows)
-                    if len(feats) == FEATURE_COUNT:
-                        X_list.append(feats)
-                        labels.append(extract_label(window_rows))
-                        times.append(t)
-                t += step_delta
-
-        if not X_list:
+        X_all, labels, times = _build_windows(all_rows)
+        if X_all.shape[0] == 0:
             log.error(
                 "No valid windows (need >=5 rows per window). Check feature engineering."
             )
             return
 
-        X_all = np.stack(X_list)
         label_counts = {
             str(lb): labels.count(lb) for lb in set(labels) if lb is not None
         }
