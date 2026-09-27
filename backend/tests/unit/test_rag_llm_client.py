@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,13 @@ import pytest
 import requests
 
 pytestmark = pytest.mark.rag
+
+
+def _no_openrouter_env():
+    """Blank the OpenRouter env vars so provider selection is deterministic."""
+    return patch.dict(
+        os.environ, {"OPENROUTER_API_KEY": "", "TYPESAFE_API_KEY": ""}, clear=False
+    )
 
 
 class TestRateLimiter:
@@ -54,7 +62,10 @@ class TestLLMClient:
         config_mock = MagicMock()
         config_mock.is_configured = False
 
-        with patch("backend.src.rag.llm_client.config", config_mock):
+        with (
+            _no_openrouter_env(),
+            patch("backend.src.rag.llm_client.config", config_mock),
+        ):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
@@ -67,7 +78,10 @@ class TestLLMClient:
         config_mock.llm_model = "google/gemma-4-31B-it"
         config_mock.llm_base_url = "https://api.inference.wandb.ai/v1"
 
-        with patch("backend.src.rag.llm_client.config", config_mock):
+        with (
+            _no_openrouter_env(),
+            patch("backend.src.rag.llm_client.config", config_mock),
+        ):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
@@ -79,7 +93,10 @@ class TestLLMClient:
         config_mock = MagicMock()
         config_mock.is_configured = False
 
-        with patch("backend.src.rag.llm_client.config", config_mock):
+        with (
+            _no_openrouter_env(),
+            patch("backend.src.rag.llm_client.config", config_mock),
+        ):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
