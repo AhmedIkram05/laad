@@ -39,3 +39,8 @@ class AgentTrace:
     retries: int = 0
     retry_trigger: Optional[float] = None
     model_calls_truncated: bool = False
+    # Decision-provider wiring (Phase 2): "jev" plus the summed
+    # DecisionAnswer.cost_usd for this run (None when the decision provider
+    # was inactive). Flows through asdict() → record_trace → TraceRecord.
+    provider: Optional[str] = None
+    cost_usd: Optional[float] = None
