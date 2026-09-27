@@ -4,9 +4,11 @@
 # committed baseline (docs/eval/baseline.json), fails the check on regression,
 # and uploads the per-run results as an artifact.
 #
-# Neutral (green) when no WANDB_API_KEY secret exists — the LLM + embedding
-# stack is unreachable without it, so there is nothing to gate. Add the secret
-# to enable gating. Bump the timeout if the golden set grows.
+# Neutral (green) when neither WANDB_API_KEY nor OPENROUTER_API_KEY secret
+# exists — the LLM + embedding stack is unreachable without one, so there is
+# nothing to gate. Neutrality is loud: a ::warning:: annotation is emitted on
+# the skip path. Add either secret to enable gating (OpenRouter alone works —
+# it is in the chat provider list). Bump the timeout if the golden set grows.
 
 name: RAG Eval
 
@@ -27,16 +29,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail-closed setup (no WANDB_API_KEY -> neutral)
-        if: env.WANDB_API_KEY == ''
+      - name: Fail-closed setup (no provider key -> neutral)
+        if: env.WANDB_API_KEY == '' && env.OPENROUTER_API_KEY == ''
         env:
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
-        run: echo "No WANDB_API_KEY secret; skipping RAG eval gate." >> "$GITHUB_STEP_SUMMARY"
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          echo "::warning::RAG eval gate skipped: no WANDB_API_KEY or OPENROUTER_API_KEY secret — eval did not run, no regression check."
+          echo "No provider key secret (WANDB_API_KEY / OPENROUTER_API_KEY); skipping RAG eval gate." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Start eval services
-        if: env.WANDB_API_KEY != ''
+        if: env.WANDB_API_KEY != '' || env.OPENROUTER_API_KEY != ''
         env:
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           docker compose --profile test up -d \
             postgres_test chromadb redis ollama ollama-init mcp-server
@@ -44,9 +50,10 @@ jobs:
             python -m backend.tests.eval.seed
 
       - name: Run RAG eval against committed baseline
-        if: env.WANDB_API_KEY != ''
+        if: env.WANDB_API_KEY != '' || env.OPENROUTER_API_KEY != ''
         env:
           WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           make eval-ragas FLAGS="--ci"
 
