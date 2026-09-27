@@ -1,0 +1,2122 @@
+{
+  "model": "typesafe/jev via System One noul+score",
+  "question": "Is this reference answer correct for this query? Answer yes if the reference answer is accurate, complete and appropriate for the query; answer no if it is wrong, misleading, incomplete or does not address the query.",
+  "score_question": "Rate the likelihood that the reference answer is correct and appropriate for the query. A high level means every claim in the answer is accurate, complete and appropriate; a low level means claims are unsupported, inferred or wrong.",
+  "score_criteria": [
+    "0.0",
+    "0.1",
+    "0.2",
+    "0.3",
+    "0.4",
+    "0.5",
+    "0.6",
+    "0.7",
+    "0.8",
+    "0.9"
+  ],
+  "positive_threshold": 0.5,
+  "ece_bins_requested": 10,
+  "total_items": 50,
+  "evaluated": 41,
+  "skipped_no_verdict": 9,
+  "skipped_unknown_verdict": 0,
+  "skipped_errors": 0,
+  "verdict_distribution": {
+    "pass": 41,
+    "None": 9
+  },
+  "note": "Golden set currently holds only 'pass' positives + unreviewed nulls; FP/TN are structurally zero, accuracy equals recall and precision is undefined until negative verdicts exist.",
+  "confusion_matrix": {
+    "tp": 29,
+    "fp": 0,
+    "tn": 0,
+    "fn": 12
+  },
+  "accuracy": 0.7073,
+  "precision": 1.0,
+  "recall": 0.7073,
+  "ece_10bin": 0.4495,
+  "ece_bins": [
+    {
+      "bin_low": 0.0,
+      "bin_high": 0.1,
+      "n": 0,
+      "mean_prob": null,
+      "mean_label": null
+    },
+    {
+      "bin_low": 0.1,
+      "bin_high": 0.2,
+      "n": 0,
+      "mean_prob": null,
+      "mean_label": null
+    },
+    {
+      "bin_low": 0.2,
+      "bin_high": 0.3,
+      "n": 3,
+      "mean_prob": 0.2567,
+      "mean_label": 1.0
+    },
+    {
+      "bin_low": 0.3,
+      "bin_high": 0.4,
+      "n": 2,
+      "mean_prob": 0.38,
+      "mean_label": 1.0
+    },
+    {
+      "bin_low": 0.4,
+      "bin_high": 0.5,
+      "n": 7,
+      "mean_prob": 0.4557,
+      "mean_label": 1.0
+    },
+    {
+      "bin_low": 0.5,
+      "bin_high": 0.6,
+      "n": 14,
+      "mean_prob": 0.5293,
+      "mean_label": 1.0
+    },
+    {
+      "bin_low": 0.6,
+      "bin_high": 0.7,
+      "n": 11,
+      "mean_prob": 0.6609,
+      "mean_label": 1.0
+    },
+    {
+      "bin_low": 0.7,
+      "bin_high": 0.8,
+      "n": 3,
+      "mean_prob": 0.7567,
+      "mean_label": 1.0
+    },
+    {
+      "bin_low": 0.8,
+      "bin_high": 0.9,
+      "n": 0,
+      "mean_prob": null,
+      "mean_label": null
+    },
+    {
+      "bin_low": 0.9,
+      "bin_high": 1.0,
+      "n": 1,
+      "mean_prob": 0.9,
+      "mean_label": 1.0
+    }
+  ],
+  "cost_usd_total": 0.000886,
+  "cost_usd_per_call_mean": 2.2e-05,
+  "items": [
+    {
+      "id": 1,
+      "verdict": "pass",
+      "probability": 0.59,
+      "raw": {
+        "type": "noul",
+        "noul": 0.59
+      },
+      "score_probability": 0.19,
+      "score_raw": {
+        "type": "score",
+        "score": 4.94,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.08,
+          "2": 0.05,
+          "3": 0.07,
+          "4": 0.06,
+          "5": 0.12,
+          "6": 0.06,
+          "7": 0.08,
+          "8": 0.13,
+          "9": 0.19
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 2,
+      "verdict": "pass",
+      "probability": 0.5,
+      "raw": {
+        "type": "noul",
+        "noul": 0.5
+      },
+      "score_probability": 0.22,
+      "score_raw": {
+        "type": "score",
+        "score": 5.86,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.04,
+          "2": 0.05,
+          "3": 0.07,
+          "4": 0.07,
+          "5": 0.13,
+          "6": 0.13,
+          "7": 0.22,
+          "8": 0.19,
+          "9": 0.08
+        },
+        "confidence": 0.26
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 3,
+      "verdict": "pass",
+      "probability": 0.68,
+      "raw": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "score_probability": 0.24,
+      "score_raw": {
+        "type": "score",
+        "score": 6.35,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.04,
+          "2": 0.04,
+          "3": 0.06,
+          "4": 0.05,
+          "5": 0.11,
+          "6": 0.09,
+          "7": 0.17,
+          "8": 0.24,
+          "9": 0.18
+        },
+        "confidence": 0.19
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 4,
+      "verdict": "pass",
+      "probability": 0.66,
+      "raw": {
+        "type": "noul",
+        "noul": 0.66
+      },
+      "score_probability": 0.19,
+      "score_raw": {
+        "type": "score",
+        "score": 5.67,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.04,
+          "1": 0.07,
+          "2": 0.06,
+          "3": 0.08,
+          "4": 0.07,
+          "5": 0.12,
+          "6": 0.09,
+          "7": 0.13,
+          "8": 0.19,
+          "9": 0.15
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 5,
+      "verdict": "pass",
+      "probability": 0.62,
+      "raw": {
+        "type": "noul",
+        "noul": 0.62
+      },
+      "score_probability": 0.21,
+      "score_raw": {
+        "type": "score",
+        "score": 6.04,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.04,
+          "2": 0.04,
+          "3": 0.07,
+          "4": 0.06,
+          "5": 0.14,
+          "6": 0.09,
+          "7": 0.16,
+          "8": 0.21000000000000002,
+          "9": 0.17
+        },
+        "confidence": 0.09
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 6,
+      "verdict": "pass",
+      "probability": 0.22,
+      "raw": {
+        "type": "noul",
+        "noul": 0.22
+      },
+      "score_probability": 0.16,
+      "score_raw": {
+        "type": "score",
+        "score": 4.34,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.03,
+          "1": 0.09,
+          "2": 0.12,
+          "3": 0.13,
+          "4": 0.16,
+          "5": 0.14,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.07,
+          "9": 0.02
+        },
+        "confidence": 0.24
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 7,
+      "verdict": "pass",
+      "probability": 0.78,
+      "raw": {
+        "type": "noul",
+        "noul": 0.78
+      },
+      "score_probability": 0.43,
+      "score_raw": {
+        "type": "score",
+        "score": 7.79,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0,
+          "1": 0,
+          "2": 0,
+          "3": 0.01,
+          "4": 0.01,
+          "5": 0.02,
+          "6": 0.05,
+          "7": 0.18,
+          "8": 0.43,
+          "9": 0.3
+        },
+        "confidence": 0.68
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 8,
+      "verdict": "pass",
+      "probability": 0.68,
+      "raw": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "score_probability": 0.24,
+      "score_raw": {
+        "type": "score",
+        "score": 6.52,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.03,
+          "2": 0.03,
+          "3": 0.05,
+          "4": 0.06,
+          "5": 0.11,
+          "6": 0.09,
+          "7": 0.17,
+          "8": 0.24,
+          "9": 0.2
+        },
+        "confidence": 0.25
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 9,
+      "verdict": "pass",
+      "probability": 0.44,
+      "raw": {
+        "type": "noul",
+        "noul": 0.44
+      },
+      "score_probability": 0.17,
+      "score_raw": {
+        "type": "score",
+        "score": 4.51,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.12,
+          "1": 0.11,
+          "2": 0.07,
+          "3": 0.08,
+          "4": 0.08,
+          "5": 0.17,
+          "6": 0.06,
+          "7": 0.1,
+          "8": 0.11,
+          "9": 0.1
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 10,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 11,
+      "verdict": "pass",
+      "probability": 0.51,
+      "raw": {
+        "type": "noul",
+        "noul": 0.51
+      },
+      "score_probability": 0.25,
+      "score_raw": {
+        "type": "score",
+        "score": 4.53,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.25,
+          "1": 0.06,
+          "2": 0.03,
+          "3": 0.05,
+          "4": 0.03,
+          "5": 0.21,
+          "6": 0.04,
+          "7": 0.04,
+          "8": 0.07,
+          "9": 0.22
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 12,
+      "verdict": "pass",
+      "probability": 0.43,
+      "raw": {
+        "type": "noul",
+        "noul": 0.43
+      },
+      "score_probability": 0.25,
+      "score_raw": {
+        "type": "score",
+        "score": 4.05,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.25,
+          "1": 0.09,
+          "2": 0.05,
+          "3": 0.07,
+          "4": 0.04,
+          "5": 0.19,
+          "6": 0.05,
+          "7": 0.04,
+          "8": 0.07,
+          "9": 0.15
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 13,
+      "verdict": "pass",
+      "probability": 0.58,
+      "raw": {
+        "type": "noul",
+        "noul": 0.58
+      },
+      "score_probability": 0.3,
+      "score_raw": {
+        "type": "score",
+        "score": 5.57,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.12,
+          "1": 0.06,
+          "2": 0.03,
+          "3": 0.04,
+          "4": 0.04,
+          "5": 0.22,
+          "6": 0.04,
+          "7": 0.05,
+          "8": 0.1,
+          "9": 0.3
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 14,
+      "verdict": "pass",
+      "probability": 0.5,
+      "raw": {
+        "type": "noul",
+        "noul": 0.5
+      },
+      "score_probability": 0.3,
+      "score_raw": {
+        "type": "score",
+        "score": 5.35,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.14,
+          "1": 0.06,
+          "2": 0.03,
+          "3": 0.04,
+          "4": 0.03,
+          "5": 0.24,
+          "6": 0.03,
+          "7": 0.05,
+          "8": 0.08,
+          "9": 0.3
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 15,
+      "verdict": "pass",
+      "probability": 0.54,
+      "raw": {
+        "type": "noul",
+        "noul": 0.54
+      },
+      "score_probability": 0.29,
+      "score_raw": {
+        "type": "score",
+        "score": 5.16,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.21,
+          "1": 0.04,
+          "2": 0.02,
+          "3": 0.04,
+          "4": 0.03,
+          "5": 0.21,
+          "6": 0.03,
+          "7": 0.04,
+          "8": 0.09,
+          "9": 0.29
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 16,
+      "verdict": "pass",
+      "probability": 0.51,
+      "raw": {
+        "type": "noul",
+        "noul": 0.51
+      },
+      "score_probability": 0.28,
+      "score_raw": {
+        "type": "score",
+        "score": 5.3,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.18,
+          "1": 0.05,
+          "2": 0.03,
+          "3": 0.04,
+          "4": 0.03,
+          "5": 0.2,
+          "6": 0.03,
+          "7": 0.05,
+          "8": 0.11,
+          "9": 0.28
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 17,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 18,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 19,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 20,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 21,
+      "verdict": "pass",
+      "probability": 0.47,
+      "raw": {
+        "type": "noul",
+        "noul": 0.47
+      },
+      "score_probability": 0.15,
+      "score_raw": {
+        "type": "score",
+        "score": 4.61,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.15,
+          "1": 0.09,
+          "2": 0.06,
+          "3": 0.07,
+          "4": 0.07,
+          "5": 0.13,
+          "6": 0.07,
+          "7": 0.1,
+          "8": 0.13,
+          "9": 0.13
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 22,
+      "verdict": "pass",
+      "probability": 0.67,
+      "raw": {
+        "type": "noul",
+        "noul": 0.67
+      },
+      "score_probability": 0.2,
+      "score_raw": {
+        "type": "score",
+        "score": 5.75,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.07,
+          "2": 0.05,
+          "3": 0.06,
+          "4": 0.06,
+          "5": 0.12,
+          "6": 0.08,
+          "7": 0.12,
+          "8": 0.18,
+          "9": 0.2
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 23,
+      "verdict": "pass",
+      "probability": 0.5,
+      "raw": {
+        "type": "noul",
+        "noul": 0.5
+      },
+      "score_probability": 0.15,
+      "score_raw": {
+        "type": "score",
+        "score": 5.22,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.11,
+          "1": 0.06,
+          "2": 0.05,
+          "3": 0.07,
+          "4": 0.07,
+          "5": 0.15,
+          "6": 0.08,
+          "7": 0.12,
+          "8": 0.15,
+          "9": 0.14
+        },
+        "confidence": 0.01
+      },
+      "cost_usd": 2.4e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 24,
+      "verdict": "pass",
+      "probability": 0.26,
+      "raw": {
+        "type": "noul",
+        "noul": 0.26
+      },
+      "score_probability": 0.21,
+      "score_raw": {
+        "type": "score",
+        "score": 3.03,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.15,
+          "1": 0.21,
+          "2": 0.14,
+          "3": 0.11,
+          "4": 0.11,
+          "5": 0.11,
+          "6": 0.06,
+          "7": 0.05,
+          "8": 0.04,
+          "9": 0.02
+        },
+        "confidence": 0.07
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 25,
+      "verdict": "pass",
+      "probability": 0.29,
+      "raw": {
+        "type": "noul",
+        "noul": 0.29
+      },
+      "score_probability": 0.2,
+      "score_raw": {
+        "type": "score",
+        "score": 5.27,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.03,
+          "2": 0.06,
+          "3": 0.1,
+          "4": 0.15,
+          "5": 0.14,
+          "6": 0.19999999999999998,
+          "7": 0.2,
+          "8": 0.09,
+          "9": 0.02
+        },
+        "confidence": 0.37
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 26,
+      "verdict": "pass",
+      "probability": 0.38,
+      "raw": {
+        "type": "noul",
+        "noul": 0.38
+      },
+      "score_probability": 0.17,
+      "score_raw": {
+        "type": "score",
+        "score": 4.3,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.07,
+          "1": 0.12,
+          "2": 0.09,
+          "3": 0.11,
+          "4": 0.1,
+          "5": 0.17,
+          "6": 0.1,
+          "7": 0.13,
+          "8": 0.08,
+          "9": 0.03
+        },
+        "confidence": 0.13
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 27,
+      "verdict": "pass",
+      "probability": 0.51,
+      "raw": {
+        "type": "noul",
+        "noul": 0.51
+      },
+      "score_probability": 0.16,
+      "score_raw": {
+        "type": "score",
+        "score": 4.75,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.09,
+          "1": 0.08,
+          "2": 0.07,
+          "3": 0.09,
+          "4": 0.1,
+          "5": 0.16,
+          "6": 0.09,
+          "7": 0.11,
+          "8": 0.13,
+          "9": 0.08
+        },
+        "confidence": 0.09
+      },
+      "cost_usd": 2.3e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 28,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 29,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 30,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    },
+    {
+      "id": 31,
+      "verdict": "pass",
+      "probability": 0.54,
+      "raw": {
+        "type": "noul",
+        "noul": 0.54
+      },
+      "score_probability": 0.19,
+      "score_raw": {
+        "type": "score",
+        "score": 5.49,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.04,
+          "2": 0.06,
+          "3": 0.09,
+          "4": 0.09,
+          "5": 0.15,
+          "6": 0.15,
+          "7": 0.19,
+          "8": 0.15,
+          "9": 0.06
+        },
+        "confidence": 0.18
+      },
+      "cost_usd": 2.3e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 32,
+      "verdict": "pass",
+      "probability": 0.5,
+      "raw": {
+        "type": "noul",
+        "noul": 0.5
+      },
+      "score_probability": 0.13,
+      "score_raw": {
+        "type": "score",
+        "score": 4.52,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.1,
+          "2": 0.1,
+          "3": 0.11,
+          "4": 0.12,
+          "5": 0.13,
+          "6": 0.1,
+          "7": 0.13,
+          "8": 0.1,
+          "9": 0.05
+        },
+        "confidence": 0.13
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 33,
+      "verdict": "pass",
+      "probability": 0.38,
+      "raw": {
+        "type": "noul",
+        "noul": 0.38
+      },
+      "score_probability": 0.31,
+      "score_raw": {
+        "type": "score",
+        "score": 3.77,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.31,
+          "1": 0.1,
+          "2": 0.04,
+          "3": 0.05,
+          "4": 0.05,
+          "5": 0.13,
+          "6": 0.04,
+          "7": 0.05,
+          "8": 0.09,
+          "9": 0.14
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 34,
+      "verdict": "pass",
+      "probability": 0.55,
+      "raw": {
+        "type": "noul",
+        "noul": 0.55
+      },
+      "score_probability": 0.21,
+      "score_raw": {
+        "type": "score",
+        "score": 5.34,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.13,
+          "1": 0.06,
+          "2": 0.05,
+          "3": 0.06,
+          "4": 0.05,
+          "5": 0.14,
+          "6": 0.06,
+          "7": 0.09,
+          "8": 0.15,
+          "9": 0.21
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 35,
+      "verdict": "pass",
+      "probability": 0.54,
+      "raw": {
+        "type": "noul",
+        "noul": 0.54
+      },
+      "score_probability": 0.26,
+      "score_raw": {
+        "type": "score",
+        "score": 5.28,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.05,
+          "2": 0.03,
+          "3": 0.05,
+          "4": 0.05,
+          "5": 0.19,
+          "6": 0.04,
+          "7": 0.06,
+          "8": 0.11,
+          "9": 0.26
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.3e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 36,
+      "verdict": "pass",
+      "probability": 0.65,
+      "raw": {
+        "type": "noul",
+        "noul": 0.65
+      },
+      "score_probability": 0.29,
+      "score_raw": {
+        "type": "score",
+        "score": 5.62,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.13,
+          "1": 0.04,
+          "2": 0.04,
+          "3": 0.05,
+          "4": 0.04,
+          "5": 0.15,
+          "6": 0.05,
+          "7": 0.08,
+          "8": 0.13,
+          "9": 0.29000000000000004
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.4e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 37,
+      "verdict": "pass",
+      "probability": 0.45,
+      "raw": {
+        "type": "noul",
+        "noul": 0.45
+      },
+      "score_probability": 0.18,
+      "score_raw": {
+        "type": "score",
+        "score": 5.4,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.06,
+          "1": 0.06,
+          "2": 0.06,
+          "3": 0.06,
+          "4": 0.07,
+          "5": 0.16,
+          "6": 0.09,
+          "7": 0.14,
+          "8": 0.18,
+          "9": 0.12
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 38,
+      "verdict": "pass",
+      "probability": 0.46,
+      "raw": {
+        "type": "noul",
+        "noul": 0.46
+      },
+      "score_probability": 0.16,
+      "score_raw": {
+        "type": "score",
+        "score": 4.11,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.12,
+          "2": 0.08,
+          "3": 0.08,
+          "4": 0.09,
+          "5": 0.14,
+          "6": 0.07,
+          "7": 0.09,
+          "8": 0.1,
+          "9": 0.07
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 39,
+      "verdict": "pass",
+      "probability": 0.54,
+      "raw": {
+        "type": "noul",
+        "noul": 0.54
+      },
+      "score_probability": 0.24,
+      "score_raw": {
+        "type": "score",
+        "score": 5.23,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.16,
+          "1": 0.06,
+          "2": 0.04,
+          "3": 0.05,
+          "4": 0.05,
+          "5": 0.16,
+          "6": 0.04,
+          "7": 0.07,
+          "8": 0.13,
+          "9": 0.24
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 40,
+      "verdict": "pass",
+      "probability": 0.46,
+      "raw": {
+        "type": "noul",
+        "noul": 0.46
+      },
+      "score_probability": 0.17,
+      "score_raw": {
+        "type": "score",
+        "score": 4.37,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.16999999999999998,
+          "1": 0.11,
+          "2": 0.06,
+          "3": 0.08,
+          "4": 0.06,
+          "5": 0.13,
+          "6": 0.06,
+          "7": 0.08,
+          "8": 0.12,
+          "9": 0.13
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.3e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 41,
+      "verdict": "pass",
+      "probability": 0.64,
+      "raw": {
+        "type": "noul",
+        "noul": 0.64
+      },
+      "score_probability": 0.27,
+      "score_raw": {
+        "type": "score",
+        "score": 6.52,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.03,
+          "2": 0.03,
+          "3": 0.05,
+          "4": 0.05,
+          "5": 0.09,
+          "6": 0.11,
+          "7": 0.2,
+          "8": 0.27,
+          "9": 0.16
+        },
+        "confidence": 0.28
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 42,
+      "verdict": "pass",
+      "probability": 0.68,
+      "raw": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "score_probability": 0.3,
+      "score_raw": {
+        "type": "score",
+        "score": 5.65,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.1,
+          "1": 0.08,
+          "2": 0.04,
+          "3": 0.06,
+          "4": 0.04,
+          "5": 0.16,
+          "6": 0.04,
+          "7": 0.06,
+          "8": 0.12,
+          "9": 0.3
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 43,
+      "verdict": "pass",
+      "probability": 0.79,
+      "raw": {
+        "type": "noul",
+        "noul": 0.79
+      },
+      "score_probability": 0.53,
+      "score_raw": {
+        "type": "score",
+        "score": 7.13,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.05,
+          "1": 0.03,
+          "2": 0.02,
+          "3": 0.03,
+          "4": 0.02,
+          "5": 0.11,
+          "6": 0.03,
+          "7": 0.05,
+          "8": 0.13,
+          "9": 0.53
+        },
+        "confidence": 0.25
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 44,
+      "verdict": "pass",
+      "probability": 0.9,
+      "raw": {
+        "type": "noul",
+        "noul": 0.9
+      },
+      "score_probability": 0.8,
+      "score_raw": {
+        "type": "score",
+        "score": 8.31,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.01,
+          "2": 0.01,
+          "3": 0.01,
+          "4": 0.01,
+          "5": 0.02,
+          "6": 0.01,
+          "7": 0.02,
+          "8": 0.09,
+          "9": 0.8
+        },
+        "confidence": 0.72
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 45,
+      "verdict": "pass",
+      "probability": 0.48,
+      "raw": {
+        "type": "noul",
+        "noul": 0.48
+      },
+      "score_probability": 0.19,
+      "score_raw": {
+        "type": "score",
+        "score": 4.74,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.19,
+          "1": 0.1,
+          "2": 0.05,
+          "3": 0.06,
+          "4": 0.06,
+          "5": 0.08,
+          "6": 0.07,
+          "7": 0.08,
+          "8": 0.12,
+          "9": 0.19
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 46,
+      "verdict": "pass",
+      "probability": 0.67,
+      "raw": {
+        "type": "noul",
+        "noul": 0.67
+      },
+      "score_probability": 0.41,
+      "score_raw": {
+        "type": "score",
+        "score": 6.14,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.09,
+          "1": 0.05,
+          "2": 0.03,
+          "3": 0.04,
+          "4": 0.03,
+          "5": 0.18,
+          "6": 0.03,
+          "7": 0.05,
+          "8": 0.09,
+          "9": 0.41
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 47,
+      "verdict": "pass",
+      "probability": 0.68,
+      "raw": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "score_probability": 0.35,
+      "score_raw": {
+        "type": "score",
+        "score": 6.16,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.09,
+          "1": 0.04,
+          "2": 0.03,
+          "3": 0.04,
+          "4": 0.02,
+          "5": 0.21,
+          "6": 0.03,
+          "7": 0.06,
+          "8": 0.13,
+          "9": 0.35
+        },
+        "confidence": 0
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 48,
+      "verdict": "pass",
+      "probability": 0.64,
+      "raw": {
+        "type": "noul",
+        "noul": 0.64
+      },
+      "score_probability": 0.39,
+      "score_raw": {
+        "type": "score",
+        "score": 6.8,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.05,
+          "1": 0.04,
+          "2": 0.03,
+          "3": 0.04,
+          "4": 0.04,
+          "5": 0.05,
+          "6": 0.06,
+          "7": 0.1,
+          "8": 0.2,
+          "9": 0.39
+        },
+        "confidence": 0.12
+      },
+      "cost_usd": 2.2e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 49,
+      "verdict": "pass",
+      "probability": 0.7,
+      "raw": {
+        "type": "noul",
+        "noul": 0.7
+      },
+      "score_probability": 0.45,
+      "score_raw": {
+        "type": "score",
+        "score": 7,
+        "legend": {
+          "0": "0.0",
+          "1": "0.1",
+          "2": "0.2",
+          "3": "0.3",
+          "4": "0.4",
+          "5": "0.5",
+          "6": "0.6",
+          "7": "0.7",
+          "8": "0.8",
+          "9": "0.9"
+        },
+        "probabilities": {
+          "0": 0.05,
+          "1": 0.03,
+          "2": 0.02,
+          "3": 0.04,
+          "4": 0.03,
+          "5": 0.1,
+          "6": 0.05,
+          "7": 0.07,
+          "8": 0.16,
+          "9": 0.45
+        },
+        "confidence": 0.2
+      },
+      "cost_usd": 2.1e-05,
+      "label": 1,
+      "skipped": null
+    },
+    {
+      "id": 50,
+      "verdict": null,
+      "probability": null,
+      "label": null,
+      "skipped": "no_verdict"
+    }
+  ],
+  "score_semantics": {
+    "note": "All golden labels positive: ECE lower = better calibrated (predictions should sit near 1.0); accuracy@0.5 = agreement with pass verdicts.",
+    "top_level_certainty_probability": {
+      "n": 41,
+      "mean_conf": 0.2632,
+      "min_conf": 0.13,
+      "max_conf": 0.8,
+      "accuracy_at_0.5": 0.0488,
+      "ece_10bin": 0.7368
+    },
+    "interpolated_score_normalized": {
+      "n": 41,
+      "mean_conf": 0.603,
+      "min_conf": 0.3367,
+      "max_conf": 0.9233,
+      "accuracy_at_0.5": 0.8293,
+      "ece_10bin": 0.397
+    }
+  },
+  "tau_sweep": {
+    "tau_values": [
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85,
+      0.9,
+      0.95
+    ],
+    "llm_cost_per_call": 0.0004,
+    "jev_cost_per_call": 2.2e-05,
+    "note": "agreement = items with Jev confidence >= tau (all-pass golden set); cost ratio = cascade/llm-only with real LLM cost only on escalated items.",
+    "signals": {
+      "noul": [
+        {
+          "tau": 0.5,
+          "escalated_items": 12,
+          "escalation_rate": 0.2927,
+          "agreement_rate": 0.7073,
+          "cascade_est_cost_usd": 0.005702,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.3477
+        },
+        {
+          "tau": 0.55,
+          "escalated_items": 23,
+          "escalation_rate": 0.561,
+          "agreement_rate": 0.439,
+          "cascade_est_cost_usd": 0.010102,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.616
+        },
+        {
+          "tau": 0.6,
+          "escalated_items": 26,
+          "escalation_rate": 0.6341,
+          "agreement_rate": 0.3659,
+          "cascade_est_cost_usd": 0.011302,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.6891
+        },
+        {
+          "tau": 0.65,
+          "escalated_items": 29,
+          "escalation_rate": 0.7073,
+          "agreement_rate": 0.2927,
+          "cascade_est_cost_usd": 0.012502,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.7623
+        },
+        {
+          "tau": 0.7,
+          "escalated_items": 37,
+          "escalation_rate": 0.9024,
+          "agreement_rate": 0.0976,
+          "cascade_est_cost_usd": 0.015702,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.9574
+        },
+        {
+          "tau": 0.75,
+          "escalated_items": 38,
+          "escalation_rate": 0.9268,
+          "agreement_rate": 0.0732,
+          "cascade_est_cost_usd": 0.016102,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.9818
+        },
+        {
+          "tau": 0.8,
+          "escalated_items": 40,
+          "escalation_rate": 0.9756,
+          "agreement_rate": 0.0244,
+          "cascade_est_cost_usd": 0.016902,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.0306
+        },
+        {
+          "tau": 0.85,
+          "escalated_items": 40,
+          "escalation_rate": 0.9756,
+          "agreement_rate": 0.0244,
+          "cascade_est_cost_usd": 0.016902,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.0306
+        },
+        {
+          "tau": 0.9,
+          "escalated_items": 40,
+          "escalation_rate": 0.9756,
+          "agreement_rate": 0.0244,
+          "cascade_est_cost_usd": 0.016902,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.0306
+        },
+        {
+          "tau": 0.95,
+          "escalated_items": 41,
+          "escalation_rate": 1.0,
+          "agreement_rate": 0.0,
+          "cascade_est_cost_usd": 0.017302,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.055
+        }
+      ],
+      "score_interpolated": [
+        {
+          "tau": 0.5,
+          "escalated_items": 7,
+          "escalation_rate": 0.1707,
+          "agreement_rate": 0.8293,
+          "cascade_est_cost_usd": 0.003702,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.2257
+        },
+        {
+          "tau": 0.55,
+          "escalated_items": 14,
+          "escalation_rate": 0.3415,
+          "agreement_rate": 0.6585,
+          "cascade_est_cost_usd": 0.006502,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.3965
+        },
+        {
+          "tau": 0.6,
+          "escalated_items": 22,
+          "escalation_rate": 0.5366,
+          "agreement_rate": 0.4634,
+          "cascade_est_cost_usd": 0.009702,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.5916
+        },
+        {
+          "tau": 0.65,
+          "escalated_items": 29,
+          "escalation_rate": 0.7073,
+          "agreement_rate": 0.2927,
+          "cascade_est_cost_usd": 0.012502,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.7623
+        },
+        {
+          "tau": 0.7,
+          "escalated_items": 33,
+          "escalation_rate": 0.8049,
+          "agreement_rate": 0.1951,
+          "cascade_est_cost_usd": 0.014102,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.8599
+        },
+        {
+          "tau": 0.75,
+          "escalated_items": 36,
+          "escalation_rate": 0.878,
+          "agreement_rate": 0.122,
+          "cascade_est_cost_usd": 0.015302,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 0.933
+        },
+        {
+          "tau": 0.8,
+          "escalated_items": 39,
+          "escalation_rate": 0.9512,
+          "agreement_rate": 0.0488,
+          "cascade_est_cost_usd": 0.016502,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.0062
+        },
+        {
+          "tau": 0.85,
+          "escalated_items": 39,
+          "escalation_rate": 0.9512,
+          "agreement_rate": 0.0488,
+          "cascade_est_cost_usd": 0.016502,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.0062
+        },
+        {
+          "tau": 0.9,
+          "escalated_items": 40,
+          "escalation_rate": 0.9756,
+          "agreement_rate": 0.0244,
+          "cascade_est_cost_usd": 0.016902,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.0306
+        },
+        {
+          "tau": 0.95,
+          "escalated_items": 41,
+          "escalation_rate": 1.0,
+          "agreement_rate": 0.0,
+          "cascade_est_cost_usd": 0.017302,
+          "llm_only_est_cost_usd": 0.0164,
+          "cost_ratio_cascade_vs_llm": 1.055
+        }
+      ]
+    }
+  }
+}
