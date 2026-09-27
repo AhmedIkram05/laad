@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import json
+import logging
 import time
 from dataclasses import asdict
 from typing import Annotated, Any, Optional, TypedDict
@@ -33,6 +34,11 @@ from opentelemetry.trace import Status, StatusCode
 from backend.src.mcp import adapter
 from backend.src.rag.agent_types import AgentMode, AgentTrace, ToolCallRecord
 from backend.src.rag.config import config
+from backend.src.rag.decision_client import (
+    DecisionAnswer,
+    DecisionQuestion,
+    get_decision_provider,
+)
 from backend.src.rag.retriever import RetrievedChunk, get_retriever
 from backend.src.rag.utils import (
     QueryType,
@@ -52,6 +58,8 @@ Rules:
 - Keep the answer concise and diagnostic: what happened, why, and what to do."""
 
 _BACKSTOP = "You have iterated enough. Synthesize now using only retrieved evidence."
+
+logger = logging.getLogger(__name__)
 
 
 class AgentState(TypedDict, total=False):
@@ -85,6 +93,155 @@ _current_root_span: contextvars.ContextVar[Optional[Any]] = contextvars.ContextV
 # contract — keep them stable.
 # --------------------------------------------------------------------------
 _tracer = otel_trace.get_tracer("laad.rag")
+
+
+# --------------------------------------------------------------------------
+# Phase 4: Jev (System One) intent routing + decision.* spans.
+#
+# Intent routing: one Jev Choice question classifies the query when the
+# decision provider is active; the deterministic keyword classifier is the
+# fallback (provider None, decision failure, low confidence, unknown option).
+# The option set and criteria MUST mirror classify_query_type's vocabulary
+# (backend/src/rag/utils.py) so the fallback stays a drop-in.
+# --------------------------------------------------------------------------
+_INTENT_QUESTION = "query_intent"
+_INTENT_CRITERIA = {
+    # Order mirrors classify_query_type's check priority (stats first).
+    "stats": (
+        "Question asks for counts, totals or numbers: how many, how much, "
+        "count of, number of, total, list all, sum, statistics, dashboard."
+    ),
+    "troubleshooting": (
+        "Question asks how to fix or what to do: how to fix, how to resolve, "
+        "what to do, how do i, fix the, solve the, solution for, resolve, "
+        "repair, recover, restore, troubleshoot, steps to, guide."
+    ),
+    "diagnostic": (
+        "Question asks what is wrong or why: what's wrong, why is, why are, "
+        "what caused, root cause, reason for, what's causing, diagnose, "
+        "analysis, investigate, find the issue."
+    ),
+    "general": (
+        "Everything else: summaries, explanations, casual queries about "
+        "the fleet or a single ATM."
+    ),
+}
+# Cached decision client for intent routing (one instance so the circuit
+# breaker and rate limiter survive across queries); None = kill switch off.
+# Cleared by reset_graphs() so tests can swap providers.
+_intent_provider = None
+
+
+def _get_intent_provider():
+    global _intent_provider
+    if _intent_provider is None:
+        _intent_provider = get_decision_provider()
+    return _intent_provider
+
+
+def _emit_decision_span(
+    questions: dict[str, DecisionQuestion],
+    answers: Optional[dict[str, DecisionAnswer]],
+    latency_ms: float,
+    *,
+    routed: Optional[str] = None,
+) -> None:
+    """Fire-and-forget decision.jev span for one typed decision call.
+
+    Attributes: decision.provider/model/question_name/type/probability/
+    confidence/cost_usd/latency_ms (+ decision.routed for intent routing).
+    Tracing failures never break the decision flow.
+    """
+    try:
+        with _tracer.start_as_current_span("decision.jev") as span:
+            span.set_attribute("decision.provider", "jev")
+            span.set_attribute("decision.model", config.jev_model)
+            for name, question in questions.items():
+                span.set_attribute("decision.question_name", name)
+                span.set_attribute("decision.type", question.type)
+                answer = (answers or {}).get(name)
+                if answer is not None:
+                    span.set_attribute(
+                        "decision.probability", float(answer.probability)
+                    )
+                    span.set_attribute("decision.confidence", float(answer.confidence))
+                    if answer.cost_usd is not None:
+                        span.set_attribute("decision.cost_usd", float(answer.cost_usd))
+            if routed is not None:
+                span.set_attribute("decision.routed", routed)
+            span.set_attribute("decision.latency_ms", round(float(latency_ms), 3))
+    except Exception:
+        logger.debug("decision span emission failed", exc_info=True)
+
+
+def _classify_intent(query: str) -> Optional[QueryType]:
+    """Jev Choice intent routing (~$0.000016 per routed query).
+
+    Returns the Jev-classified QueryType, or None to mean "use the
+    deterministic classifier". Falls back on: provider None (kill switch /
+    missing key), any decision failure (circuit open, timeout, invalid
+    response), missing answer, confidence below jev_escalation_threshold, or
+    a chosen option outside classify_query_type's vocabulary. Never raises
+    into the graph.
+    """
+    provider = _get_intent_provider()
+    if provider is None:
+        return None
+    questions = {
+        _INTENT_QUESTION: DecisionQuestion(
+            name=_INTENT_QUESTION,
+            type="choice",
+            instructions=(
+                "Classify the user's question about ATM machines into exactly "
+                "one category. Choose the single best-fitting option."
+            ),
+            options=[qt.value for qt in QueryType],
+            criteria=_INTENT_CRITERIA,
+        )
+    }
+    t0 = time.perf_counter()
+    try:
+        answers = provider.decide(query, questions)
+    except Exception as exc:
+        _emit_decision_span(
+            questions,
+            None,
+            (time.perf_counter() - t0) * 1000,
+            routed="deterministic",
+        )
+        logger.debug(f"Jev intent routing failed; deterministic fallback: {exc}")
+        return None
+    answer = answers.get(_INTENT_QUESTION)
+    raw = answer.raw if answer is not None and isinstance(answer.raw, dict) else {}
+    chosen = raw.get("choice")
+    try:
+        qtype = QueryType(str(chosen).strip().lower()) if chosen is not None else None
+    except ValueError:
+        qtype = None
+    confidence = answer.confidence if answer is not None else 0.0
+    if qtype is None or confidence < config.jev_escalation_threshold:
+        _emit_decision_span(
+            questions,
+            answers,
+            (time.perf_counter() - t0) * 1000,
+            routed="deterministic",
+        )
+        if qtype is None:
+            logger.debug(
+                f"Jev intent option '{chosen}' outside the classifier "
+                "vocabulary; deterministic fallback"
+            )
+        else:
+            logger.debug(
+                f"Jev intent confidence {confidence:.3f} below threshold; "
+                "deterministic fallback"
+            )
+        return None
+    _emit_decision_span(
+        questions, answers, (time.perf_counter() - t0) * 1000, routed="jev"
+    )
+    logger.debug(f"Intent routed via jev: {qtype.value} (confidence {confidence:.3f})")
+    return qtype
 
 
 # --------------------------------------------------------------------------
@@ -348,9 +505,15 @@ def _build_tool_args(
 
 
 def _plan_tools(query: str, atm_id: Optional[str]) -> list:
-    """Deterministic hybrid planner: search_knowledge + at most one structured tool."""
+    """Deterministic hybrid planner: search_knowledge + at most one structured tool.
+
+    Intent routing (Phase 4): when the decision provider is active, a Jev
+    Choice question classifies the query first; provider None, decision
+    failure, low confidence, or an unknown option fall back to the
+    deterministic keyword classifier (see _classify_intent).
+    """
+    qtype = _classify_intent(query) or classify_query_type(query)
     plan = ["search_knowledge"]
-    qtype = classify_query_type(query)
     if qtype == QueryType.STATS:
         plan.append("get_statistics")
     elif qtype == QueryType.TROUBLESHOOTING:
@@ -413,9 +576,10 @@ async def _get_hybrid_graph():
 
 def reset_graphs() -> None:
     """Test hook: drop cached graphs so they rebuild with fresh tools."""
-    global _agentic_graph, _hybrid_graph
+    global _agentic_graph, _hybrid_graph, _intent_provider
     _agentic_graph = None
     _hybrid_graph = None
+    _intent_provider = None
 
 
 # --------------------------------------------------------------------------
@@ -515,6 +679,14 @@ def _generate(query: str, atm_id: Optional[str], evidence: list, top_k: Optional
         enable_citation_grounding=config.citation_grounding_enabled,
         enable_self_consistency=config.self_consistency_enabled,
     )
+    # Cost wiring (Phase 2): Jev decision cost lands in the run trace
+    # (asdict → record_trace._from_trace → TraceRecord.cost_usd/provider).
+    # getattr because test fakes return duck-typed responses without the field.
+    decision_cost = getattr(response, "decision_cost_usd", None)
+    trace = _current_trace.get()
+    if trace is not None and decision_cost is not None:
+        trace.provider = "jev"
+        trace.cost_usd = (trace.cost_usd or 0.0) + decision_cost
     uncertainty = get_uncertainty_estimator().estimate(
         query,
         chunks,
@@ -651,6 +823,12 @@ async def run_agent_query(
             t_gen = time.perf_counter()
             response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
             generation_s = time.perf_counter() - t_gen
+            # Decision-layer escalation count on the root span (getattr: test
+            # fakes return duck-typed responses without the field).
+            span.set_attribute(
+                "decision.escalations",
+                getattr(response, "decision_escalations", 0),
+            )
 
             result = _build_result(
                 query,
@@ -691,6 +869,10 @@ async def run_agent_query(
                     query, atm_id, evidence, top_k
                 )
                 generation_s += time.perf_counter() - t_gen2
+                span.set_attribute(
+                    "decision.escalations",
+                    getattr(response, "decision_escalations", 0),
+                )
                 result = _build_result(
                     query,
                     response,

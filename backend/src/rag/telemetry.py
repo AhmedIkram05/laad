@@ -1,7 +1,8 @@
 """Runtime telemetry for the agentic RAG retrofit (D15 / plan §4.1).
 
 TraceRecord aggregates per-request agent-loop telemetry plus token/cost
-estimates; record_trace persists it to rag_agent_traces (ADR-0003: AgentTrace
+accounting (real provider-reported cost when available, fixed per-call
+estimate otherwise); record_trace persists it to rag_agent_traces (ADR-0003: AgentTrace
 stays the in-process source of truth and feeds the API response). The
 distributed view is OpenTelemetry spans (rag.query root, rag.tool.* children,
 cap/gate events) — there is deliberately only one span representation, the
@@ -39,9 +40,16 @@ class TraceRecord:
     model_calls_truncated: bool = False
     tokens_in: int = 0
     tokens_out: int = 0
+    # LLM provider that served the run (e.g. "llm" / "openrouter"), when known.
+    provider: Optional[str] = None
+    # Summed real billed cost (USD) from LLMResponse.cost_usd, when reported.
+    cost_usd: Optional[float] = None
 
     @property
     def est_cost(self) -> float:
+        """Real provider-reported cost when available, else the fixed estimate."""
+        if self.cost_usd is not None:
+            return self.cost_usd
         return self.model_calls * COST_PER_CALL
 
     def to_dict(self) -> dict:
@@ -57,6 +65,8 @@ class TraceRecord:
             "model_calls_truncated": self.model_calls_truncated,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
+            "provider": self.provider,
+            "cost_usd": self.cost_usd,
             "est_cost": self.est_cost,
         }
 
@@ -72,6 +82,8 @@ def _from_trace(trace: dict) -> TraceRecord:
         retries=trace.get("retries", 0),
         retry_trigger=trace.get("retry_trigger"),
         model_calls_truncated=trace.get("model_calls_truncated", False),
+        provider=trace.get("provider"),
+        cost_usd=trace.get("cost_usd"),
     )
 
 

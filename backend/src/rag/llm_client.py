@@ -1,8 +1,14 @@
-"""Unified LLM client for the W&B Serverless Inference provider (single provider)."""
+"""Unified LLM client for OpenAI-compatible chat-completions providers.
+
+W&B Serverless Inference is primary (LLM_API_KEY / WANDB_API_KEY); OpenRouter
+(OPENROUTER_API_KEY / TYPESAFE_API_KEY) is the fallback and the only provider
+when no W&B key is present.
+"""
 
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -13,6 +19,8 @@ import requests
 from backend.src.rag.config import config
 
 logger = logging.getLogger(__name__)
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX_REQUESTS = 20
@@ -53,6 +61,11 @@ class RateLimiter:
 _rate_limiter = RateLimiter(max_requests=config.rate_limit_per_min)
 
 
+def _openrouter_api_key() -> Optional[str]:
+    """OpenRouter key: OPENROUTER_API_KEY, or the legacy TYPESAFE_API_KEY name."""
+    return os.getenv("OPENROUTER_API_KEY") or os.getenv("TYPESAFE_API_KEY") or None
+
+
 @dataclass
 class LLMResponse:
     """Response from LLM with metadata."""
@@ -63,29 +76,40 @@ class LLMResponse:
     finish_reason: str
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
+    # Exact billed cost in USD, from OpenRouter's usage.cost when reported.
+    cost_usd: Optional[float] = None
 
 
 class LLMClient:
-    """LLM client for the single W&B Serverless Inference provider."""
+    """LLM client over OpenAI-compatible providers (W&B primary, OpenRouter fallback)."""
 
     def __init__(self):
-        if not config.is_configured:
+        self.providers = self._initialize_providers()
+        if not self.providers:
             logger.warning("LLM client initialized but no API keys configured")
-            self.providers = []
-        else:
-            self.providers = self._initialize_providers()
 
     def _initialize_providers(self) -> list[dict]:
-        """Initialize the single W&B provider (LLM_API_KEY / WANDB_API_KEY)."""
+        """W&B Serverless first (primary); OpenRouter as fallback."""
         providers = []
 
-        if config.llm_api_key:
+        if config.is_configured and config.llm_api_key:
             providers.append(
                 {
                     "name": "llm",
                     "model": config.llm_model,
                     "api_key": config.llm_api_key,
                     "base_url": config.llm_base_url,
+                }
+            )
+
+        openrouter_key = _openrouter_api_key()
+        if openrouter_key:
+            providers.append(
+                {
+                    "name": "openrouter",
+                    "model": config.llm_model,
+                    "api_key": openrouter_key,
+                    "base_url": OPENROUTER_BASE_URL,
                 }
             )
 
@@ -109,7 +133,8 @@ class LLMClient:
         """Generate response with automatic retries on failure."""
         if not self.providers:
             raise RuntimeError(
-                "No LLM providers configured. Set at least one of LLM_API_KEY or WANDB_API_KEY environment variables."
+                "No LLM providers configured. Set at least one of WANDB_API_KEY, "
+                "LLM_API_KEY, OPENROUTER_API_KEY, or TYPESAFE_API_KEY."
             )
 
         if config.rate_limit_per_min > 0 and _rate_limiter.is_rate_limited():
@@ -184,11 +209,13 @@ class LLMClient:
         temperature: float,
         max_tokens: int,
     ) -> LLMResponse:
-        """Call W&B Serverless Inference (strict OpenAI-compatible API).
+        """Call an OpenAI-compatible chat-completions endpoint (W&B or OpenRouter).
 
         Minimal payload: only model/messages/temperature/max_tokens. The
         provider rejects extra headers (HTTP-Referer/X-Title) and a models
-        fallback chain.
+        fallback chain. OpenRouter additionally opts into usage accounting
+        (usage.include) so the exact billed cost (usage.cost, USD) is
+        returned in the response body.
         """
         url = f"{provider['base_url']}/chat/completions"
 
@@ -208,6 +235,8 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if provider["name"] == "openrouter":
+            payload["usage"] = {"include": True}
 
         response = requests.post(
             url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT
@@ -227,13 +256,15 @@ class LLMClient:
         if not choice.get("message") or not choice["message"].get("content"):
             raise RuntimeError("LLM returned empty message content")
 
+        usage = data.get("usage", {})
         return LLMResponse(
             text=choice["message"]["content"],
             raw_response=data,
             model=data.get("model", provider["model"]),
             finish_reason=choice.get("finish_reason", "STOP"),
-            prompt_tokens=data.get("usage", {}).get("prompt_tokens"),
-            completion_tokens=data.get("usage", {}).get("completion_tokens"),
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            cost_usd=usage.get("cost"),
         )
 
 

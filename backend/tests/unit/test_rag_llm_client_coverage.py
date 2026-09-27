@@ -7,6 +7,7 @@ LLMResponse dataclass, get_llm_client singleton, and RateLimiter config.
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import fields as dc_fields
 from unittest.mock import MagicMock, patch
@@ -20,6 +21,13 @@ pytestmark = pytest.mark.rag
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _no_openrouter_env():
+    """Blank the OpenRouter env vars so provider selection is deterministic."""
+    return patch.dict(
+        os.environ, {"OPENROUTER_API_KEY": "", "TYPESAFE_API_KEY": ""}, clear=False
+    )
 
 
 def _make_config(**overrides):
@@ -45,9 +53,12 @@ def _make_llm_provider(**overrides):
     }
 
 
-def _llm_success_response(text="Hello world", model=None):
+def _llm_success_response(text="Hello world", model=None, cost=None):
     mock_resp = MagicMock()
     mock_resp.status_code = 200
+    usage = {"prompt_tokens": 10, "completion_tokens": 20}
+    if cost is not None:
+        usage["cost"] = cost
     mock_resp.json.return_value = {
         "choices": [
             {
@@ -56,7 +67,7 @@ def _llm_success_response(text="Hello world", model=None):
             }
         ],
         "model": model or "google/gemma-4-31B-it",
-        "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+        "usage": usage,
     }
     mock_resp.raise_for_status = MagicMock()
     return mock_resp
@@ -104,6 +115,7 @@ class TestLLMResponse:
             "finish_reason",
             "prompt_tokens",
             "completion_tokens",
+            "cost_usd",
         }
 
     def test_construction_with_all_fields(self):
@@ -183,7 +195,7 @@ class TestLLMClientInit:
             llm_model="google/gemma-4-31B-it",
             llm_base_url="https://api.inference.wandb.ai/v1",
         )
-        with patch("backend.src.rag.llm_client.config", cfg):
+        with _no_openrouter_env(), patch("backend.src.rag.llm_client.config", cfg):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
@@ -193,11 +205,82 @@ class TestLLMClientInit:
 
     def test_no_providers_when_unconfigured(self):
         cfg = _make_config(is_configured=False, llm_api_key="")
-        with patch("backend.src.rag.llm_client.config", cfg):
+        with _no_openrouter_env(), patch("backend.src.rag.llm_client.config", cfg):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
             assert client.providers == []
+
+
+# ---------------------------------------------------------------------------
+# Provider selection — W&B primary, OpenRouter fallback
+# ---------------------------------------------------------------------------
+
+
+class TestProviderSelection:
+    def test_wandb_first_when_both_keys_set(self):
+        cfg = _make_config(llm_api_key="wandb-key")
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "or-test-key"}):
+            with patch("backend.src.rag.llm_client.config", cfg):
+                from backend.src.rag.llm_client import LLMClient
+
+                client = LLMClient()
+
+        names = [p["name"] for p in client.providers]
+        assert names == ["llm", "openrouter"]
+        assert client.providers[1]["base_url"] == "https://openrouter.ai/api/v1"
+        assert client.providers[1]["api_key"] == "or-test-key"
+
+    def test_openrouter_only_when_only_key(self):
+        cfg = _make_config(is_configured=False, llm_api_key="")
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "or-test-key"}):
+            with patch("backend.src.rag.llm_client.config", cfg):
+                from backend.src.rag.llm_client import LLMClient
+
+                client = LLMClient()
+
+        assert [p["name"] for p in client.providers] == ["openrouter"]
+
+    def test_typesafe_api_key_used_as_openrouter_key(self):
+        cfg = _make_config(is_configured=False, llm_api_key="")
+        with patch.dict(os.environ, {"TYPESAFE_API_KEY": "legacy-or-key"}):
+            with patch("backend.src.rag.llm_client.config", cfg):
+                from backend.src.rag.llm_client import LLMClient
+
+                client = LLMClient()
+
+        assert [p["name"] for p in client.providers] == ["openrouter"]
+        assert client.providers[0]["api_key"] == "legacy-or-key"
+
+    def test_openrouter_key_not_leaked_in_provider_model(self):
+        cfg = _make_config(llm_api_key="wandb-key")
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "or-test-key"}):
+            with patch("backend.src.rag.llm_client.config", cfg):
+                from backend.src.rag.llm_client import LLMClient
+
+                client = LLMClient()
+
+        assert all(p["model"] == cfg.llm_model for p in client.providers)
+
+    def test_generate_uses_fallback_provider(self):
+        """W&B fails -> OpenRouter serves the request (fallback order)."""
+        cfg = _make_config(llm_api_key="wandb-key")
+        success = _llm_success_response(text="from openrouter")
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "or-test-key"}):
+            with patch("backend.src.rag.llm_client.config", cfg):
+                with patch("backend.src.rag.llm_client.time.sleep"):
+                    with patch("backend.src.rag.llm_client.requests.post") as mock_post:
+                        mock_post.side_effect = [
+                            requests.exceptions.ConnectionError("wandb down"),
+                            success,
+                        ]
+                        from backend.src.rag.llm_client import LLMClient
+
+                        client = LLMClient()
+                        result = client.generate("test")
+
+        assert result.text == "from openrouter"
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +409,76 @@ class TestCallLLM:
         assert result.prompt_tokens == 10
         assert result.completion_tokens == 20
 
+    def test_cost_usd_parsed_from_usage_cost(self):
+        provider = _make_llm_provider()
+        mock_resp = _llm_success_response(cost=0.000123)
+
+        with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
+            from backend.src.rag.llm_client import LLMClient
+
+            client = LLMClient.__new__(LLMClient)
+            result = client._call_llm(provider, "test", None, 0.7, 100)
+
+        assert result.cost_usd == pytest.approx(0.000123)
+
+    def test_cost_usd_none_when_usage_has_no_cost(self):
+        provider = _make_llm_provider()
+        mock_resp = _llm_success_response()  # W&B-style usage, no cost field
+
+        with patch("backend.src.rag.llm_client.requests.post", return_value=mock_resp):
+            from backend.src.rag.llm_client import LLMClient
+
+            client = LLMClient.__new__(LLMClient)
+            result = client._call_llm(provider, "test", None, 0.7, 100)
+
+        assert result.cost_usd is None
+
+    def test_openrouter_payload_opts_into_usage_accounting(self):
+        captured = []
+
+        def capture_post(url, headers=None, json=None, timeout=None):
+            captured.append({"url": url, "json": json})
+            return _llm_success_response(text="hi")
+
+        with patch(
+            "backend.src.rag.llm_client.requests.post", side_effect=capture_post
+        ):
+            from backend.src.rag.llm_client import LLMClient
+
+            client = LLMClient.__new__(LLMClient)
+            client._call_llm(
+                {
+                    "name": "openrouter",
+                    "model": "m",
+                    "api_key": "k",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                "test",
+                None,
+                0.7,
+                100,
+            )
+
+        assert captured[0]["url"] == "https://openrouter.ai/api/v1/chat/completions"
+        assert captured[0]["json"]["usage"] == {"include": True}
+
+    def test_wandb_payload_has_no_usage_optin(self):
+        captured = []
+
+        def capture_post(url, headers=None, json=None, timeout=None):
+            captured.append({"url": url, "json": json})
+            return _llm_success_response(text="hi")
+
+        with patch(
+            "backend.src.rag.llm_client.requests.post", side_effect=capture_post
+        ):
+            from backend.src.rag.llm_client import LLMClient
+
+            client = LLMClient.__new__(LLMClient)
+            client._call_llm(_make_llm_provider(), "test", None, 0.7, 100)
+
+        assert "usage" not in captured[0]["json"]
+
 
 # ---------------------------------------------------------------------------
 # generate() with rate limiting
@@ -347,7 +500,7 @@ class TestGenerateRateLimited:
 
     def test_generate_raises_when_no_providers(self):
         cfg = _make_config(is_configured=False)
-        with patch("backend.src.rag.llm_client.config", cfg):
+        with _no_openrouter_env(), patch("backend.src.rag.llm_client.config", cfg):
             from backend.src.rag.llm_client import LLMClient
 
             client = LLMClient()
