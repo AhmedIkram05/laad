@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import math
 import hashlib
 import os
@@ -22,6 +23,8 @@ import sys
 import time
 import types
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # --fast / --smoke: run with the §7.5 smoke config (1 LLM call per generation
 # instead of ~7) so a full run fits in ~15 min (--fast) or a wiring check in
@@ -96,7 +99,18 @@ from backend.src.rag.config import config  # noqa: E402
 from openai import OpenAI  # noqa: E402
 
 # ragas 0.4.x llm_factory requires a client instance (text-only mode removed).
-_judge_client = OpenAI(api_key=config.llm_api_key, base_url=config.llm_base_url)
+# Built lazily: OpenAI(api_key=None) raises at construction, and the no-key
+# skip path must still reach main() with the module importable.
+_judge_client: OpenAI | None = None
+
+
+def _get_judge_client() -> OpenAI:
+    global _judge_client
+    if _judge_client is None:
+        _judge_client = OpenAI(api_key=config.llm_api_key, base_url=config.llm_base_url)
+    return _judge_client
+
+
 from backend.src.rag.agent_types import AgentMode  # noqa: E402
 from backend.tests.eval.systems import (  # noqa: E402
     GOLDEN_SET_PATH,
@@ -123,6 +137,10 @@ _CACHE_SIGNATURE_KEYS = (
     "RAG_TOP_K",
     "RAG_HYBRID_TOP_K",
     "RAG_EVAL_LIMIT",
+    # Phase 4: decision-provider config changes which path answers, so the
+    # cache must never mix a jev run with a heuristic/llm run.
+    "RAG_DECISION_PROVIDER",
+    "RAG_JEV_ESCALATION_THRESHOLD",
 )
 
 
@@ -143,6 +161,21 @@ METRIC_NAMES = [name for name, _ in METRICS]
 # Faithfulness 0.9 catches grounding slides like the agentic 0.982 -> 0.939 drop.
 FLOORS = {"faithfulness": 0.9, "context_recall": 0.3}
 MAX_DROP = 0.05
+
+# The gate is blocking only when an LLM provider key exists (the judge LLM is
+# unreachable otherwise). With no key, the run is neutral — loudly, via a
+# ::warning:: annotation, never silently green.
+_PROVIDER_KEY_VARS = (
+    "WANDB_API_KEY",
+    "LLM_API_KEY",
+    "OPENROUTER_API_KEY",
+    "TYPESAFE_API_KEY",
+)
+
+
+def _has_provider_key() -> bool:
+    """True when at least one LLM provider key is non-empty in the environment."""
+    return any(os.getenv(var) for var in _PROVIDER_KEY_VARS)
 
 
 def _result_to_dict(r):
@@ -211,7 +244,7 @@ def score_system(results):
         llm=llm_factory(
             model=os.getenv("RAG_JUDGE_MODEL"),
             provider="openai",
-            client=_judge_client,
+            client=_get_judge_client(),
         ),
         embeddings=embeddings,
         batch_size=8,
@@ -342,6 +375,23 @@ def main(argv=None):
         help="restrict the golden set to these categories (e.g. hybrid multi-step)",
     )
     args = parser.parse_args(argv)
+
+    if not _has_provider_key():
+        reason = (
+            "RAGAS eval skipped: no LLM provider key in environment "
+            f"({_PROVIDER_KEY_VARS[0]}, {_PROVIDER_KEY_VARS[1]}, "
+            f"{_PROVIDER_KEY_VARS[2]}, {_PROVIDER_KEY_VARS[3]} all empty) — "
+            "no gate run, results are not regression-checked"
+        )
+        print(f"::warning::{reason}")  # GitHub Actions warning annotation
+        logger.warning(reason)  # loud locally
+        if args.ci:
+            Path(args.out).write_text(
+                json.dumps({"skipped": True, "reason": "no provider key"}, indent=2)
+            )
+            print(f"wrote {args.out} (skipped)")
+        print("GATE NEUTRAL (no provider key)")
+        return 0
 
     golden = (
         _SMOKE_QUERIES
