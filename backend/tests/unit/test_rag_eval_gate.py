@@ -15,6 +15,22 @@ import pytest
 
 pytestmark = pytest.mark.rag
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _stop_ragas_analytics_flusher():
+    """Importing run_ragas imports ragas, whose _analytics module starts a
+    daemon thread doing `time.sleep(1)` in a loop at import time (module-level
+    AnalyticsBatcher singleton, not gated by RAGAS_DO_NOT_TRACK). Left running,
+    it hijacks any later test that patches the process-global time.sleep —
+    e.g. the write-helper backoff tests in CI. Stop it at module teardown."""
+    yield
+    try:
+        from ragas import _analytics
+
+        _analytics._analytics_batcher._running = False
+    except Exception:  # pragma: no cover - ragas not installed / API drift
+        pass
+
 _KEY_VARS = ("WANDB_API_KEY", "LLM_API_KEY", "OPENROUTER_API_KEY", "TYPESAFE_API_KEY")
 
 
