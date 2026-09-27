@@ -6,23 +6,39 @@ Features:
 - Reflexion / self-critique (two-pass: generate → critique → regenerate)
 - Citation grounding verification
 - Structured JSON output
+- Jev (System One) typed decision swaps: score-type confidence, noul
+  sound-gate before critique, optional noul citation verifier. All gated on
+  get_decision_provider(); provider None (default heuristic) keeps the
+  existing LLM path byte-identical.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from opentelemetry import trace as otel_trace
+
 from backend.src.rag.llm_client import get_llm_client, LLMResponse
 from backend.src.rag.retriever import RetrievedChunk
 from backend.src.rag.config import config
+from backend.src.rag.decision_client import (
+    DecisionAnswer,
+    DecisionQuestion,
+    get_decision_provider,
+)
 from backend.src.rag.utils import QueryType
 
 logger = logging.getLogger(__name__)
+
+# decision.* spans (Phase 4) nest under the query's rag.query root span via
+# the same laad.rag tracer agent.py uses.
+_tracer = otel_trace.get_tracer("laad.rag")
 
 _BOLD_HEADING_RE = re.compile(r"^\*{2}.*?\*{2}\s*$", re.MULTILINE)
 _HASH_HEADING_RE = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
@@ -91,6 +107,12 @@ class GeneratedResponse:
     critique_text: Optional[str] = None
     was_revised: bool = False
     cross_encoder_used: bool = False
+    # Summed USD cost of Jev decision calls made during this generation
+    # (None when the decision provider was inactive — kill switch off).
+    decision_cost_usd: Optional[float] = None
+    # Count of Jev→LLM escalations this run (Jev confidence below the
+    # escalation threshold, handed to the existing LLM path).
+    decision_escalations: int = 0
 
 
 SYSTEM_PROMPT = """You are an expert ATM diagnostics assistant for a financial institution.
@@ -244,6 +266,73 @@ def _check_citations(answer: str, chunks: list[RetrievedChunk]) -> float:
     return grounded / total_claims
 
 
+# Ordered score levels for the Jev verbalized-confidence question (0.0..1.0).
+_CONFIDENCE_LEVELS = [f"{level / 10:.1f}" for level in range(10)]
+
+
+def _jev_state(query: str, context: str, answer: str) -> str:
+    """Opaque state string for Jev decision calls (query + context + answer)."""
+    return f"Question:\n{query}\n\nContext:\n{context}\n\nAnswer:\n{answer}"
+
+
+def _record_decision_cost(sink: Optional[list[float]], answer: DecisionAnswer) -> None:
+    """Accumulate one decision call's USD cost into the run's cost sink."""
+    if sink is not None and answer.cost_usd is not None:
+        sink.append(answer.cost_usd)
+
+
+def _emit_decision_span(
+    questions: dict[str, DecisionQuestion],
+    answers: Optional[dict[str, DecisionAnswer]],
+    latency_ms: float,
+    *,
+    escalated: Optional[bool] = None,
+) -> None:
+    """Fire-and-forget decision.jev span for one typed decision call.
+
+    Attributes: decision.provider/model/question_name/type/probability/
+    confidence/cost_usd/latency_ms (+ decision.escalated where the Jev→LLM
+    cascade applies). Tracing failures never break the decision flow.
+    """
+    try:
+        with _tracer.start_as_current_span("decision.jev") as span:
+            span.set_attribute("decision.provider", "jev")
+            span.set_attribute("decision.model", config.jev_model)
+            for name, question in questions.items():
+                span.set_attribute("decision.question_name", name)
+                span.set_attribute("decision.type", question.type)
+                answer = (answers or {}).get(name)
+                if answer is not None:
+                    span.set_attribute(
+                        "decision.probability", float(answer.probability)
+                    )
+                    span.set_attribute("decision.confidence", float(answer.confidence))
+                    if answer.cost_usd is not None:
+                        span.set_attribute("decision.cost_usd", float(answer.cost_usd))
+            if escalated is not None:
+                span.set_attribute("decision.escalated", escalated)
+            span.set_attribute("decision.latency_ms", round(float(latency_ms), 3))
+    except Exception:
+        logger.debug("decision span emission failed", exc_info=True)
+
+
+def _confidence_from_answer(answer: DecisionAnswer) -> float:
+    """SWAP-1 confidence: interpolated legend position when available.
+
+    Score-type answers carry a continuous legend-scale position in
+    raw["score"] (0..len(criteria)-1). Normalizing by (n - 1) is far better
+    calibrated than the top-level-certainty .probability — calibration report
+    score_semantics: ECE 0.397 vs 0.737, accuracy@0.5 0.829 vs 0.049 on the
+    all-pass golden set — so this is the primary reading. Falls back to
+    .probability when the raw score field is missing.
+    """
+    score = answer.raw.get("score") if isinstance(answer.raw, dict) else None
+    if isinstance(score, (int, float)) and len(_CONFIDENCE_LEVELS) > 1:
+        interpolated = float(score) / (len(_CONFIDENCE_LEVELS) - 1)
+        return max(0.0, min(1.0, interpolated))
+    return max(0.0, min(1.0, float(answer.probability)))
+
+
 class RAGGenerator:
     """Generates diagnostic responses using Agentic RAG pattern.
 
@@ -253,6 +342,9 @@ class RAGGenerator:
 
     def __init__(self):
         self.llm_client = get_llm_client()
+        # Kill switch: None (heuristic/llm provider or missing key) keeps the
+        # existing LLM path byte-identical.
+        self.decision_provider = get_decision_provider()
 
     def generate(
         self,
@@ -286,6 +378,11 @@ class RAGGenerator:
         critique = None
         self_consistency_score = None
         samples = []
+        # Per-run sink for Jev decision call costs (never instance state —
+        # the generator is a singleton shared across requests).
+        decision_costs: list[float] = []
+        # Per-run count of Jev→LLM confidence escalations (same singleton rule).
+        escalations: list[int] = []
         if enable_self_consistency:
             self_consistency_score, samples = self._compute_self_consistency(
                 query,
@@ -300,8 +397,8 @@ class RAGGenerator:
             response = self._generate_single(query, context, system_prompt, query_type)
 
         if enable_reflexion and response.text:
-            critique = self._critique_response(
-                query, context, response.text, system_prompt
+            critique = self._critique_with_jev_gate(
+                query, context, response.text, system_prompt, cost_sink=decision_costs
             )
             if critique:
                 response = self._regenerate(
@@ -311,12 +408,25 @@ class RAGGenerator:
         verbalized_confidence = None
         if enable_self_consistency and response.text:
             verbalized_confidence = self._estimate_verbalized_confidence(
-                query, context, response.text, system_prompt
+                query, context, response.text, system_prompt,
+                cost_sink=decision_costs, escalation_sink=escalations,
             )
 
         grounding_score = None
         if enable_citation_grounding and response.text:
             grounding_score = _check_citations(response.text, chunks)
+            # Optional Jev secondary verifier (default OFF: the entity-overlap
+            # check is free and deterministic; Jev adds cost + latency).
+            if self.decision_provider is not None and config.jev_grounding_check:
+                jev_grounded = self._jev_grounding_score(
+                    context, response.text, cost_sink=decision_costs
+                )
+                if jev_grounded is not None:
+                    logger.info(
+                        f"Grounding: entity-overlap={grounding_score:.3f}, "
+                        f"jev={jev_grounded:.3f} (combined=min)"
+                    )
+                    grounding_score = min(grounding_score, jev_grounded)
 
         cross_encoder_used = (
             getattr(chunks[0], "confidence_score", 0) > 0 if chunks else False
@@ -335,6 +445,8 @@ class RAGGenerator:
             critique_text=critique if enable_reflexion else None,
             was_revised=bool(critique),
             cross_encoder_used=cross_encoder_used,
+            decision_cost_usd=sum(decision_costs) if decision_costs else None,
+            decision_escalations=sum(escalations),
         )
 
     def _generate_single(
@@ -440,8 +552,89 @@ class RAGGenerator:
         context: str,
         answer: str,
         system_prompt: str,
+        *,
+        cost_sink: Optional[list[float]] = None,
+        escalation_sink: Optional[list[int]] = None,
     ) -> Optional[float]:
-        """Ask the LLM to rate its own confidence that the answer is supported by context."""
+        """Ask the LLM to rate its own confidence that the answer is supported by context.
+
+        When a Jev decision provider is active, a score-type question answers
+        first (Jev primary). Confidence at or above the escalation threshold is
+        kept; below it — or on any decision failure/missing answer — the
+        existing LLM verbalized-confidence path runs and its result is used
+        (escalation cascade; graceful degradation, never raises into
+        generate()).
+        """
+        provider = self.decision_provider
+        if provider is not None:
+            questions = {
+                "answer_confidence": DecisionQuestion(
+                    name="answer_confidence",
+                    type="score",
+                    instructions=(
+                        "Rate the likelihood that the generated answer is "
+                        "correct and factually supported by the provided "
+                        "log context. A high level means every claim is "
+                        "directly supported by evidence; a low level means "
+                        "claims are unsupported, inferred or wrong."
+                    ),
+                    criteria=_CONFIDENCE_LEVELS,
+                )
+            }
+            t0 = time.perf_counter()
+            try:
+                answers = provider.decide(_jev_state(query, context, answer), questions)
+                latency_ms = (time.perf_counter() - t0) * 1000
+                jev_answer = answers.get("answer_confidence")
+                if jev_answer is not None:
+                    _record_decision_cost(cost_sink, jev_answer)
+                    confidence = _confidence_from_answer(jev_answer)
+                    threshold = config.jev_escalation_threshold
+                    _emit_decision_span(
+                        questions,
+                        answers,
+                        latency_ms,
+                        escalated=confidence < threshold,
+                    )
+                    logger.info(
+                        f"Jev score confidence: {confidence:.3f} "
+                        f"(threshold {threshold:.2f})"
+                    )
+                    if confidence >= threshold:
+                        return round(confidence, 3)
+                    # Jev under-confident → escalate to the LLM path and use
+                    # ITS result instead of Jev's.
+                    logger.debug(
+                        f"Jev confidence {confidence:.3f} below threshold "
+                        f"{threshold:.2f}; escalating to LLM verbalized confidence"
+                    )
+                    if escalation_sink is not None:
+                        escalation_sink.append(1)
+                else:
+                    _emit_decision_span(questions, answers, latency_ms)
+                    logger.warning(
+                        "Jev score answer missing; falling back to LLM verbalized confidence"
+                    )
+            except Exception as e:
+                _emit_decision_span(questions, None, (time.perf_counter() - t0) * 1000)
+                logger.warning(
+                    f"Jev confidence decision failed; falling back to LLM: {e}"
+                )
+        return self._llm_verbalized_confidence(query, context, answer, system_prompt)
+
+    def _llm_verbalized_confidence(
+        self,
+        query: str,
+        context: str,
+        answer: str,
+        system_prompt: str,
+        *,
+        cost_sink: Optional[list[float]] = None,
+    ) -> Optional[float]:
+        """Existing LLM verbalized-confidence path (kill-switch and escalation target).
+
+        cost_sink optionally records the call's real USD cost (eval harnesses).
+        """
         confidence_prompt = f"""Based on the provided log context, rate your confidence that the following answer is fully supported by the context.
 
 Context:
@@ -473,6 +666,9 @@ Return ONLY a single number between 0.0 and 1.0. No explanation."""
                 confidence = float(match.group(1))
                 confidence = max(0.0, min(1.0, confidence))
                 logger.info(f"Verbalized confidence: {confidence:.3f}")
+                llm_cost = getattr(conf_response, "cost_usd", None)
+                if cost_sink is not None and llm_cost is not None:
+                    cost_sink.append(float(llm_cost))
                 return round(confidence, 3)
         except Exception as e:
             logger.warning(f"Verbalized confidence estimation failed: {e}")
@@ -520,6 +716,115 @@ If you find unsupported claims, list each one with:
             return critique_text
         except Exception as e:
             logger.warning(f"Self-critique failed: {e}")
+            return None
+
+    def _critique_with_jev_gate(
+        self,
+        query: str,
+        context: str,
+        answer: str,
+        system_prompt: str,
+        *,
+        cost_sink: Optional[list[float]] = None,
+    ) -> Optional[str]:
+        """Reflexion entry: cheap Jev noul sound-gate before the LLM critique.
+
+        Provider None or decision failure → the existing LLM critique path runs
+        exactly as before. Jev probability >= jev_escalation_threshold means the
+        answer is judged sound → LLM critique skipped entirely (cost win; Jev
+        cannot say WHAT is wrong, so below-threshold answers still get the
+        actionable LLM critique).
+        """
+        provider = self.decision_provider
+        if provider is None:
+            return self._critique_response(query, context, answer, system_prompt)
+        questions = {
+            "response_sound": DecisionQuestion(
+                name="response_sound",
+                type="noul",
+                instructions=(
+                    "Is the response sound and faithful given the provided "
+                    "log context? Answer yes only if every claim in the "
+                    "response is directly supported by the context; answer "
+                    "no if any claim is unsupported, contradicted or wrong."
+                ),
+            )
+        }
+        t0 = time.perf_counter()
+        try:
+            answers = provider.decide(_jev_state(query, context, answer), questions)
+            latency_ms = (time.perf_counter() - t0) * 1000
+            sound_answer = answers.get("response_sound")
+            if sound_answer is not None:
+                _record_decision_cost(cost_sink, sound_answer)
+                probability = sound_answer.probability
+                threshold = config.jev_escalation_threshold
+                _emit_decision_span(questions, answers, latency_ms)
+                logger.info(
+                    f"Jev sound-gate probability: {probability:.3f} "
+                    f"(threshold {threshold:.2f})"
+                )
+                if probability >= threshold:
+                    logger.info(
+                        "Reflexion: Jev judged the answer sound; skipping LLM critique"
+                    )
+                    return None
+            else:
+                _emit_decision_span(questions, answers, latency_ms)
+                logger.warning("Jev noul answer missing; falling back to LLM critique")
+        except Exception as e:
+            _emit_decision_span(questions, None, (time.perf_counter() - t0) * 1000)
+            logger.warning(
+                f"Jev sound-gate decision failed; falling back to LLM critique: {e}"
+            )
+        return self._critique_response(query, context, answer, system_prompt)
+
+    def _jev_grounding_score(
+        self,
+        context: str,
+        answer: str,
+        *,
+        cost_sink: Optional[list[float]] = None,
+    ) -> Optional[float]:
+        """Optional Jev secondary citation verifier (RAG_JEV_GROUNDING_CHECK).
+
+        Returns the noul probability that the citations in the answer are
+        present/supported in the context, or None on failure (caller keeps the
+        free entity-overlap score). Callers must combine conservatively (min).
+        """
+        questions = {
+            "citations_grounded": DecisionQuestion(
+                name="citations_grounded",
+                type="noul",
+                instructions=(
+                    "Are the citations in the answer actually present and "
+                    "supported in the provided log context? Answer yes only "
+                    "if every cited entity (ATM id, error code, anomaly "
+                    "type, correlation id) appears in the context."
+                ),
+            )
+        }
+        t0 = time.perf_counter()
+        try:
+            answers = self.decision_provider.decide(
+                _jev_state("", context, answer), questions
+            )
+            latency_ms = (time.perf_counter() - t0) * 1000
+            grounded_answer = answers.get("citations_grounded")
+            if grounded_answer is None:
+                _emit_decision_span(questions, answers, latency_ms)
+                logger.warning(
+                    "Jev grounding answer missing; keeping entity-overlap score"
+                )
+                return None
+            _record_decision_cost(cost_sink, grounded_answer)
+            _emit_decision_span(questions, answers, latency_ms)
+            return max(0.0, min(1.0, float(grounded_answer.probability)))
+        except Exception as e:
+            _emit_decision_span(questions, None, (time.perf_counter() - t0) * 1000)
+            logger.warning(
+                f"Jev grounding check failed; keeping entity-overlap score: {e}"
+            )
             return None
 
     def _regenerate(
