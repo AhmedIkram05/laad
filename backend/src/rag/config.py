@@ -118,6 +118,36 @@ class RAGConfig:
             self.champion_fallback = True
             self.rate_limit_per_min = 20
 
+        # Jev / System One typed decision client (OpenRouter decision endpoint,
+        # NOT chat completions). Key resolves OPENROUTER_API_KEY first, with
+        # TYPESAFE_API_KEY as the legacy alias that currently holds the key.
+        self.openrouter_api_key: Optional[str] = os.getenv("OPENROUTER_API_KEY") or (
+            os.getenv("TYPESAFE_API_KEY")
+        )
+        self.decision_provider: str = os.getenv(
+            "RAG_DECISION_PROVIDER", "heuristic"
+        ).lower()
+        try:
+            self.jev_model: str = os.getenv("RAG_JEV_MODEL", "typesafe/jev-1.13")
+            self.jev_escalation_threshold: float = float(
+                os.getenv("RAG_JEV_ESCALATION_THRESHOLD", "0.7")
+            )
+            self.jev_timeout_seconds: float = float(
+                os.getenv("RAG_JEV_TIMEOUT_SECONDS", "15")
+            )
+        except (ValueError, TypeError):
+            logger.warning("Invalid Jev config value, using defaults")
+            self.jev_model = "typesafe/jev-1.13"
+            self.jev_escalation_threshold = 0.7
+            self.jev_timeout_seconds = 15.0
+        # Optional Jev secondary citation verifier (default OFF: the
+        # entity-overlap check is free and deterministic; Jev adds cost +
+        # latency per query). After the try/except so a bad numeric env value
+        # above can never skip this assignment.
+        self.jev_grounding_check: bool = (
+            os.getenv("RAG_JEV_GROUNDING_CHECK", "false").lower() == "true"
+        )
+
         self.redis_host: str = os.getenv("REDIS_HOST", "localhost")
         try:
             self.redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
