@@ -90,7 +90,7 @@ flowchart LR
 | **React dashboard** | 9 pages, KPI cards polling every 5s, Chart.js analytics, served via CloudFront in production |
 | **Agentic RAG** | LangGraph assistant with 12 MCP tools and 4-stage reasoning over the same unified data |
 | **SageMaker** | `laad-xgb-champion` (XGBoost 1.7-1, `ml.t2.medium`): 8-class softmax in ~100ms, live-validating detector output |
-| **OpenTelemetry tracing** | Distributed traces across the four Python services — RAG query and event-pipeline golden paths browsable in Jaeger (dev): [docs/observability.md](docs/observability.md) · [docs/demos](docs/demos/) |
+| **OpenTelemetry tracing** | Distributed traces across the four Python services - RAG query and event-pipeline golden paths browsable in Jaeger (dev): [docs/observability.md](docs/observability.md) · [docs/demos](docs/demos/) |
 
 ## Why It's Interesting
 
@@ -98,6 +98,7 @@ flowchart LR
 | --- | --- |
 | **Effectively-once Kafka, without Kafka transactions** | Manual offset commits + a 10K-LRU idempotency filter keyed by `message_id` give at-least-once delivery with effectively-once semantics inside the window. [Deep dive](docs/README-full.md#kafka-message-bus) |
 | **A confidence system that knows when it's wrong** | Four signals fused as an uncertainty-weighted average with static calibrated weights; missing signals are renormalised away, so the assistant degrades gracefully instead of faking certainty. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) |
+| **Typed decisions, not parsed prose** | A System One layer (TypeSafe Jev) answers confidence/critique/intent questions with typed, priced decisions (~$16/1M) - 18× cheaper than parsing confidence out of LLM text, calibrated against human verdicts (83% agreement). [ADR](docs/adr/0004-jev-system-one-decision-layer.md) |
 | **Two models that answer two different questions** | XGBoost classifies the 8 known anomaly classes; the Isolation Forest sidecar separately flags "something is off, but it's not one of the known shapes" - a distinction most anomaly projects skip. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1) |
 | **SageMaker as a cross-check, not a crutch** | Local inference in ~30ms keeps detection independent of the cloud; SageMaker (~100ms) adds an external second opinion per prediction without ever becoming a hard dependency. |
 
@@ -109,7 +110,7 @@ flowchart LR
 | RAG quality (RAGAS, agentic) | faithfulness **0.940** · precision **0.874** · relevancy **0.801** |
 | Throughput | **~100 msgs/sec** sustained on one consumer · **2.5M+** events processed |
 | API surface | **30 endpoints** across 6 routers |
-| Tests gating every PR | **1,846** (1,311 pytest expanded · 495 vitest · 10 Playwright · 30 Terraform) + 26 security checks |
+| Tests gating every PR | **1,974** (1,439 pytest expanded · 495 vitest · 10 Playwright · 30 Terraform) + 26 security checks |
 | Infrastructure | **10 Terraform modules / 114 resources (+6 bootstrap)** on AWS: ECS Fargate, RDS, SageMaker, CloudFront, VPC |
 | Inference latency | local ~30ms · SageMaker cross-check ~100ms |
 
@@ -117,11 +118,13 @@ flowchart LR
 
 ## AI - detection & diagnostics
 
-- **3-layer detector** - XGBoost 8-class classifier at **99.0% CV accuracy (temporal-holdout macro-F1 0.94; 0.93 macro-F1 on a held-out second generator configuration — different seed, shifted class mix)** plus an Isolation Forest sidecar (**94.0% precision**, 0.78 AUC-ROC) for out-of-class novelty, Z-score drift detection, and always-on heuristics. SageMaker (`ml.t2.medium`) validates predictions live. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1)
+- **3-layer detector** - XGBoost 8-class classifier at **99.0% CV accuracy (temporal-holdout macro-F1 0.94; 0.93 macro-F1 on a held-out second generator configuration - different seed, shifted class mix)** plus an Isolation Forest sidecar (**94.0% precision**, 0.78 AUC-ROC) for out-of-class novelty, Z-score drift detection, and always-on heuristics. SageMaker (`ml.t2.medium`) validates predictions live. [Deep dive](docs/README-full.md#3-layer-anomaly-detection-engine-1)
 - **Agentic Hybrid RAG** - True-hybrid retrieval (dense `nomic-embed-text` + BM25 sparse → RRF k=60 → temporal boost → cross-encoder `ms-marco-MiniLM-L-2-v2`), LangGraph with 12 MCP tools, 4-stage reasoning, and 4-signal confidence fusion via uncertainty-weighted averaging (static calibrated weights). RAGAS-evaluated (agentic): **faithfulness 0.940, precision 0.874, relevancy 0.801**. [Deep dive](docs/README-full.md#agentic-hybrid-rag-diagnostic-assistant-1) · [Evaluation data](docs/eval/) · [Per-system numbers](docs/eval/baseline.json)
   - *Hybrid retrieval* = dense + BM25 fused via RRF inside `search_knowledge` (both modes). *Hybrid mode* = deterministic planner (`search_knowledge` + ≤1 structured tool, 0 planning LLM calls, never retries). *Agentic mode* = free-form tool loop with grounding-gated retry (<0.6).
 
   <video src="https://github.com/user-attachments/assets/aad8a189-0d2e-4de0-9a8f-ff04e8dc6ba3" title="Diagnostic assistant chat interface with example queries" controls></video>
+
+- **System One (Jev) decision layer** - TypeSafe Jev makes the assistant's confidence, critique, and intent decisions as **typed answers** (~$16 per 1M decisions): **18× cheaper than LLM text judging** with better calibration, agreeing with human-verified golden labels on 83% of judgments at the tuned threshold, and a confidence-threshold cascade that keeps well-calibrated answers on the cheap path, hands off to the LLM below threshold, and degrades to the existing pipeline on any decision failure. [ADR](docs/adr/0004-jev-system-one-decision-layer.md) · [Benchmark](backend/tests/eval/decision_benchmark_report.json)
 
 - **MLOps** - MLflow on AWS (RDS + S3), 7 artifacts per run, champion aliases, auto-retrain when artifacts go missing or corrupt. [Deep dive](docs/README-full.md#ml-training--mlops)
 
@@ -143,7 +146,7 @@ flowchart LR
 
 ## Observability - Distributed Traces
 
-Every RAG query and every synthetic event can be followed end-to-end across services with [OpenTelemetry](https://opentelemetry.io): FastAPI → MCP tools → LLM → Redis/DB on the query path, generator → Kafka → consumer → detection on the pipeline path — W3C trace context propagates through Kafka message headers, so **one trace spans four services**.
+Every RAG query and every synthetic event can be followed end-to-end across services with [OpenTelemetry](https://opentelemetry.io): FastAPI → MCP tools → LLM → Redis/DB on the query path, generator → Kafka → consumer → detection on the pipeline path - W3C trace context propagates through Kafka message headers, so **one trace spans four services**.
 
 **Trace walkthrough** - RAG query path → confidence gate → event pipeline:
 
@@ -163,7 +166,7 @@ The gate close-up is the one worth pausing on - it's the same confidence machine
 | ML inference | SageMaker endpoint deployed from the MLflow `champion` alias - model saved as JSON for the XGBoost 1.7-1 container |
 | Secrets & IAM | Secrets Manager injected straight into ECS task definitions (no `.env` files); least-privilege role per service; GitHub → AWS via OIDC, zero long-lived keys |
 
-- **Quality gates** - **1,846 tests** (base 1,802) gating every PR (1,311 pytest expanded [1,267 base + 44 param] across 10 tiers · 495 vitest · 10 Playwright E2E · 30 Terraform runs [104 asserts]), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
+- **Quality gates** - **1,974 tests** (base 1,930) gating every PR (1,439 pytest expanded [1,267 base + 44 param + 128 decision-layer & eval-gate] across 10 tiers · 495 vitest · 10 Playwright E2E · 30 Terraform runs [104 asserts]), plus 26 security checks. [Deep dive](docs/README-full.md#testing--quality)
 
   <video src="https://github.com/user-attachments/assets/4664af25-f549-45d1-9333-0391a051f27d" title="Quality gates tour: CI matrix, CD, Terraform plan/apply, pytest 1288 passed, vitest 495/55 suites, E2E 10, stress 8" controls></video>
 - **Frontend** - React 19 + Vite + Tailwind v4: 9 pages, KPI cards polling every 5s, Chart.js analytics, shipped as a ~25MB nginx image. [Deep dive](docs/README-full.md#frontend-architecture)
@@ -194,7 +197,7 @@ make all   # everything in Docker: frontend, API, Kafka, detection, RAG
 
 Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `:5434`. Default login `admin`/`admin`. [Configuration reference](docs/configuration.md)
 
-> **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 1,311-backend-test expanded count (1,267 base + 44 param) materializes when all extras are present ([ci.yml](.github/workflows/ci.yml)).
+> **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 1,439-backend-test expanded count (1,395 base + 44 param) materializes when all extras are present ([ci.yml](.github/workflows/ci.yml)).
 
 ## Documentation
 
@@ -203,7 +206,7 @@ Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `
 
 ## About This Project
 
-Started as the CS32002 Industrial Team Project at the University of Dundee, built for **NCR Atleos** (team foundation: rule-based detection and a single-script generator). The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,846-test suite, the 30-endpoint API, and the entire AWS estate above were designed, built, and deployed by **Ahmed Ikram** as an independent post-submission extension. [Team breakdown](docs/README-full.md#team)
+Started as the CS32002 Industrial Team Project at the University of Dundee, built for **NCR Atleos** (team foundation: rule-based detection and a single-script generator). The Kafka pipeline, 3-layer ML detection, MLOps, the agentic RAG assistant, the 1,974-test suite, the 30-endpoint API, and the entire AWS estate above were designed, built, and deployed by **Ahmed Ikram** as an independent post-submission extension. [Team breakdown](docs/README-full.md#team)
 
 ## Related Projects
 
