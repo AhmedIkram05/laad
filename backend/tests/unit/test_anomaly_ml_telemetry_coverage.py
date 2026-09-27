@@ -28,6 +28,40 @@ class TestTelemetry:
         d = rec.to_dict()
         assert d["mode"] == "agentic" and d["est_cost"] == rec.est_cost
 
+    def test_est_cost_uses_real_cost_when_reported(self):
+        from backend.src.rag.telemetry import TraceRecord
+
+        rec = TraceRecord(model_calls=3, cost_usd=0.5)
+        assert rec.est_cost == pytest.approx(0.5)
+
+    def test_est_cost_falls_back_to_estimate_without_cost(self):
+        from backend.src.rag.telemetry import TraceRecord
+
+        rec = TraceRecord(model_calls=3)
+        assert rec.est_cost == pytest.approx(3 * 0.0004)
+
+    def test_provider_and_cost_in_dict_and_from_trace(self):
+        from backend.src.rag.telemetry import TraceRecord, _from_trace
+
+        rec = _from_trace({"provider": "openrouter", "cost_usd": 0.0012})
+        assert rec.provider == "openrouter"
+        assert rec.cost_usd == pytest.approx(0.0012)
+        d = rec.to_dict()
+        assert d["provider"] == "openrouter"
+        assert d["cost_usd"] == pytest.approx(0.0012)
+        assert TraceRecord().provider is None and TraceRecord().cost_usd is None
+
+    def test_aggregate_mixes_real_and_estimated_cost(self):
+        from backend.src.rag.telemetry import TraceRecord, aggregate
+
+        out = aggregate(
+            [
+                TraceRecord(model_calls=2, cost_usd=0.4),
+                TraceRecord(model_calls=2),  # 0.0008 estimated
+            ]
+        )
+        assert out["total_est_cost"] == pytest.approx(0.4 + 2 * 0.0004)
+
     def test_from_trace_defaults(self):
         from backend.src.rag.telemetry import _from_trace
 
