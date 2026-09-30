@@ -1,5 +1,11 @@
 name: Continuous Deployment
 
+# AWS master switch: the cloud-backed deploy jobs below are gated on the
+# AWS_DEPLOY_ENABLED repo variable. The AWS OIDC role (AWS_ROLE_ARN) is
+# currently dead — sts:AssumeRoleWithWebIdentity is not authorized — so every
+# deploy red-fails at the credentials step. Set the variable to true to
+# restore deploys; unset/false keeps them skipped (grey, not red).
+
 on:
   workflow_dispatch:
     inputs:
@@ -58,7 +64,7 @@ jobs:
   # ── Deploy backend: Docker → ECR → ECS ─────────────────────────────
   deploy-backend:
     needs: should-deploy
-    if: needs.should-deploy.outputs.deploy == 'true'
+    if: vars.AWS_DEPLOY_ENABLED == 'true' && needs.should-deploy.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -166,7 +172,7 @@ jobs:
   # ── Deploy frontend: npm build → S3 → CloudFront (parallel to backend) ─
   deploy-frontend:
     needs: should-deploy
-    if: needs.should-deploy.outputs.deploy == 'true'
+    if: vars.AWS_DEPLOY_ENABLED == 'true' && needs.should-deploy.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write

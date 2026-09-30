@@ -20,6 +20,11 @@ jobs:
   # ── Plan: lint + validate + security scan + plan ──────────────────
   plan:
     name: Plan
+    # Master switch: the AWS OIDC role (AWS_ROLE_ARN) is currently dead —
+    # sts:AssumeRoleWithWebIdentity is not authorized — so the plan red-fails
+    # on every PR/push. Set the AWS_DEPLOY_ENABLED repo variable to true to
+    # restore; unset/false keeps this skipped (grey, not red).
+    if: vars.AWS_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -143,7 +148,7 @@ jobs:
   apply:
     name: Apply
     needs: plan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: vars.AWS_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
