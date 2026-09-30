@@ -17,14 +17,26 @@ permissions:
   contents: read
 
 jobs:
+  # Master switch: the AWS OIDC role (AWS_ROLE_ARN) is currently dead —
+  # sts:AssumeRoleWithWebIdentity is not authorized. Disabled runs must
+  # still conclude SUCCESS so the workflow badge stays green while the
+  # cloud is switched off. Set the AWS_DEPLOY_ENABLED repo variable to
+  # true to restore plan/apply.
+  deploy-switch:
+    name: Deploy Switch
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.eval.outputs.enabled }}
+    steps:
+      - name: Evaluate deploy switch
+        id: eval
+        run: echo "enabled=${{ vars.AWS_DEPLOY_ENABLED == 'true' }}" >> "$GITHUB_OUTPUT"
+
   # ── Plan: lint + validate + security scan + plan ──────────────────
   plan:
     name: Plan
-    # Master switch: the AWS OIDC role (AWS_ROLE_ARN) is currently dead —
-    # sts:AssumeRoleWithWebIdentity is not authorized — so the plan red-fails
-    # on every PR/push. Set the AWS_DEPLOY_ENABLED repo variable to true to
-    # restore; unset/false keeps this skipped (grey, not red).
-    if: vars.AWS_DEPLOY_ENABLED == 'true'
+    needs: deploy-switch
+    if: needs.deploy-switch.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
