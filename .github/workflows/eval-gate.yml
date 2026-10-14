@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Fail-closed setup (no provider key -> neutral)
         if: env.WANDB_API_KEY == '' && env.OPENROUTER_API_KEY == ''
