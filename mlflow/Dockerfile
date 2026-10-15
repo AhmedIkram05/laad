@@ -1,5 +1,5 @@
 # Custom MLflow image with PostgreSQL and AWS S3 dependencies
-FROM ghcr.io/mlflow/mlflow:v3.1.1
+FROM ghcr.io/mlflow/mlflow:v3.17.1
 
 # Install PostgreSQL driver (psycopg2-binary) and AWS SDK (boto3)
 # These are required for:
