@@ -25,6 +25,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.js"],
     include: ["src/**/*.{test,spec}.{js,jsx}"],
+    // Heavier per-file jsdom environments under parallel load on CI runners
+    // push borderline waitFor tests past the 5s default.
+    testTimeout: 15000,
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary", "lcov"],
