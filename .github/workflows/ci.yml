@@ -164,7 +164,7 @@ jobs:
             --cov=backend/src --cov-report=term-missing --cov-report=xml:coverage-backend.xml
 
       - name: Upload backend coverage
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: coverage-backend.xml
           flags: backend
@@ -195,7 +195,7 @@ jobs:
         working-directory: frontend
 
       - name: Upload frontend coverage
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: frontend/coverage/lcov.info
           flags: frontend
