@@ -22,6 +22,17 @@ updates:
       # pins mcp<2.0.0. Revisit when upstream supports 2.x.
       - dependency-name: "mcp"
         update-types: ["version-update:semver-major"]
+      # These majors require Python >=3.11 (numpy 2.5.x requires >=3.12),
+      # but backend CI builds on Python 3.10. Revisit after the Python
+      # upgrade lands.
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "scikit-learn"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pandas"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pyarrow"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-patch:
         update-types: ["minor", "patch"]
