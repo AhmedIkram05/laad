@@ -84,7 +84,7 @@ Wire `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL` into `docker-compose.yml` `backend
 - `langchain-ollama>=1.1.0` → `langchain-core>=1.2.21` (now **hard-depends on the separate `ollama` PyPI SDK** — `langchain_ollama.embeddings` imports `from ollama import AsyncClient, Client`)
 - `langchain-experimental>=0.4.2` → `langchain-core>=1.4.0`, `langchain-community>=0.4.2`
 - `ragas>=0.4.3` → pulls `datasets>=4.0.0`, `pydantic>=2.0.0`, `openai>=1.0.0`, `langchain`, `langchain-community`, `langchain_openai`
-- `mcp>=2.0.0` → requires **Python ≥3.10** — backend Dockerfile is `python:3.10-slim` ✓ compatible
+- `mcp>=2.0.0` → requires **Python ≥3.10** — backend Dockerfile is `python:3.14-slim` ✓ compatible
 
 **chroma_buffer verdict (re-verify done — survives the bump):**
 

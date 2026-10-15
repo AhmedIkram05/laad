@@ -1405,7 +1405,7 @@ make test-terraform    # Terraform test (30 runs, 104 asserts)
 
 ### Prerequisites
 
-- Python 3.10+ (runtime only, all services run in Docker)
+- Python 3.14 (runtime only, all services run in Docker)
 - Docker + Docker Compose
 - Node.js v16+ and npm (for frontend dev)
 
