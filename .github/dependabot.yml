@@ -17,6 +17,11 @@ updates:
       - "python"
     commit-message:
       prefix: "chore"
+    ignore:
+      # mcp 2.x is not installable: langchain-mcp-adapters (0.3.x, latest)
+      # pins mcp<2.0.0. Revisit when upstream supports 2.x.
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-patch:
         update-types: ["minor", "patch"]
