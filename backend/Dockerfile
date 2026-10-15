@@ -27,7 +27,7 @@ RUN groupadd --gid 1000 appgroup && \
     useradd --uid 1000 --gid appgroup --create-home --shell /bin/bash appuser
 
 # Copy installed Python packages from the builder stage
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 WORKDIR /app
