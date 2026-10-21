@@ -2,9 +2,9 @@ python-dateutil>=2.9.0.post0
 pytest>=7.0.0
 fastapi>=0.95.0
 uvicorn>=0.22.0
-bcrypt>=4.0.1
+bcrypt>=5.0.0
 PyJWT>=2.8.0
-python-multipart>=0.0.6
+python-multipart>=0.0.32
 httpx>=0.28.1
 apscheduler>=3.11.3
 psycopg2-binary>=2.9.13
@@ -22,7 +22,7 @@ cryptography>=49.0.0,<50  # mlflow 3.x pins cryptography<50; PYSEC-2026-3552 (pk
 langchain>=1.4.4
 langchain-core>=1.6.10
 langchain-ollama>=1.1.0
-langchain-openai>=1.7.1
+langchain-openai>=1.7.2
 # openai pinned <3: instructor (via ragas) requires openai<3.0.0,>=2.0.0
 # while langchain-openai allows <4 — unpinned, pip backtracks 3.19→2.x (~19min).
 # Proven working in .venv: 2.54.0
