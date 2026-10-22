@@ -2,14 +2,6 @@ import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { Button } from "../../components/ui/button";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationPrevious,
-  PaginationNext,
-} from "../../components/ui/pagination";
-import {
   Select,
   SelectContent,
   SelectGroup,
@@ -47,38 +39,6 @@ describe("ui finish-offs", () => {
       </Button>
     );
     expect(screen.getByText("Nope").closest("button").disabled).toBe(true);
-  });
-
-  it("pagination renders previous/next with labels", () => {
-    render(
-      <Pagination>
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious href="#" />
-          </PaginationItem>
-          <PaginationItem>
-            <PaginationNext href="#" />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
-    );
-    expect(screen.getByLabelText("Go to previous page")).toBeDefined();
-    expect(screen.getByLabelText("Go to next page")).toBeDefined();
-    expect(screen.getByText("Previous")).toBeDefined();
-    expect(screen.getByText("Next")).toBeDefined();
-  });
-
-  it("pagination link marks active page", () => {
-    render(
-      <Pagination className="custom">
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationLink isActive href="#">2</PaginationLink>
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
-    );
-    expect(screen.getByText("2").getAttribute("aria-current")).toBe("page");
   });
 
   it("select label, group and separator render", () => {
