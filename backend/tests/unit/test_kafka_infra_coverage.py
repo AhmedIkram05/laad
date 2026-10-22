@@ -997,7 +997,7 @@ class TestSmallRagModules:
             c = cfg_mod.RAGConfig()
             assert c.chroma_port == 8001 and c.redis_port == 6379
             assert c.retrieval_top_k == 10
-        with patch.dict("os.environ", {"ENV": "production"}):
+        with patch.dict("os.environ", {"LAAD_ENV": "production"}):
             assert cfg_mod.RAGConfig().is_production is True
         with patch.dict("os.environ", {"LLM_API_KEY": "k"}):
             assert cfg_mod.RAGConfig().is_configured is True
