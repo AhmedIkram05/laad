@@ -22,12 +22,7 @@ class AtmAppParser(EventDataParser):
         payload_obj = None
         if not line:
             raise ValueError("empty line")
-        # Accept either a JSON object or a line with trailing commas etc.
-        try:
-            payload_obj = json.loads(line)
-        except Exception:
-            # Try to be permissive: sometimes tests pass dicts via str()
-            raise
+        payload_obj = json.loads(line)
 
         # Normalise timestamp
         ts = parse_to_utc_iso(payload_obj.get("timestamp"))

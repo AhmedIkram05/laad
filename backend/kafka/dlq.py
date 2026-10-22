@@ -91,7 +91,7 @@ def process_dlq_batch(batch_size: int = 10) -> int:
         if not messages:
             return 0
 
-        for stream_name, entries in messages:
+        for _, entries in messages:
             for message_id, fields in entries:
                 retry_count = int(fields.get("retry_count", 0))
                 status = fields.get("status", "pending")

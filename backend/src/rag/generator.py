@@ -258,7 +258,7 @@ def _check_citations(answer: str, chunks: list[RetrievedChunk]) -> float:
     chunk_text = " ".join(c.text for c in chunks).lower()
     grounded = 0
 
-    for category, entities in cited.items():
+    for _, entities in cited.items():
         for entity in entities:
             if entity.lower() in chunk_text:
                 grounded += 1
@@ -408,8 +408,12 @@ class RAGGenerator:
         verbalized_confidence = None
         if enable_self_consistency and response.text:
             verbalized_confidence = self._estimate_verbalized_confidence(
-                query, context, response.text, system_prompt,
-                cost_sink=decision_costs, escalation_sink=escalations,
+                query,
+                context,
+                response.text,
+                system_prompt,
+                cost_sink=decision_costs,
+                escalation_sink=escalations,
             )
 
         grounding_score = None

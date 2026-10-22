@@ -103,6 +103,16 @@ describe("AnomalyListPage branches", () => {
     expect(screen.getByText("3h ago")).toBeDefined();
   });
 
+  it("falls back to Unknown for an invalid detected_at", async () => {
+    await renderList(makeFetch({
+      anomalies: [
+        anomaly({ id: 1, title: "BadDate", detected_at: "not-a-date" }),
+      ],
+    }));
+    await screen.findByText("BadDate");
+    expect(screen.getByText("Unknown")).toBeDefined();
+  });
+
   it("filters list via search query", async () => {
     await renderList(makeFetch({
       anomalies: [

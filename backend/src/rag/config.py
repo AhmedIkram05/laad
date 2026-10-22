@@ -173,7 +173,7 @@ class RAGConfig:
     @property
     def is_production(self) -> bool:
         """Check if running in production mode."""
-        return os.getenv("ENV", "development") == "production"
+        return os.getenv("LAAD_ENV", "development") == "production"
 
 
 config = RAGConfig()

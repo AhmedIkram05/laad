@@ -77,9 +77,7 @@ def load_offline_dataset(path: Path | None = None) -> list[dict]:
     """Load a pre-generated training dataset from disk."""
     data_path = path or TRAINING_DATA
     if not data_path.exists():
-        log.warning(
-            "Offline training dataset not found at %s — skipping", data_path
-        )
+        log.warning("Offline training dataset not found at %s — skipping", data_path)
         return []
     with open(data_path) as f:
         rows = [
@@ -237,7 +235,7 @@ def _build_windows(
     labels: list[str | None] = []
     times: list[datetime] = []
 
-    for entity_id, entity_rows in atm_groups.items():
+    for _, entity_rows in atm_groups.items():
         if len(entity_rows) < 5:
             continue
         entity_rows.sort(key=lambda r: r["timestamp"])
@@ -440,7 +438,11 @@ def train() -> None:
                 f"· balanced accuracy: {balanced_acc:.3f}"
             )
             report = classification_report(
-                y_tr, y_pred_cv, target_names=le.classes_, output_dict=True, zero_division=0
+                y_tr,
+                y_pred_cv,
+                target_names=le.classes_,
+                output_dict=True,
+                zero_division=0,
             )
             for cls, metrics in report.items():
                 if isinstance(metrics, dict):
@@ -487,7 +489,9 @@ def train() -> None:
             ).tolist()
             with open(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json", "w") as f:
                 json.dump({"classes": le.classes_.tolist(), "matrix": cm_t}, f)
-            mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json"))
+            mlflow.log_artifact(
+                str(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json")
+            )
 
         # Refit champion on ALL windows — shipped model behavior unchanged.
         clf.fit(X_all, y, sample_weight=sample_weights)
@@ -643,7 +647,9 @@ def train() -> None:
             IF_MODEL_NAME, "champion", version=str(if_reg.version)
         )
 
-        macro_txt = f", held-out macro-F1={macro_f1:.3f}" if macro_f1 is not None else ""
+        macro_txt = (
+            f", held-out macro-F1={macro_f1:.3f}" if macro_f1 is not None else ""
+        )
         temporal_txt = (
             f", temporal macro-F1={temporal_f1:.3f}" if temporal_f1 is not None else ""
         )

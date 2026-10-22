@@ -90,6 +90,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const formatTime = (ts) => {
     try {
       const diff = Math.floor((now - new Date(ts)) / 60000);
+      if (Number.isNaN(diff)) return "Unknown";
       if (diff < 1) return "Just now";
       if (diff < 60) return `${diff}m ago`;
       return `${Math.floor(diff / 60)}h ago`;
