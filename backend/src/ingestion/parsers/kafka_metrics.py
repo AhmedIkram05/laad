@@ -17,10 +17,7 @@ class KafkaMetricsParser(MetricDataParser):
     def parse_line(self, line: str) -> Optional[Dict[str, Any]]:
         if not line:
             raise ValueError("empty line")
-        try:
-            obj = json.loads(line)
-        except Exception:
-            raise
+        obj = json.loads(line)
 
         ts = parse_to_utc_iso(obj.get("timestamp"))
         if not ts:
