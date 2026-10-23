@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections import defaultdict
@@ -134,21 +135,30 @@ async def _run_champion_query(
             agent_result.get("error") or "no sources",
         )
         return None
-    user_id = _get_user_id_from_username(current_user.get("sub", ""))
-    query_id = _save_query_history(
+    # Postgres/Redis persistence below blocks; offload it from the event loop.
+    user_id = await asyncio.to_thread(
+        _get_user_id_from_username, current_user.get("sub", "")
+    )
+    query_id = await asyncio.to_thread(
+        _save_query_history,
         user_id=user_id,
         query=query,
         answer=agent_result["answer"],
         uncertainty_score=agent_result.get("uncertainty_score", 0.5),
     )
     if query_id is None:
-        query_id = _save_query_history_fallback(
+        query_id = await asyncio.to_thread(
+            _save_query_history_fallback,
             query=query,
             answer=agent_result["answer"],
             uncertainty_score=agent_result.get("uncertainty_score", 0.5),
         )
-    _save_agent_trace(query_id, agent_result.get("agent_trace"))
-    set_cached_response(sanitized_query, {**agent_result, "query_id": query_id})
+    await asyncio.to_thread(
+        _save_agent_trace, query_id, agent_result.get("agent_trace")
+    )
+    await asyncio.to_thread(
+        set_cached_response, sanitized_query, {**agent_result, "query_id": query_id}
+    )
     return RAGQueryResponse(
         query_id=query_id,
         answer=agent_result["answer"],
@@ -395,7 +405,10 @@ async def query(
             if champion_result is not None:
                 return champion_result
 
-        return _run_legacy_query(
+        # Legacy path blocks on retriever/LLM/Postgres/Redis I/O; run it off
+        # the event loop.
+        return await asyncio.to_thread(
+            _run_legacy_query,
             query=request.query,
             sanitized_query=sanitized_query,
             query_type=query_type,
@@ -806,42 +819,52 @@ async def _handle_stats_query(
             base_where += " AND anomaly_type = %s"
             params.append(anomaly_type)
 
-        with get_cursor() as cur:
-            cur.execute(f"SELECT COUNT(*) as total FROM anomalies {base_where}", params)
-            total = cur.fetchone()["total"]
+        def _fetch_stats():
+            with get_cursor() as cur:
+                cur.execute(
+                    f"SELECT COUNT(*) as total FROM anomalies {base_where}", params
+                )
+                total = cur.fetchone()["total"]
 
-            cur.execute(
-                f"""SELECT anomaly_type, COUNT(*) as count FROM anomalies {base_where}
-                    AND anomaly_type IS NOT NULL GROUP BY anomaly_type ORDER BY count DESC""",
-                params,
-            )
-            by_type = {row["anomaly_type"]: row["count"] for row in cur.fetchall()}
+                cur.execute(
+                    f"""SELECT anomaly_type, COUNT(*) as count FROM anomalies {base_where}
+                        AND anomaly_type IS NOT NULL GROUP BY anomaly_type ORDER BY count DESC""",
+                    params,
+                )
+                by_type = {row["anomaly_type"]: row["count"] for row in cur.fetchall()}
 
-            cur.execute(
-                f"""SELECT atm_id, COUNT(*) as count FROM anomalies {base_where}
-                    AND atm_id IS NOT NULL GROUP BY atm_id ORDER BY count DESC""",
-                params,
-            )
-            by_atm = {row["atm_id"]: row["count"] for row in cur.fetchall()}
+                cur.execute(
+                    f"""SELECT atm_id, COUNT(*) as count FROM anomalies {base_where}
+                        AND atm_id IS NOT NULL GROUP BY atm_id ORDER BY count DESC""",
+                    params,
+                )
+                by_atm = {row["atm_id"]: row["count"] for row in cur.fetchall()}
 
-            cur.execute(
-                f"""SELECT severity, COUNT(*) as count FROM anomalies {base_where}
-                    AND severity IS NOT NULL GROUP BY severity""",
-                params,
-            )
-            by_severity = {row["severity"]: row["count"] for row in cur.fetchall()}
+                cur.execute(
+                    f"""SELECT severity, COUNT(*) as count FROM anomalies {base_where}
+                        AND severity IS NOT NULL GROUP BY severity""",
+                    params,
+                )
+                by_severity = {row["severity"]: row["count"] for row in cur.fetchall()}
 
-            cur.execute(
-                f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1",
-                params,
-            )
-            active = cur.fetchone()["active"]
+                cur.execute(
+                    f"SELECT COUNT(*) as active FROM anomalies {base_where} AND is_active = 1",
+                    params,
+                )
+                active = cur.fetchone()["active"]
 
-            cur.execute(
-                f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0",
-                params,
-            )
-            resolved = cur.fetchone()["resolved"]
+                cur.execute(
+                    f"SELECT COUNT(*) as resolved FROM anomalies {base_where} AND is_active = 0",
+                    params,
+                )
+                resolved = cur.fetchone()["resolved"]
+
+            return total, by_type, by_atm, by_severity, active, resolved
+
+        # Five Postgres aggregates block; run the cursor block off the event loop.
+        total, by_type, by_atm, by_severity, active, resolved = await asyncio.to_thread(
+            _fetch_stats
+        )
 
         answer_lines = [
             f"Total anomalies: {total}",

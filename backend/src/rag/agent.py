@@ -821,7 +821,10 @@ async def run_agent_query(
             tools_s = sum(c.duration_s for c in trace.tool_calls)
 
             t_gen = time.perf_counter()
-            response, uncertainty, chunks = _generate(query, atm_id, evidence, top_k)
+            # _generate blocks on LLM/Chroma I/O; keep it off the event loop.
+            response, uncertainty, chunks = await asyncio.to_thread(
+                _generate, query, atm_id, evidence, top_k
+            )
             generation_s = time.perf_counter() - t_gen
             # Decision-layer escalation count on the root span (getattr: test
             # fakes return duck-typed responses without the field).
@@ -865,8 +868,8 @@ async def run_agent_query(
                 planning_s += time.perf_counter() - t_graph2
                 tools_s = sum(c.duration_s for c in trace.tool_calls)
                 t_gen2 = time.perf_counter()
-                response, uncertainty, chunks = _generate(
-                    query, atm_id, evidence, top_k
+                response, uncertainty, chunks = await asyncio.to_thread(
+                    _generate, query, atm_id, evidence, top_k
                 )
                 generation_s += time.perf_counter() - t_gen2
                 span.set_attribute(
