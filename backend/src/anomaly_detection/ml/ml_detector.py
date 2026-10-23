@@ -682,7 +682,6 @@ class MLAnomalyDetector:
 
         # Also extract global features for Z-score baseline (all data combined)
         global_features = extract_features(rows).reshape(1, -1)
-        self._baseline.update(global_features.flatten())
 
         # Most frequent ATM for ZSCORE UNKNOWN attribution
         # NOTE: Z-score is a global detector — it can't identify the culprit entity.
@@ -832,6 +831,10 @@ class MLAnomalyDetector:
                         n_deviating,
                         attributed_atm,
                     )
+
+        # Update the baseline only after scoring: the current window must not
+        # be part of its own reference history, or sustained anomalies normalize.
+        self._baseline.update(global_features.flatten())
 
         # ─────────────────────────────────────────────────────────────────────────
         # Layer 3: HEURISTIC DETECTION (Final fallback — deterministic)
