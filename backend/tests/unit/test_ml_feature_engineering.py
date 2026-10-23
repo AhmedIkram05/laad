@@ -35,6 +35,42 @@ class TestExtractFeatures:
         assert feat.shape == (len(FEATURE_NAMES),)
         assert np.allclose(feat, 0.0)
 
+    def test_dirty_cpu_metric_does_not_nan_the_feature_vector(self):
+        # A non-numeric metric_value coerces to NaN; when that metric has only
+        # bad rows the whole feature used to go NaN and kill per-entity detection.
+        rows = [
+            {
+                "source": "PROMETHEUS",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": "process_cpu_usage",
+                "metric_value": "N/A",
+                "event_type": "METRIC",
+                "severity": "INFO",
+                "raw_payload": {},
+            }
+            for _ in range(3)
+        ]
+        feat = extract_features(rows)
+        assert not np.isnan(feat).any(), "dirty metric must not poison the vector"
+        assert feat[FEATURE_NAMES.index("cpu_usage_max")] == 0.0
+
+    def test_dirty_restart_metric_does_not_nan_the_feature_vector(self):
+        rows = [
+            {
+                "source": "PROMETHEUS",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": "container/restart_count",
+                "metric_value": "corrupt",
+                "event_type": "METRIC",
+                "severity": "INFO",
+                "raw_payload": {},
+            }
+            for _ in range(3)
+        ]
+        feat = extract_features(rows)
+        assert not np.isnan(feat).any(), "dirty metric must not poison the vector"
+        assert feat[FEATURE_NAMES.index("container_restart_max")] == 0.0
+
     def test_string_payload_parsed_transparently(self):
         rows = [
             {

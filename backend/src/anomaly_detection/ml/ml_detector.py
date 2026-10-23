@@ -708,7 +708,12 @@ class MLAnomalyDetector:
                         features_if = features_scaled[:, self._if_feature_indices]
                     else:
                         features_if = features_scaled
-                except Exception:
+                except Exception as e:
+                    log.warning(
+                        "ML[%s]: feature extraction/inference failed, entity skipped: %s",
+                        entity_id,
+                        e,
+                    )
                     continue
 
                 is_anomaly = self._iso.predict(features_if)[0] == -1

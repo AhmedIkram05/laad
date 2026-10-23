@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta, timezone
@@ -840,3 +842,33 @@ class TestRollingBaseline:
         # max_z is the full 10.0 deviation, not the self-dampened ~4.6 the
         # old update-first order produced.
         assert zscore_saves[0]["max_z_score"] == 10.0
+
+
+class TestPerEntityFailureLogging:
+    def test_failed_entity_logs_warning_and_cycle_continues(self, caplog):
+        detector = MLAnomalyDetector()
+        detector._loaded = True
+        rows = [
+            {
+                "source": "PROMETHEUS",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": "process_cpu_usage",
+                "metric_value": 55.0,
+                "event_type": "METRIC",
+                "severity": "INFO",
+                "raw_payload": {},
+            }
+        ] * 6
+
+        with patch.object(detector, "_query_window", return_value=(rows, None, None)):
+            with patch.object(detector, "_scaler") as mock_scaler:
+                mock_scaler.transform.side_effect = ValueError("Input contains NaN")
+                with patch.object(detector, "_detect_heuristic", return_value=[]):
+                    with patch.object(detector, "_is_active", return_value=True):
+                        with caplog.at_level(logging.WARNING):
+                            saved = detector.detect_and_save()
+
+        warnings = [r for r in caplog.records if "ATM-GB-0001" in r.getMessage()]
+        assert warnings, "per-entity failure must be logged with the entity id"
+        assert any("Input contains NaN" in r.getMessage() for r in warnings)
+        assert saved == 0

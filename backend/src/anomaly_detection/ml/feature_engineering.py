@@ -179,8 +179,9 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
             ),
         ]
     )
-    cpu_mean = float(cpu_rows.mean()) if not cpu_rows.empty else 0.0
-    cpu_max = float(cpu_rows.max()) if not cpu_rows.empty else 0.0
+    cpu_valid = not cpu_rows.empty and not cpu_rows.isna().all()
+    cpu_mean = float(cpu_rows.mean()) if cpu_valid else 0.0
+    cpu_max = float(cpu_rows.max()) if cpu_valid else 0.0
     cpu_p90 = _percentile(cpu_rows, 90)
     cpu_p99 = _percentile(cpu_rows, 99)
     cpu_slope = _linear_slope(cpu_rows.sort_index()) if not cpu_rows.empty else 0.0
@@ -218,7 +219,9 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
     restart_vals = safe_float(
         df.loc[df["metric_name"] == "container/restart_count", "metric_value"]
     )
-    restart_max = float(restart_vals.max()) if not restart_vals.empty else 0.0
+    restart_max = 0.0
+    if not restart_vals.empty and not restart_vals.isna().all():
+        restart_max = float(restart_vals.max())
 
     atm_app = df[df["source"] == "ATM_APP"]
     th = df[df["source"] == "TERMINAL_HANDLER"]
