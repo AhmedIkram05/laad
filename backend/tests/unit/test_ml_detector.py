@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -16,6 +18,7 @@ from backend.src.anomaly_detection.ml.ml_detector import (
     TITLE_MAP,
     SOURCES_MAP,
     RECOMMENDED_ACTIONS_MAP,
+    WARMUP_SKIP_CYCLES,
 )
 from backend.src.anomaly_detection.ml.feature_engineering import FEATURE_COUNT
 
@@ -701,6 +704,60 @@ class TestQueryWindowFallback:
             result = detector.detect_and_save()
             assert result == 0
 
+    def test_fallback_widens_window_when_primary_window_sparse(self):
+        detector = MLAnomalyDetector()
+        detector._loaded = True
+        now = datetime.now(timezone.utc)
+
+        def row(offset_s: int) -> dict:
+            return {
+                "timestamp": now - timedelta(seconds=offset_s),
+                "source": "ATM_APP",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": None,
+                "metric_value": None,
+                "event_type": "ACTIVITY",
+                "severity": "INFO",
+                "raw_payload": {},
+                "correlation_id": None,
+                "transaction_id": None,
+                "atm_status": None,
+                "component": None,
+            }
+
+        recent = [row(60 * i) for i in range(1, 4)]  # inside the 600s window
+        older = [row(700 + 60 * i) for i in range(3)]  # only visible to 3600s
+        all_rows = recent + older
+
+        class _RangeCursor:
+            """Serves rows filtered by the window start passed to execute()."""
+
+            def __init__(self):
+                self._start = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return None
+
+            def execute(self, _sql, params):
+                self._start = params[0]
+
+            def fetchall(self):
+                return [r for r in all_rows if r["timestamp"] >= self._start]
+
+        with patch(
+            "backend.src.anomaly_detection.ml.ml_detector.get_cursor",
+            return_value=_RangeCursor(),
+        ):
+            rows, window_start, _window_end = detector._query_window()
+
+        assert len(rows) == 6, "fallback must recover rows beyond the primary window"
+        assert window_start <= now - timedelta(seconds=WINDOW_SECONDS), (
+            "fallback window must be wider than the primary 600s window"
+        )
+
 
 class TestRollingBaseline:
     def test_not_ready_until_5_windows(self):
@@ -743,4 +800,75 @@ class TestRollingBaseline:
             rb.update(feat + i * 10)
         bf = rb.compute_baseline_features(feat + 100)
         assert len(bf) == 13
-        assert bf[0] > 0, "max_abs_z should be positive for a large deviation"
+
+    def test_sustained_anomaly_triggers_zscore_across_full_window(self):
+        detector = MLAnomalyDetector()
+        detector._loaded = False  # isolate the ZSCORE layer
+
+        def row(value: float) -> dict:
+            return {
+                "source": "PROMETHEUS",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": "memory_usage_percent",
+                "metric_value": value,
+                "event_type": "METRIC",
+                "severity": "INFO",
+                "raw_payload": {},
+            }
+
+        normal_windows = [([row(50.0)] * 6, None, None)] * WARMUP_SKIP_CYCLES
+        anomaly_windows = [([row(60.0)] * 6, None, None)] * 3
+
+        with patch.object(
+            detector, "_query_window", side_effect=normal_windows + anomaly_windows
+        ):
+            with patch.object(detector, "_save_anomaly") as mock_save:
+                with patch.object(detector, "_detect_heuristic", return_value=[]):
+                    with patch.object(detector, "_is_active", return_value=False):
+                        for _ in range(WARMUP_SKIP_CYCLES + 3):
+                            detector.detect_and_save()
+
+        zscore_saves = [
+            c.kwargs["explanation"]
+            for c in mock_save.call_args_list
+            if c.kwargs.get("source") == "ZSCORE"
+        ]
+        assert zscore_saves, (
+            "ZSCORE layer must fire during a sustained anomaly; "
+            "update-before-score lets the anomaly become its own baseline"
+        )
+        # Score-before-update: the first anomaly cycle is scored against a
+        # baseline that contains only normal windows — std floors to 1.0, so
+        # max_z is the full 10.0 deviation, not the self-dampened ~4.6 the
+        # old update-first order produced.
+        assert zscore_saves[0]["max_z_score"] == 10.0
+
+
+class TestPerEntityFailureLogging:
+    def test_failed_entity_logs_warning_and_cycle_continues(self, caplog):
+        detector = MLAnomalyDetector()
+        detector._loaded = True
+        rows = [
+            {
+                "source": "PROMETHEUS",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": "process_cpu_usage",
+                "metric_value": 55.0,
+                "event_type": "METRIC",
+                "severity": "INFO",
+                "raw_payload": {},
+            }
+        ] * 6
+
+        with patch.object(detector, "_query_window", return_value=(rows, None, None)):
+            with patch.object(detector, "_scaler") as mock_scaler:
+                mock_scaler.transform.side_effect = ValueError("Input contains NaN")
+                with patch.object(detector, "_detect_heuristic", return_value=[]):
+                    with patch.object(detector, "_is_active", return_value=True):
+                        with caplog.at_level(logging.WARNING):
+                            saved = detector.detect_and_save()
+
+        warnings = [r for r in caplog.records if "ATM-GB-0001" in r.getMessage()]
+        assert warnings, "per-entity failure must be logged with the entity id"
+        assert any("Input contains NaN" in r.getMessage() for r in warnings)
+        assert saved == 0

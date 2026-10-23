@@ -53,6 +53,7 @@ log = logging.getLogger(__name__)
 
 ARTIFACT_DIR = Path(__file__).parent / "artifacts"
 WINDOW_SECONDS = int(os.getenv("ML_WINDOW_SECONDS", "600"))
+FALLBACK_WINDOW_SECONDS = 3600
 CONFIDENCE_THRESHOLD = 0.70
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.75"))
 WARMUP_SKIP_CYCLES = int(os.getenv("ML_WARMUP_CYCLES", "20"))
@@ -449,7 +450,7 @@ class MLAnomalyDetector:
         """Query data from v_unified_analysis.
 
         Attempts the requested window_seconds first. If fewer than 5 rows
-        are returned, falls back to a wider 600-second window to avoid
+        are returned, falls back to a wider 3600-second window to avoid
         skipping detection on low-traffic windows.
 
         Returns:
@@ -472,11 +473,9 @@ class MLAnomalyDetector:
             )
             rows = [dict(r) for r in cur.fetchall()]
 
-        if len(rows) < 5 and window_seconds > WINDOW_SECONDS:
-            return [], None, None
         if len(rows) < 5:
             fallback_end = now
-            fallback_start = now - timedelta(seconds=120)
+            fallback_start = now - timedelta(seconds=FALLBACK_WINDOW_SECONDS)
             with get_cursor() as cur:
                 cur.execute(
                     """
@@ -683,7 +682,6 @@ class MLAnomalyDetector:
 
         # Also extract global features for Z-score baseline (all data combined)
         global_features = extract_features(rows).reshape(1, -1)
-        self._baseline.update(global_features.flatten())
 
         # Most frequent ATM for ZSCORE UNKNOWN attribution
         # NOTE: Z-score is a global detector — it can't identify the culprit entity.
@@ -710,7 +708,12 @@ class MLAnomalyDetector:
                         features_if = features_scaled[:, self._if_feature_indices]
                     else:
                         features_if = features_scaled
-                except Exception:
+                except Exception as e:
+                    log.warning(
+                        "ML[%s]: feature extraction/inference failed, entity skipped: %s",
+                        entity_id,
+                        e,
+                    )
                     continue
 
                 is_anomaly = self._iso.predict(features_if)[0] == -1
@@ -833,6 +836,10 @@ class MLAnomalyDetector:
                         n_deviating,
                         attributed_atm,
                     )
+
+        # Update the baseline only after scoring: the current window must not
+        # be part of its own reference history, or sustained anomalies normalize.
+        self._baseline.update(global_features.flatten())
 
         # ─────────────────────────────────────────────────────────────────────────
         # Layer 3: HEURISTIC DETECTION (Final fallback — deterministic)
