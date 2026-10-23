@@ -53,6 +53,7 @@ log = logging.getLogger(__name__)
 
 ARTIFACT_DIR = Path(__file__).parent / "artifacts"
 WINDOW_SECONDS = int(os.getenv("ML_WINDOW_SECONDS", "600"))
+FALLBACK_WINDOW_SECONDS = 3600
 CONFIDENCE_THRESHOLD = 0.70
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.75"))
 WARMUP_SKIP_CYCLES = int(os.getenv("ML_WARMUP_CYCLES", "20"))
@@ -449,7 +450,7 @@ class MLAnomalyDetector:
         """Query data from v_unified_analysis.
 
         Attempts the requested window_seconds first. If fewer than 5 rows
-        are returned, falls back to a wider 600-second window to avoid
+        are returned, falls back to a wider 3600-second window to avoid
         skipping detection on low-traffic windows.
 
         Returns:
@@ -472,11 +473,9 @@ class MLAnomalyDetector:
             )
             rows = [dict(r) for r in cur.fetchall()]
 
-        if len(rows) < 5 and window_seconds > WINDOW_SECONDS:
-            return [], None, None
         if len(rows) < 5:
             fallback_end = now
-            fallback_start = now - timedelta(seconds=120)
+            fallback_start = now - timedelta(seconds=FALLBACK_WINDOW_SECONDS)
             with get_cursor() as cur:
                 cur.execute(
                     """

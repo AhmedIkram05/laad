@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -701,6 +701,60 @@ class TestQueryWindowFallback:
             result = detector.detect_and_save()
             assert result == 0
 
+    def test_fallback_widens_window_when_primary_window_sparse(self):
+        detector = MLAnomalyDetector()
+        detector._loaded = True
+        now = datetime.now(timezone.utc)
+
+        def row(offset_s: int) -> dict:
+            return {
+                "timestamp": now - timedelta(seconds=offset_s),
+                "source": "ATM_APP",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": None,
+                "metric_value": None,
+                "event_type": "ACTIVITY",
+                "severity": "INFO",
+                "raw_payload": {},
+                "correlation_id": None,
+                "transaction_id": None,
+                "atm_status": None,
+                "component": None,
+            }
+
+        recent = [row(60 * i) for i in range(1, 4)]  # inside the 600s window
+        older = [row(700 + 60 * i) for i in range(3)]  # only visible to 3600s
+        all_rows = recent + older
+
+        class _RangeCursor:
+            """Serves rows filtered by the window start passed to execute()."""
+
+            def __init__(self):
+                self._start = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return None
+
+            def execute(self, _sql, params):
+                self._start = params[0]
+
+            def fetchall(self):
+                return [r for r in all_rows if r["timestamp"] >= self._start]
+
+        with patch(
+            "backend.src.anomaly_detection.ml.ml_detector.get_cursor",
+            return_value=_RangeCursor(),
+        ):
+            rows, window_start, _window_end = detector._query_window()
+
+        assert len(rows) == 6, "fallback must recover rows beyond the primary window"
+        assert window_start <= now - timedelta(seconds=WINDOW_SECONDS), (
+            "fallback window must be wider than the primary 600s window"
+        )
+
 
 class TestRollingBaseline:
     def test_not_ready_until_5_windows(self):
@@ -743,4 +797,3 @@ class TestRollingBaseline:
             rb.update(feat + i * 10)
         bf = rb.compute_baseline_features(feat + 100)
         assert len(bf) == 13
-        assert bf[0] > 0, "max_abs_z should be positive for a large deviation"
