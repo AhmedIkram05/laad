@@ -62,13 +62,13 @@ class TestDeduplicatorRedis:
     """Test Redis-backed deduplication behavior."""
 
     @patch("backend.kafka.deduplicator.get_redis_client")
-    def test_redis_sismember_used_for_duplicate_check(self, mock_get_client):
-        """Test that Redis SISMEMBER is used for duplicate checks."""
+    def test_redis_exists_used_for_duplicate_check(self, mock_get_client):
+        """Test that Redis EXISTS on the per-message key is used for checks."""
         from backend.kafka.deduplicator import Deduplicator
 
         mock_client = MagicMock()
         mock_client.ping.return_value = True
-        mock_client.sismember.return_value = True
+        mock_client.exists.return_value = True
         mock_get_client.return_value = mock_client
 
         dedup = Deduplicator()
@@ -77,16 +77,15 @@ class TestDeduplicatorRedis:
         result = dedup.is_duplicate("msg-redis-1")
 
         assert result is True
-        mock_client.sismember.assert_called_once_with("kafka:dedup:seen", "msg-redis-1")
+        mock_client.exists.assert_called_once_with("kafka:dedup:id:msg-redis-1")
 
     @patch("backend.kafka.deduplicator.get_redis_client")
-    def test_redis_sadd_used_for_mark_seen(self, mock_get_client):
-        """Test that Redis SADD is used for marking seen."""
+    def test_redis_set_used_for_mark_seen(self, mock_get_client):
+        """Test that Redis SET with a bounded per-key TTL is used for mark_seen."""
         from backend.kafka.deduplicator import Deduplicator
 
         mock_client = MagicMock()
         mock_client.ping.return_value = True
-        mock_client.sismember.return_value = False
         mock_get_client.return_value = mock_client
 
         dedup = Deduplicator()
@@ -94,8 +93,12 @@ class TestDeduplicatorRedis:
 
         dedup.mark_seen("msg-redis-2")
 
-        mock_client.sadd.assert_called_once_with("kafka:dedup:seen", "msg-redis-2")
-        mock_client.expire.assert_called_once()
+        mock_client.set.assert_called_once_with(
+            "kafka:dedup:id:msg-redis-2", 1, ex=3600
+        )
+        # No shared sliding-EXPIRE set anymore.
+        mock_client.sadd.assert_not_called()
+        mock_client.expire.assert_not_called()
 
     @patch("backend.kafka.deduplicator.get_redis_client")
     def test_fallback_to_in_memory_when_redis_fails(self, mock_get_client):
@@ -136,7 +139,8 @@ class TestDeduplicatorRedis:
 
         mock_client = MagicMock()
         mock_client.ping.return_value = True
-        mock_client.sismember.side_effect = Exception("Redis error")
+        mock_client.exists.side_effect = Exception("Redis error")
+        mock_client.set.side_effect = Exception("Redis error")
         mock_get_client.return_value = mock_client
 
         dedup = Deduplicator()
@@ -154,7 +158,7 @@ class TestDeduplicatorRedis:
 
         mock_client = MagicMock()
         mock_client.ping.return_value = True
-        mock_client.sadd.side_effect = Exception("Redis error")
+        mock_client.set.side_effect = Exception("Redis error")
         mock_get_client.return_value = mock_client
 
         dedup = Deduplicator()
@@ -165,12 +169,11 @@ class TestDeduplicatorRedis:
 
     @patch("backend.kafka.deduplicator.get_redis_client")
     def test_redis_ttl_is_set(self, mock_get_client):
-        """Test that TTL is set on the Redis dedup set."""
+        """Test that the TTL is set on each per-message dedup key."""
         from backend.kafka.deduplicator import Deduplicator
 
         mock_client = MagicMock()
         mock_client.ping.return_value = True
-        mock_client.sismember.return_value = False
         mock_get_client.return_value = mock_client
 
         dedup = Deduplicator(ttl_seconds=7200)
@@ -178,4 +181,6 @@ class TestDeduplicatorRedis:
 
         dedup.mark_seen("msg-ttl-test")
 
-        mock_client.expire.assert_called_once_with("kafka:dedup:seen", 7200)
+        mock_client.set.assert_called_once_with(
+            "kafka:dedup:id:msg-ttl-test", 1, ex=7200
+        )

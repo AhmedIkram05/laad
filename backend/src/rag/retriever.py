@@ -107,6 +107,12 @@ class RetrievedChunk:
     timestamp: Optional[str]
     distance: float
     confidence_score: float
+    # Reciprocal-rank-fusion score from hybrid retrieval (None when the chunk
+    # was not fused). Kept separate from `distance` so the true cosine
+    # distance is never overwritten by a rank-derived pseudo-distance.
+    rrf_score: Optional[float] = None
+    # Set when the cross-encoder actually reranked this chunk.
+    cross_encoder_used: bool = False
 
 
 class RAGRetriever:
@@ -169,6 +175,7 @@ class RAGRetriever:
             ce_score = float(scores[i])
             chunk.distance = max(0.0, 1.0 - ce_score)
             chunk.confidence_score = self._calculate_confidence(chunk.distance)
+            chunk.cross_encoder_used = True
 
         chunks.sort(key=lambda c: c.distance)
         return chunks
@@ -352,21 +359,20 @@ class RAGRetriever:
         out: list[RetrievedChunk] = []
         for cid in fused_order:
             rrf = fused_scores[cid]
-            distance = 1.0 - (rrf / peak) if peak else 1.0
-            confidence = self._calculate_confidence(distance)
             if cid in dense_by_id:
-                out.append(
-                    replace(
-                        dense_by_id[cid],
-                        distance=distance,
-                        confidence_score=confidence,
-                    )
-                )
+                # Keep the true vector distance and its confidence — the RRF
+                # rank position must not overwrite the semantic similarity
+                # signal downstream consumers read as confidence.
+                out.append(replace(dense_by_id[cid], rrf_score=rrf))
                 continue
             i = id_to_index.get(cid)
             if i is None:
                 continue
             meta = metas[i] if i < len(metas) and isinstance(metas[i], dict) else {}
+            # Sparse-only chunk: no vector distance exists, so the
+            # RRF-normalized pseudo-distance is its only relevance signal.
+            distance = 1.0 - (rrf / peak) if peak else 1.0
+            confidence = self._calculate_confidence(distance)
             out.append(
                 RetrievedChunk(
                     text=docs[i] or "",
@@ -375,6 +381,7 @@ class RAGRetriever:
                     timestamp=meta.get("last_timestamp"),
                     distance=distance,
                     confidence_score=confidence,
+                    rrf_score=rrf,
                 )
             )
         return out or dense_chunks

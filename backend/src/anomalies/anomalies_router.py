@@ -105,7 +105,13 @@ def listAnomalies(
         default="score",
         description="Sort by: score (default, criticality), detected_at (most recent), severity",
     ),
-    limit: int = Query(default=None, ge=0),
+    # Default caps the unbounded fetchall: the UI paginates client-side and
+    # previously received the entire anomalies table when limit was omitted.
+    limit: Optional[int] = Query(
+        default=200,
+        ge=0,
+        description="Max rows to return (default 200); pass explicitly to override",
+    ),
     offset: int = Query(default=0, ge=0),
     currentUser: dict = Depends(get_current_user),
     conn=Depends(get_db_connection),

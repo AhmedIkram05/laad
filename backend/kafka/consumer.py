@@ -4,7 +4,8 @@ Reads from two topics:
   - atm-events:   routes to event_handler -> PostgreSQL + ChromaDB
   - atm-metrics:  routes to metric_handler -> PostgreSQL
 
-Deduplicates messages using an in-memory LRU set of message_ids.
+Deduplicates messages by message_id (Redis per-message keys with TTL,
+in-memory LRU fallback).
 Triggers anomaly detection after each batch (rate-limited to 30 seconds).
 Routes malformed messages to ingestion_errors table.
 
@@ -35,6 +36,7 @@ import signal
 import sys
 import threading
 import time
+import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from kafka import KafkaConsumer
@@ -44,8 +46,12 @@ from backend.kafka.handlers import event_handler, metric_handler
 from backend.kafka.handlers.event_handler import (
     _route_to_ingestion_errors as route_raw_ingestion_errors,
 )
+from backend.kafka.handlers.event_handler import EVENT_BATCH_INSERT_SQL
+from backend.kafka.handlers.metric_handler import METRIC_BATCH_INSERT_SQL
 from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.cache import get_redis_client
+from backend.src.database.connection import get_conn
+from backend.src.ingestion.write_helper import write_batch
 from backend.src.observability.tracing import setup_tracing
 from opentelemetry import trace
 from opentelemetry.context import Context
@@ -111,6 +117,12 @@ def _trigger_anomaly_detection() -> None:
     by ANOMALY_TRIGGER_INTERVAL_S + the Redis lock, so this span is its own
     trace rather than a child of any consume span (plan §4.2). Attributes are
     real summary fields from the detector cycle — IDs and counts only.
+
+    NOTE: the sweep runs INLINE in the poll loop — no messages are polled
+    while it runs. The stall is bounded by the detector's DB query cost and
+    the SageMaker client's explicit connect/read timeouts (ml_detector), not
+    by Kafka settings; if sweeps grow past a few seconds, move this to a side
+    thread fenced by the same Redis lock.
     """
     global _cached_detector
     with _tracer.start_as_current_span("atm.detect") as span:
@@ -153,39 +165,58 @@ def _trigger_anomaly_detection() -> None:
 _cached_syncer = None
 
 LOCK_KEY = "lock:anomaly_detection"
-LOCK_TIMEOUT_S = ANOMALY_INTERVAL_S - 5
+# TTL must never go non-positive (Redis raises on ex<=0) and must not expire
+# mid-sweep, which previously let a second consumer start while the first
+# still ran. Ownership-checked release (below) makes a longer TTL safe.
+LOCK_TIMEOUT_S = max(ANOMALY_INTERVAL_S, 5)
+
+_RELEASE_LOCK_LUA = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
 
 
-def _acquire_detection_lock() -> bool:
+def _acquire_detection_lock() -> tuple[bool, "str | None"]:
     """Attempt to acquire a distributed lock via Redis SET NX EX.
 
-    Returns True if lock acquired, False if already held by another consumer.
-    Falls back to True (proceed) when Redis is unavailable.
+    Returns (should_run, token): token identifies this owner and is required
+    to release the lock; should_run is False only when another consumer holds
+    the lock. Falls back to (True, None) — proceed without a lock — when
+    Redis is unavailable.
     """
     client = get_redis_client()
     if client is None:
         log.debug("Redis unavailable — skipping distributed lock for anomaly detection")
-        return True
+        return True, None
 
+    token = str(uuid.uuid4())
     try:
-        acquired = client.set(LOCK_KEY, "1", nx=True, ex=LOCK_TIMEOUT_S)
+        acquired = client.set(LOCK_KEY, token, nx=True, ex=LOCK_TIMEOUT_S)
         if acquired:
             log.debug("Acquired anomaly detection lock")
         else:
             log.debug("Anomaly detection lock held by another consumer — skipping")
-        return bool(acquired)
+        return bool(acquired), token if acquired else None
     except Exception as e:
         log.warning(f"Redis lock acquisition failed, proceeding without lock: {e}")
-        return True
+        return True, None
 
 
-def _release_detection_lock() -> None:
-    """Release the distributed detection lock."""
+def _release_detection_lock(token: "str | None") -> None:
+    """Release the distributed detection lock only if we still own it.
+
+    The compare-and-delete Lua script prevents a consumer whose TTL expired
+    from deleting a lock now held by someone else.
+    """
+    if not token:
+        return
     client = get_redis_client()
     if client is None:
         return
     try:
-        client.delete(LOCK_KEY)
+        client.eval(_RELEASE_LOCK_LUA, 1, LOCK_KEY, token)
         log.debug("Released anomaly detection lock")
     except Exception as e:
         log.warning(f"Failed to release detection lock: {e}")
@@ -243,6 +274,23 @@ def _start_health_server() -> None:
         log.warning("Health server failed to start: %s", exc)
 
 
+def flush_rows(rows: list[tuple], sql: str, topic: str) -> bool:
+    """Flush one poll-batch of buffered rows in a single batched transaction.
+
+    Uses write_batch (execute_values) so a whole poll batch is one INSERT +
+    one COMMIT instead of one per message. Returns False and logs on failure;
+    the caller owns error bookkeeping.
+    """
+    if not rows:
+        return True
+    try:
+        write_batch(get_conn(), sql, rows)
+        return True
+    except Exception as exc:
+        log.error("Batched %s write failed (%d rows): %s", topic, len(rows), exc)
+        return False
+
+
 def run_consumer() -> None:
     signal.signal(signal.SIGTERM, _handle_sigterm)
     signal.signal(signal.SIGINT, _handle_sigterm)
@@ -297,6 +345,10 @@ def run_consumer() -> None:
     last_anomaly_trigger = 0.0
     processed = 0
     errors = 0
+    # Per-poll DB row buffers — flushed once per batch (single INSERT+COMMIT)
+    # instead of one round-trip per message.
+    event_rows: list[tuple] = []
+    metric_rows: list[tuple] = []
 
     try:
         while _running:
@@ -318,11 +370,9 @@ def run_consumer() -> None:
                         continue
 
                     message_id = msg.get("message_id", "")
-                    if message_id and dedup.is_duplicate(message_id) is True:
+                    if message_id and dedup.check_and_mark(message_id) is True:
                         log.debug("Duplicate message_id=%s — skipping.", message_id)
                         continue
-                    if message_id:
-                        dedup.mark_seen(message_id)
 
                     # Consume span joins the producer's trace via the injected
                     # traceparent; attrs are IDs/locations only — never bodies.
@@ -337,9 +387,13 @@ def run_consumer() -> None:
                         },
                     ):
                         if topic == TOPIC_EVENTS:
-                            ok = event_handler.handle_event(msg, chroma)
+                            ok = event_handler.handle_event(
+                                msg, chroma, row_buffer=event_rows
+                            )
                         elif topic == TOPIC_METRICS:
-                            ok = metric_handler.handle_metric(msg)
+                            ok = metric_handler.handle_metric(
+                                msg, row_buffer=metric_rows
+                            )
                         else:
                             log.warning("Unknown topic: %s", topic)
                             ok = False
@@ -349,12 +403,31 @@ def run_consumer() -> None:
                     else:
                         errors += 1
 
+            # Flush buffered rows once per poll batch, before committing
+            # offsets (at-least-once: a failed flush leaves the batch
+            # uncommitted and the messages are redelivered).
+            if event_rows:
+                if flush_rows(event_rows, EVENT_BATCH_INSERT_SQL, TOPIC_EVENTS):
+                    event_rows.clear()
+                else:
+                    processed -= len(event_rows)
+                    errors += len(event_rows)
+                    event_rows.clear()
+            if metric_rows:
+                if flush_rows(metric_rows, METRIC_BATCH_INSERT_SQL, TOPIC_METRICS):
+                    metric_rows.clear()
+                else:
+                    processed -= len(metric_rows)
+                    errors += len(metric_rows)
+                    metric_rows.clear()
+
             if records:
                 consumer.commit()
 
             now = time.monotonic()
             if processed > 0 and (now - last_anomaly_trigger) >= ANOMALY_INTERVAL_S:
-                if _acquire_detection_lock():
+                should_run, lock_token = _acquire_detection_lock()
+                if should_run:
                     try:
                         log.info(
                             "Triggering anomaly detection (processed=%d, last_trigger=%.1fs ago)",
@@ -364,7 +437,7 @@ def run_consumer() -> None:
                         _trigger_anomaly_detection()
                         _trigger_anomaly_sync()
                     finally:
-                        _release_detection_lock()
+                        _release_detection_lock(lock_token)
                     last_anomaly_trigger = now
                 else:
                     log.debug(

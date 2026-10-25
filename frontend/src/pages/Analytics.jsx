@@ -200,8 +200,22 @@ function Analytics() {
 
   useEffect(() => {
     let ignore = false;
+    let inFlight = false;
+    let activeController = null;
+    let errorToasted = false;
+
+    const toastOnce = (msg) => {
+      if (!errorToasted) {
+        toast.error(msg);
+        errorToasted = true;
+      }
+    };
 
     const loadData = async (isIntervalRefresh) => {
+      if (inFlight) return;
+      inFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
       try {
         if (!isIntervalRefresh) {
           setLoadingEvents(true);
@@ -209,34 +223,42 @@ function Analytics() {
         }
 
         const [realtimeRes, eventsRes, metricsRes, metricsListRes] = await Promise.all([
-          fetch(`/api/insights/stats/realtime?hours=${timeRange.value}`, { headers: getAuthHeaders() }),
+          fetch(`/api/insights/stats/realtime?hours=${timeRange.value}`, { headers: getAuthHeaders(), signal: controller.signal }),
           fetch(
             `/api/insights/events?hours=${timeRange.value}&bucket_minutes=${timeRange.bucket}&sources=${selectedEventSources.join(",")}`,
-            { headers: getAuthHeaders() }
+            { headers: getAuthHeaders(), signal: controller.signal }
           ),
           fetch(
             `/api/insights/metrics?hours=${timeRange.value}&bucket_minutes=${timeRange.bucket}&sources=${selectedMetricSources.join(",")}`,
-            { headers: getAuthHeaders() }
+            { headers: getAuthHeaders(), signal: controller.signal }
           ),
-          fetch("/api/insights/metrics/list", { headers: getAuthHeaders() }),
+          fetch("/api/insights/metrics/list", { headers: getAuthHeaders(), signal: controller.signal }),
         ]);
 
         if (ignore) return;
 
+        // Reset the once-per-outage toast gate only on a fully clean cycle.
+        if (realtimeRes.ok && eventsRes.ok && metricsRes.ok && metricsListRes.ok) {
+          errorToasted = false;
+        }
+
         if (realtimeRes.ok) {
           setRealtimeStats(await realtimeRes.json());
+          setLoadingRealtime(false);
+        } else {
+          toastOnce("Failed to load realtime stats");
           setLoadingRealtime(false);
         }
         if (eventsRes.ok) {
           setEventsData((await eventsRes.json()).time_series || []);
         } else {
-          toast.error("Failed to load events data");
+          toastOnce("Failed to load events data");
           setEventsData([]);
         }
         if (metricsRes.ok) {
           setMetricsData((await metricsRes.json()).time_series || []);
         } else {
-          toast.error("Failed to load metrics data");
+          toastOnce("Failed to load metrics data");
           setMetricsData([]);
         }
         setLoadingEvents(false);
@@ -252,10 +274,12 @@ function Analytics() {
       } catch (err) {
         if (ignore) return;
         console.error("Failed to fetch analytics data:", err);
-        toast.error("Failed to load analytics data");
+        toastOnce("Failed to load analytics data");
         setLoadingRealtime(false);
         setLoadingEvents(false);
         setLoadingMetrics(false);
+      } finally {
+        inFlight = false;
       }
     };
 
@@ -266,6 +290,7 @@ function Analytics() {
     return () => {
       ignore = true;
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (activeController) activeController.abort();
     };
   }, [timeRange, selectedEventSources, selectedMetricSources, selectedMetrics.length, refreshKey]);
 

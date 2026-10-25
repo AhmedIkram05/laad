@@ -58,6 +58,10 @@ CONFIDENCE_THRESHOLD = 0.70
 UNKNOWN_ANOMALY_THRESHOLD = float(os.getenv("ML_UNKNOWN_THRESHOLD", "-0.75"))
 WARMUP_SKIP_CYCLES = int(os.getenv("ML_WARMUP_CYCLES", "20"))
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+# Explicit SageMaker client timeouts — without them boto3's read timeout
+# defaults apply inconsistently and a hung endpoint stalls the sweep.
+SAGEMAKER_CONNECT_TIMEOUT_S = 10
+SAGEMAKER_READ_TIMEOUT_S = 60
 MLFLOW_EXPERIMENT = "atm-anomaly-detection"
 ZSCORE_WINDOW_SIZE = 20
 ZSCORE_THRESHOLD = 3.0
@@ -386,8 +390,15 @@ class MLAnomalyDetector:
         started = time.monotonic()
         try:
             import boto3
+            from botocore.config import Config
 
-            runtime = boto3.client("runtime.sagemaker")
+            runtime = boto3.client(
+                "runtime.sagemaker",
+                config=Config(
+                    connect_timeout=SAGEMAKER_CONNECT_TIMEOUT_S,
+                    read_timeout=SAGEMAKER_READ_TIMEOUT_S,
+                ),
+            )
             if features.ndim == 1:
                 features = features.reshape(1, -1)
 

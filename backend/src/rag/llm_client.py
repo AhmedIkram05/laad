@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -24,14 +25,22 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX_REQUESTS = 20
-REQUEST_TIMEOUT = 90
+# (connect, read) tuple: a hung connect no longer burns the full read budget
+# per attempt (requests applies each element separately).
+REQUEST_TIMEOUT = (10, 90)
 MAX_RETRIES = 2
 MAX_RATE_LIMIT_RETRIES = 5
 RETRY_DELAY = 2.0
+# Longest a rate-limited caller waits for bucket space before failing.
+RATE_LIMIT_MAX_WAIT_S = 30.0
 
 
 class RateLimiter:
-    """Simple in-memory token bucket rate limiter."""
+    """Simple in-memory token bucket rate limiter.
+
+    Thread-safe: FastAPI dispatches sync endpoints to a threadpool, so the
+    bucket dict can be mutated concurrently.
+    """
 
     def __init__(
         self,
@@ -41,21 +50,60 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
+        self._lock = threading.Lock()
+
+    def _prune(self, key: str, now: float) -> list[float]:
+        cutoff = now - self.window_seconds
+        entries = [t for t in self._requests.get(key, ()) if t > cutoff]
+        if entries:
+            self._requests[key] = entries
+        else:
+            # Drop empty buckets so per-request keys don't accumulate forever.
+            self._requests.pop(key, None)
+        return self._requests.get(key, [])
 
     def is_rate_limited(self, key: str = "global") -> bool:
-        now = time.time()
-        cutoff = now - self.window_seconds
-        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
-        if len(self._requests[key]) >= self.max_requests:
-            return True
-        self._requests[key].append(now)
-        return False
+        with self._lock:
+            now = time.time()
+            entries = self._prune(key, now)
+            if len(entries) >= self.max_requests:
+                return True
+            entries.append(now)
+            self._requests[key] = entries
+            return False
 
     def wait_time(self, key: str = "global") -> float:
-        if not self._requests[key]:
-            return 0.0
-        oldest = min(self._requests[key])
-        return max(0.0, (oldest + self.window_seconds) - time.time())
+        with self._lock:
+            entries = self._requests.get(key, [])
+            if not entries:
+                return 0.0
+            oldest = min(entries)
+            return max(0.0, (oldest + self.window_seconds) - time.time())
+
+    def acquire(self, key: str = "global", max_wait: float = 0.0) -> bool:
+        """Reserve a slot, waiting up to max_wait seconds for one to free up.
+
+        Returns True when a slot was reserved; False when the bucket is still
+        full after max_wait. Callers decide whether to raise or degrade.
+        """
+        deadline = time.time() + max(max_wait, 0.0)
+        if self.max_requests <= 0:
+            return False
+        while True:
+            with self._lock:
+                now = time.time()
+                entries = self._prune(key, now)
+                if len(entries) < self.max_requests:
+                    entries.append(now)
+                    self._requests[key] = entries
+                    return True
+                wait = (min(entries) + self.window_seconds) - now
+            if wait <= 0:
+                return False
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return False
+            time.sleep(min(wait, remaining))
 
 
 _rate_limiter = RateLimiter(max_requests=config.rate_limit_per_min)
@@ -129,25 +177,37 @@ class LLMClient:
         system_prompt: Optional[str] = None,
         temperature: float = config.temperature,
         max_tokens: int = 2048,
+        rate_limit_key: Optional[str] = None,
     ) -> LLMResponse:
-        """Generate response with automatic retries on failure."""
+        """Generate response with automatic retries on failure.
+
+        rate_limit_key scopes the rate-limit bucket: pass one key per user
+        request so internal multi-call generation (self-consistency, reflexion,
+        verbalized confidence) counts as a single request instead of one entry
+        per LLM call.
+        """
         if not self.providers:
             raise RuntimeError(
                 "No LLM providers configured. Set at least one of WANDB_API_KEY, "
                 "LLM_API_KEY, OPENROUTER_API_KEY, or TYPESAFE_API_KEY."
             )
 
-        if config.rate_limit_per_min > 0 and _rate_limiter.is_rate_limited():
-            wait = _rate_limiter.wait_time()
+        if config.rate_limit_per_min > 0 and not _rate_limiter.acquire(
+            rate_limit_key or "global", max_wait=RATE_LIMIT_MAX_WAIT_S
+        ):
             raise RuntimeError(
-                f"Rate limit exceeded. Please wait {wait:.0f}s before retrying."
+                f"Rate limit exceeded. Still saturated after waiting "
+                f"{RATE_LIMIT_MAX_WAIT_S:.0f}s — please retry later."
             )
 
         last_error = None
 
         for provider in self.providers:
+            # 429s wait out Retry-After without consuming the attempt budget,
+            # so the MAX_RATE_LIMIT_RETRIES constant is actually reachable.
             rate_limit_retries = 0
-            for attempt in range(MAX_RETRIES + 1):
+            attempts = 0
+            while attempts <= MAX_RETRIES:
                 try:
                     response = self._call_llm(
                         provider=provider,
@@ -157,16 +217,20 @@ class LLMClient:
                         max_tokens=max_tokens,
                     )
                     logger.info(
-                        f"Successfully generated response using {provider['name']} (attempt {attempt + 1})"
+                        f"Successfully generated response using {provider['name']} (attempt {attempts + 1})"
                     )
                     return response
                 except requests.exceptions.Timeout:
+                    attempts += 1
                     logger.warning(
-                        f"Provider {provider['name']} timed out (attempt {attempt + 1}/{MAX_RETRIES + 1})"
+                        f"Provider {provider['name']} timed out (attempt {attempts}/{MAX_RETRIES + 1})"
                     )
                     last_error = RuntimeError(
-                        f"Request timed out after {REQUEST_TIMEOUT}s"
+                        f"Request timed out (connect={REQUEST_TIMEOUT[0]}s, read={REQUEST_TIMEOUT[1]}s)"
                     )
+                    if attempts <= MAX_RETRIES:
+                        # Back off before re-hitting a timing-out provider.
+                        time.sleep(RETRY_DELAY * attempts)
                 except requests.exceptions.HTTPError as e:
                     if e.response is not None and e.response.status_code == 429:
                         retry_after = 5
@@ -192,10 +256,11 @@ class LLMClient:
                     last_error = e
                     break
                 except Exception as e:
+                    attempts += 1
                     logger.warning(f"Provider {provider['name']} failed: {e}")
                     last_error = e
-                    if attempt < MAX_RETRIES:
-                        time.sleep(RETRY_DELAY * (attempt + 1))
+                    if attempts <= MAX_RETRIES:
+                        time.sleep(RETRY_DELAY * attempts)
                         continue
                     break
 

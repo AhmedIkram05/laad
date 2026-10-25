@@ -25,8 +25,26 @@ log = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = {"message_id", "timestamp", "source", "severity"}
 
+# execute_values template (single %s replaced with the value rows) — used by
+# the consumer to flush a whole poll batch in one INSERT + COMMIT.
+EVENT_BATCH_INSERT_SQL = """
+INSERT INTO events
+    (timestamp, source, atm_id, correlation_id, transaction_id,
+     event_type, severity, message, payload)
+VALUES %s
+"""
 
-def handle_event(msg: dict, chroma_buffer: ChromaBuffer) -> bool:
+
+def handle_event(
+    msg: dict, chroma_buffer: ChromaBuffer, row_buffer: "list[tuple] | None" = None
+) -> bool:
+    """Handle one atm-events message.
+
+    When row_buffer is provided, the DB row is appended to it instead of being
+    inserted immediately — the consumer flushes the whole poll batch in a
+    single batched transaction (write_batch/execute_values). Post-DB side
+    effects (Chroma buffer, analytics counters) run either way.
+    """
     missing = REQUIRED_FIELDS - set(msg.keys())
     if missing:
         _route_to_ingestion_errors(
@@ -50,30 +68,36 @@ def handle_event(msg: dict, chroma_buffer: ChromaBuffer) -> bool:
         )
         return False
 
-    try:
-        with get_cursor(commit=True) as cur:
-            cur.execute(
-                """
-                INSERT INTO events
-                    (timestamp, source, atm_id, correlation_id, transaction_id,
-                     event_type, severity, message, payload)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    ts,
-                    msg["source"],
-                    msg.get("atm_id"),
-                    msg.get("correlation_id"),
-                    msg.get("transaction_id"),
-                    msg.get("event_type"),
-                    msg["severity"],
-                    msg.get("message"),
-                    psycopg2.extras.Json(msg.get("payload") or {}),
-                ),
+    row = (
+        ts,
+        msg["source"],
+        msg.get("atm_id"),
+        msg.get("correlation_id"),
+        msg.get("transaction_id"),
+        msg.get("event_type"),
+        msg["severity"],
+        msg.get("message"),
+        psycopg2.extras.Json(msg.get("payload") or {}),
+    )
+    if row_buffer is not None:
+        row_buffer.append(row)
+    else:
+        try:
+            with get_cursor(commit=True) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO events
+                        (timestamp, source, atm_id, correlation_id, transaction_id,
+                         event_type, severity, message, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    row,
+                )
+        except Exception as exc:
+            log.error(
+                "DB write failed for event (source=%s): %s", msg.get("source"), exc
             )
-    except Exception as exc:
-        log.error("DB write failed for event (source=%s): %s", msg.get("source"), exc)
-        return False
+            return False
 
     atm_id = msg.get("atm_id")
     if atm_id:

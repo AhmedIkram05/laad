@@ -493,10 +493,33 @@ class TestGenerateRateLimited:
 
             client = LLMClient()
             with patch("backend.src.rag.llm_client._rate_limiter") as mock_rl:
-                mock_rl.is_rate_limited.return_value = True
-                mock_rl.wait_time.return_value = 30.0
+                # Limiter still saturated after waiting out the cap.
+                mock_rl.acquire.return_value = False
                 with pytest.raises(RuntimeError, match="Rate limit exceeded"):
                     client.generate("test")
+                # The wait cap is passed to the limiter.
+                mock_rl.acquire.assert_called_once()
+                assert mock_rl.acquire.call_args.kwargs["max_wait"] > 0
+
+    def test_generate_waits_when_rate_limited_then_proceeds(self):
+        cfg = _make_config(llm_api_key="key", rate_limit_per_min=20)
+        with patch("backend.src.rag.llm_client.config", cfg):
+            from backend.src.rag.llm_client import LLMClient
+
+            client = LLMClient()
+            with patch("backend.src.rag.llm_client._rate_limiter") as mock_rl:
+                mock_rl.acquire.return_value = True
+                with patch.object(
+                    client, "_call_llm", return_value=MagicMock(text="ok")
+                ):
+                    result = client.generate("test")
+                assert result is not None
+                # Request-scoped key when provided.
+                client.generate("test", rate_limit_key="req:abc")
+                first_key = mock_rl.acquire.call_args_list[0].args[0]
+                second_key = mock_rl.acquire.call_args_list[1].args[0]
+                assert first_key == "global"
+                assert second_key == "req:abc"
 
     def test_generate_raises_when_no_providers(self):
         cfg = _make_config(is_configured=False)

@@ -32,8 +32,22 @@ REQUIRED_FIELDS = {
     "metric_value",
 }
 
+# execute_values template (single %s replaced with the value rows) — used by
+# the consumer to flush a whole poll batch in one INSERT + COMMIT.
+METRIC_BATCH_INSERT_SQL = """
+INSERT INTO metrics
+    (timestamp, source, entity_id, metric_name, metric_value, payload)
+VALUES %s
+"""
 
-def handle_metric(msg: dict) -> bool:
+
+def handle_metric(msg: dict, row_buffer: "list[tuple] | None" = None) -> bool:
+    """Handle one atm-metrics message.
+
+    When row_buffer is provided, the DB row is appended to it instead of being
+    inserted immediately — the consumer flushes the whole poll batch in a
+    single batched transaction (write_batch/execute_values).
+    """
     missing = REQUIRED_FIELDS - set(msg.keys())
     if missing:
         _route_to_ingestion_errors(
@@ -67,28 +81,32 @@ def handle_metric(msg: dict) -> bool:
         )
         return False
 
-    try:
-        with get_cursor(commit=True) as cur:
-            cur.execute(
-                """
-                INSERT INTO metrics
-                    (timestamp, source, entity_id, metric_name, metric_value, payload)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    ts,
-                    msg["source"],
-                    msg["entity_id"],
-                    msg["metric_name"],
-                    metric_value,
-                    psycopg2.extras.Json(msg.get("payload") or {}),
-                ),
+    row = (
+        ts,
+        msg["source"],
+        msg["entity_id"],
+        msg["metric_name"],
+        metric_value,
+        psycopg2.extras.Json(msg.get("payload") or {}),
+    )
+    if row_buffer is not None:
+        row_buffer.append(row)
+    else:
+        try:
+            with get_cursor(commit=True) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO metrics
+                        (timestamp, source, entity_id, metric_name, metric_value, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    row,
+                )
+        except Exception as exc:
+            log.error(
+                "DB write failed for metric (name=%s): %s", msg.get("metric_name"), exc
             )
-    except Exception as exc:
-        log.error(
-            "DB write failed for metric (name=%s): %s", msg.get("metric_name"), exc
-        )
-        return False
+            return False
 
     entity_id = msg.get("entity_id", "")
     if entity_id.startswith("ATM-"):
