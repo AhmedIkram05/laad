@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import os
 
+from backend.src.cache import get_redis_client
 from backend.src.database.connection import get_cursor
 from backend.kafka.chroma_buffer import ChromaBuffer
 
@@ -34,6 +35,10 @@ log = logging.getLogger(__name__)
 
 CHROMA_HOST = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8001"))
+
+# Matches the 7-day default anomaly retention (retention_config): a sync-state
+# key only needs to outlive the row's stay in the latest-100 query window.
+SYNC_STATE_TTL_SECONDS = 7 * 24 * 3600
 
 
 class AnomalySyncer:
@@ -53,23 +58,60 @@ class AnomalySyncer:
             log.warning("ChromaDB unavailable for anomaly syncer: %s", e)
             self._chroma_buffer = None
 
+    def _sync_state_key(self, anomaly_id: int) -> str:
+        return f"anomaly:synced:{anomaly_id}"
+
+    def _already_synced(self, anomaly_ids: list[int]) -> set[int]:
+        """Ids from anomaly_ids already synced to Chroma.
+
+        Redis-backed so state survives restarts (no duplicate re-syncs with
+        fresh chunk ids); falls back to the in-memory set when Redis is
+        unavailable.
+        """
+        known = {i for i in anomaly_ids if i in self._synced_ids}
+        if not anomaly_ids:
+            return known
+        try:
+            client = get_redis_client()
+            if client is None:
+                return known
+            return known | {
+                aid for aid in anomaly_ids if client.exists(self._sync_state_key(aid))
+            }
+        except Exception as e:
+            log.warning("Redis sync-state check failed, using in-memory: %s", e)
+            return known
+
+    def _mark_synced(self, anomaly_ids: list[int]) -> None:
+        """Record anomaly ids as synced (Redis with retention-sized TTL + memory)."""
+        self._synced_ids.update(anomaly_ids)
+        try:
+            client = get_redis_client()
+            if client is None:
+                return
+            for aid in anomaly_ids:
+                client.set(self._sync_state_key(aid), 1, ex=SYNC_STATE_TTL_SECONDS)
+        except Exception as e:
+            log.warning("Redis sync-state write failed, in-memory only: %s", e)
+
     def _get_unsynced_anomalies(self) -> list[dict]:
-        """Query PostgreSQL for all anomalies not yet synced with ChromaDB."""
+        """Query PostgreSQL for the latest anomalies not yet synced with ChromaDB.
+
+        Rows with a NULL atm_id are never synced (ZSCORE anomalies carry no ATM
+        and would pollute the index as "ATM: None" chunks).
+        """
         query = """
             SELECT id, detected_at, anomaly_type, atm_id, severity, title, explanation
             FROM anomalies
             WHERE anomaly_type IS NOT NULL
+              AND atm_id IS NOT NULL
+            ORDER BY detected_at DESC LIMIT 100
         """
-        params = []
-        if self._synced_ids:
-            query += " AND id NOT IN %s"
-            params.append(tuple(self._synced_ids))
-        query += " ORDER BY detected_at DESC LIMIT 100"
-
         try:
             with get_cursor(commit=True) as cur:
-                cur.execute(query, tuple(params))
+                cur.execute(query)
                 rows = cur.fetchall()
+                already = self._already_synced([row["id"] for row in rows])
                 return [
                     {
                         "id": row["id"],
@@ -81,6 +123,7 @@ class AnomalySyncer:
                         "explanation": row["explanation"],
                     }
                     for row in rows
+                    if row["id"] not in already
                 ]
         except Exception as e:
             log.error("Failed to query anomalies: %s", e)
@@ -114,6 +157,7 @@ class AnomalySyncer:
             return {"synced": 0, "status": "no_new_anomalies"}
 
         synced_count = 0
+        newly_synced: list[int] = []
         for anomaly in anomalies:
             try:
                 text = self._format_anomaly_text(anomaly)
@@ -133,11 +177,14 @@ class AnomalySyncer:
                     anomaly_tag=anomaly_type,
                 )
 
-                self._synced_ids.add(anomaly["id"])
+                newly_synced.append(anomaly["id"])
                 synced_count += 1
 
             except Exception as e:
                 log.warning("Failed to sync anomaly %d: %s", anomaly["id"], e)
+
+        if newly_synced:
+            self._mark_synced(newly_synced)
 
         if synced_count > 0:
             self._chroma_buffer.flush_all()
