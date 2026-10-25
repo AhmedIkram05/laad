@@ -28,6 +28,19 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 _MAX_HYBRID_DOCS = 5000
 _SPARSE_CACHE_MAX = 5
+_TOKEN_CACHE_MAX = 5000
+
+
+@dataclass
+class _SparsePool:
+    """Cached sparse-pool snapshot for one where_filter, with BM25 stats
+    (df/avgdl) derived from the token cache instead of recomputed per query."""
+
+    ids: list
+    docs: list
+    metas: list
+    df: dict
+    avgdl: float
 
 
 def _tokenize(text: str) -> list[str]:
@@ -39,18 +52,22 @@ def _bm25_scores(
     docs_tokens: list[list[str]],
     k1: float = 1.5,
     b: float = 0.75,
+    df: Optional[dict[str, int]] = None,
+    avgdl: Optional[float] = None,
 ) -> list[float]:
     n = len(docs_tokens)
     if n == 0:
         return []
-    df: dict[str, int] = {}
-    for toks in docs_tokens:
-        for t in set(toks):
-            df[t] = df.get(t, 0) + 1
-    doc_lens = [len(t) for t in docs_tokens]
-    avgdl = sum(doc_lens) / n
+    if df is None:
+        df = {}
+        for toks in docs_tokens:
+            for t in set(toks):
+                df[t] = df.get(t, 0) + 1
+    if avgdl is None:
+        avgdl = sum(len(t) for t in docs_tokens) / n
     scores = []
-    for toks, dl in zip(docs_tokens, doc_lens):
+    for toks in docs_tokens:
+        dl = len(toks)
         tf: dict[str, int] = {}
         for t in toks:
             tf[t] = tf.get(t, 0) + 1
@@ -104,7 +121,8 @@ class RAGRetriever:
             self.client = None
             self.collection = None
         self._cross_encoder = None
-        self._sparse_cache: dict[str, tuple[int, int, tuple[list, list, list]]] = {}
+        self._sparse_cache: dict[str, _SparsePool] = {}
+        self._token_cache: dict[str, list[str]] = {}
 
     def _load_cross_encoder(self) -> None:
         """Lazy-load cross-encoder for reranking. Gracefully degrades if unavailable."""
@@ -180,7 +198,18 @@ class RAGRetriever:
                 metadata={"hnsw:space": "cosine"},
             )
 
-    def _sparse_pool(self, where_filter: Any) -> tuple[list, list, list]:
+    def _tokens_for(self, cid: str, doc: str) -> list[str]:
+        """Tokenized doc body for cid, cached by doc id and size-capped so each
+        document is tokenized once instead of once per query."""
+        toks = self._token_cache.get(cid)
+        if toks is None:
+            toks = _tokenize(doc)
+            self._token_cache[cid] = toks
+            while len(self._token_cache) > _TOKEN_CACHE_MAX:
+                self._token_cache.pop(next(iter(self._token_cache)))
+        return toks
+
+    def _sparse_pool(self, where_filter: Any) -> tuple[list, list, list, dict, float]:
         try:
             try:
                 total = self.collection.count()
@@ -195,44 +224,99 @@ class RAGRetriever:
                     total,
                     _MAX_HYBRID_DOCS,
                 )
-                return [], [], []
-            try:
-                filtered = (
-                    self.collection.count(where=where_filter) if where_filter else total
-                )
-            except Exception as e:
-                logger.debug("Sparse pool filtered count failed: %s", e)
-                filtered = -1
-            if not isinstance(filtered, int) or isinstance(filtered, bool):
-                filtered = -1
+                return [], [], [], {}, 0.0
             if not isinstance(getattr(self, "_sparse_cache", None), dict):
                 self._sparse_cache = {}
+            if not isinstance(getattr(self, "_token_cache", None), dict):
+                self._token_cache = {}
             key = repr(where_filter)
-            cached = self._sparse_cache.get(key)
-            if cached is not None and total != -1:  # noqa: SIM102
-                if cached[0] == total and (filtered == -1 or cached[1] == filtered):
-                    return cached[2]
-            fetched = self.collection.get(
-                where=where_filter, include=["documents", "metadatas"]
+            entry = self._sparse_cache.get(key)
+            # Probe live membership without pulling document payloads — the id
+            # list, not collection.count(), is the invalidation signal.
+            probe = self.collection.get(
+                where=where_filter, include=[], limit=_MAX_HYBRID_DOCS
             )
-            if not isinstance(fetched, dict):
-                return [], [], []
-            ids = fetched.get("ids", [])
-            docs = fetched.get("documents", [])
-            metas = fetched.get("metadatas", [])
-            if not isinstance(ids, list) or not isinstance(docs, list):
-                return [], [], []
-            if not isinstance(metas, list):
-                metas = [{}] * len(ids)
-            payload = (ids, docs, metas)
-            if total != -1:
-                self._sparse_cache[key] = (total, len(ids), payload)
-                while len(self._sparse_cache) > _SPARSE_CACHE_MAX:
-                    self._sparse_cache.pop(next(iter(self._sparse_cache)))
-            return payload
+            if not isinstance(probe, dict):
+                return [], [], [], {}, 0.0
+            live_ids = probe.get("ids") or []
+            if not isinstance(live_ids, list):
+                return [], [], [], {}, 0.0
+            if entry is not None and live_ids == entry.ids:
+                return entry.ids, entry.docs, entry.metas, entry.df, entry.avgdl
+
+            # Refresh: fetch full documents only for ids the pool has never
+            # stored; everything else is served from the cached entry.
+            known = {cid: i for i, cid in enumerate(entry.ids)} if entry else {}
+            new_ids = [cid for cid in live_ids if cid not in known]
+            docs_by_id: dict = {}
+            metas_by_id: dict = {}
+            if new_ids:
+                try:
+                    fetched = self.collection.get(
+                        ids=new_ids,
+                        where=where_filter,
+                        include=["documents", "metadatas"],
+                        limit=_MAX_HYBRID_DOCS,
+                    )
+                except Exception as e:
+                    logger.debug("Sparse pool document fetch failed: %s", e)
+                    fetched = None
+                if isinstance(fetched, dict):
+                    f_ids = fetched.get("ids") or []
+                    f_docs = fetched.get("documents") or []
+                    f_metas = fetched.get("metadatas") or []
+                    if not isinstance(f_ids, list) or not isinstance(f_docs, list):
+                        f_ids, f_docs = [], []
+                    if not isinstance(f_metas, list):
+                        f_metas = [{}] * len(f_ids)
+                    for cid, doc, meta in zip(f_ids, f_docs, f_metas):
+                        docs_by_id[cid] = doc or ""
+                        metas_by_id[cid] = meta if isinstance(meta, dict) else {}
+            ids: list = []
+            docs: list = []
+            metas: list = []
+            for cid in live_ids:
+                if cid in known:
+                    i = known[cid]
+                    ids.append(cid)
+                    docs.append(entry.docs[i])
+                    metas.append(entry.metas[i])
+                elif cid in docs_by_id:
+                    ids.append(cid)
+                    docs.append(docs_by_id[cid])
+                    metas.append(metas_by_id[cid])
+            # Opportunistically drop tokenized docs that vanished from every
+            # cached pool.
+            if entry is not None:
+                live_set = set(live_ids)
+                vanished = [cid for cid in entry.ids if cid not in live_set]
+                if vanished:
+                    kept_elsewhere = set(live_ids)
+                    for other in self._sparse_cache.values():
+                        if other is not entry:
+                            kept_elsewhere.update(other.ids)
+                    for cid in vanished:
+                        if cid not in kept_elsewhere:
+                            self._token_cache.pop(cid, None)
+            pool_tokens = [self._tokens_for(cid, doc) for cid, doc in zip(ids, docs)]
+            df: dict[str, int] = {}
+            for toks in pool_tokens:
+                for t in set(toks):
+                    df[t] = df.get(t, 0) + 1
+            avgdl = (
+                sum(len(toks) for toks in pool_tokens) / len(pool_tokens)
+                if pool_tokens
+                else 0.0
+            )
+            self._sparse_cache[key] = _SparsePool(
+                ids=ids, docs=docs, metas=metas, df=df, avgdl=avgdl
+            )
+            while len(self._sparse_cache) > _SPARSE_CACHE_MAX:
+                self._sparse_cache.pop(next(iter(self._sparse_cache)))
+            return ids, docs, metas, df, avgdl
         except Exception as e:
             logger.debug("Sparse pool fetch failed: %s", e)
-            return [], [], []
+            return [], [], [], {}, 0.0
 
     def _fuse_hybrid(
         self,
@@ -243,10 +327,15 @@ class RAGRetriever:
     ) -> list[RetrievedChunk]:
         from dataclasses import replace
 
-        ids, docs, metas = self._sparse_pool(where_filter)
+        ids, docs, metas, df, avgdl = self._sparse_pool(where_filter)
         if not docs:
             return dense_chunks
-        scores = _bm25_scores(_tokenize(query), [_tokenize(d) for d in docs])
+        scores = _bm25_scores(
+            _tokenize(query),
+            [self._tokens_for(cid, doc) for cid, doc in zip(ids, docs)],
+            df=df,
+            avgdl=avgdl,
+        )
         pool_n = max(1, min(pool_n, len(scores)))
         top = heapq.nlargest(pool_n, range(len(scores)), key=scores.__getitem__)
         sparse_ids = [ids[i] for i in top if scores[i] > 0]
@@ -560,6 +649,8 @@ class RAGRetriever:
             )
             if isinstance(getattr(self, "_sparse_cache", None), dict):
                 self._sparse_cache.clear()
+            if isinstance(getattr(self, "_token_cache", None), dict):
+                self._token_cache.clear()
             logger.warning(
                 "Cleared and recreated ChromaDB collection: %s",
                 config.chroma_collection,
@@ -593,6 +684,8 @@ class RAGRetriever:
             )
             if isinstance(getattr(self, "_sparse_cache", None), dict):
                 self._sparse_cache.clear()
+            if isinstance(getattr(self, "_token_cache", None), dict):
+                self._token_cache.clear()
             logger.info("Rebuilt ChromaDB collection: %s", config.chroma_collection)
             return {
                 "success": True,

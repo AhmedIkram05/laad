@@ -89,6 +89,35 @@ def _check_rate_limit_in_memory(user_key: str) -> None:
     _query_timestamps[user_key].append(now)
 
 
+def _default_cache_profile(
+    *,
+    top_k,
+    error_only,
+    most_recent_first,
+    include_uncertainty,
+    enable_reflexion,
+    enable_citation_grounding,
+    enable_self_consistency,
+    atm_id,
+    anomaly_type,
+) -> bool:
+    """True when a request matches the exact default profile the response
+    cache is keyed for. Cache reads and writes both gate on this so a
+    response generated under custom top_k/flags can never poison the key
+    a default-profile request reads."""
+    return (
+        top_k in (None, 0, config.retrieval_top_k)
+        and error_only in (None, config.error_only)
+        and most_recent_first in (None, config.most_recent_first)
+        and include_uncertainty in (None, True)
+        and enable_reflexion in (None, config.reflexion_enabled)
+        and enable_citation_grounding in (None, config.citation_grounding_enabled)
+        and enable_self_consistency in (None, config.self_consistency_enabled)
+        and not atm_id
+        and not anomaly_type
+    )
+
+
 async def _run_champion_query(
     *,
     query: str,
@@ -96,6 +125,7 @@ async def _run_champion_query(
     atm_id: Optional[str],
     top_k: Optional[int],
     current_user: dict,
+    cacheable: bool = True,
 ) -> Optional[RAGQueryResponse]:
     """Try the agentic champion. Returns response on hit, None on miss when
     fallback is enabled, raises HTTPException when fallback is disabled."""
@@ -156,9 +186,10 @@ async def _run_champion_query(
     await asyncio.to_thread(
         _save_agent_trace, query_id, agent_result.get("agent_trace")
     )
-    await asyncio.to_thread(
-        set_cached_response, sanitized_query, {**agent_result, "query_id": query_id}
-    )
+    if cacheable:
+        await asyncio.to_thread(
+            set_cached_response, sanitized_query, {**agent_result, "query_id": query_id}
+        )
     return RAGQueryResponse(
         query_id=query_id,
         answer=agent_result["answer"],
@@ -305,7 +336,18 @@ def _run_legacy_query(
         "was_revised": response.was_revised,
         "critique_text": response.critique_text,
     }
-    set_cached_response(sanitized_query, cache_payload)
+    if _default_cache_profile(
+        top_k=top_k,
+        error_only=error_only,
+        most_recent_first=most_recent_first,
+        include_uncertainty=include_uncertainty,
+        enable_reflexion=enable_reflexion,
+        enable_citation_grounding=enable_citation_grounding,
+        enable_self_consistency=enable_self_consistency,
+        atm_id=atm_id,
+        anomaly_type=anomaly_type,
+    ):
+        set_cached_response(sanitized_query, cache_payload)
 
     return result
 
@@ -356,13 +398,18 @@ async def query(
             else request.most_recent_first
         )
 
-        # Only use cache for default retrieval settings to avoid cross‑filter contamination
-        use_cache = (
-            request.top_k in (None, 0, config.retrieval_top_k)
-            and request.error_only in (None, config.error_only)
-            and request.most_recent_first in (None, config.most_recent_first)
-            and not request.atm_id
-            and not anomaly_type
+        # Only use cache for the default request profile the cache key was
+        # built for — custom top_k/flag responses must not be read or written.
+        use_cache = _default_cache_profile(
+            top_k=request.top_k,
+            error_only=request.error_only,
+            most_recent_first=request.most_recent_first,
+            include_uncertainty=request.include_uncertainty,
+            enable_reflexion=request.enable_reflexion,
+            enable_citation_grounding=request.enable_citation_grounding,
+            enable_self_consistency=request.enable_self_consistency,
+            atm_id=request.atm_id,
+            anomaly_type=anomaly_type,
         )
         cached = get_cached_response(sanitized_query) if use_cache else None
         if cached:
@@ -401,6 +448,7 @@ async def query(
                 atm_id=atm_id,
                 top_k=request.top_k,
                 current_user=current_user,
+                cacheable=use_cache,
             )
             if champion_result is not None:
                 return champion_result

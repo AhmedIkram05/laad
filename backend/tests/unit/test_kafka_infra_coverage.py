@@ -175,10 +175,17 @@ class TestAnomalySyncerLeftovers:
                 "explanation": "e",
             }
         ]
-        with patch.object(sync_mod, "get_cursor", return_value=_ctx(cur)):
+        with (
+            patch.object(sync_mod, "get_cursor", return_value=_ctx(cur)),
+            patch.object(sync_mod, "get_redis_client", return_value=None),
+        ):
             rows = syncer._get_unsynced_anomalies()
             assert rows[0]["id"] == 3
-            assert "NOT IN" in cur.execute.call_args[0][0]
+            # NOT IN was replaced by Redis-backed sync state; the query must
+            # also exclude NULL-atm rows.
+            sql = cur.execute.call_args[0][0]
+            assert "atm_id IS NOT NULL" in sql
+            assert "NOT IN" not in sql
         with patch.object(sync_mod, "get_cursor", side_effect=RuntimeError("db")):
             assert syncer._get_unsynced_anomalies() == []
 
