@@ -509,13 +509,18 @@ class TestGenerateRateLimited:
             client = LLMClient()
             with patch("backend.src.rag.llm_client._rate_limiter") as mock_rl:
                 mock_rl.acquire.return_value = True
-                with patch.object(
-                    client, "_call_llm", return_value=MagicMock(text="ok")
-                ):
+                # Stub the provider HTTP layer so no request leaves the test.
+                with patch(
+                    "backend.src.rag.llm_client.requests.post",
+                    return_value=_llm_success_response(text="ok"),
+                ) as mock_post:
+                    # Limiter waited (acquire -> True) instead of raising.
                     result = client.generate("test")
-                assert result is not None
-                # Request-scoped key when provided.
-                client.generate("test", rate_limit_key="req:abc")
+                    assert result is not None
+                    # Request-scoped key when provided.
+                    client.generate("test", rate_limit_key="req:abc")
+                # Generation then reached an actual provider call attempt.
+                assert mock_post.call_count == 2
                 first_key = mock_rl.acquire.call_args_list[0].args[0]
                 second_key = mock_rl.acquire.call_args_list[1].args[0]
                 assert first_key == "global"
