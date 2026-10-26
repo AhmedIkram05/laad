@@ -154,10 +154,12 @@ describe("AnomalyListPage branches", () => {
     });
   });
 
-  it("shows empty state when anomalies fetch throws", async () => {
+  it("shows a distinct error state when anomalies fetch throws", async () => {
+    // Finding #17: fetch failures must not render the same empty state.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     await renderList(makeFetch({ anomaliesError: "throw" }));
-    await screen.findByText("No anomalies found.");
+    await screen.findByText("Failed to load anomalies");
+    expect(screen.queryByText("No anomalies found.")).toBeNull();
     spy.mockRestore();
   });
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -281,6 +282,15 @@ def _record_decision_cost(sink: Optional[list[float]], answer: DecisionAnswer) -
         sink.append(answer.cost_usd)
 
 
+def _rate_limit_forward(rate_limit_key: Optional[str]) -> dict:
+    """Forward the request-scoped rate-limit bucket only when set.
+
+    Paths without a key (direct internal-method callers, tests) keep the
+    exact pre-bucketing call shape.
+    """
+    return {"rate_limit_key": rate_limit_key} if rate_limit_key else {}
+
+
 def _emit_decision_span(
     questions: dict[str, DecisionQuestion],
     answers: Optional[dict[str, DecisionAnswer]],
@@ -378,6 +388,10 @@ class RAGGenerator:
         critique = None
         self_consistency_score = None
         samples = []
+        # One rate-limit bucket per user request: every internal LLM call in
+        # this generation (samples, critique, regenerate, confidence) shares
+        # it, so the limiter counts user queries rather than LLM calls.
+        rate_limit_key = f"req:{uuid.uuid4()}"
         # Per-run sink for Jev decision call costs (never instance state —
         # the generator is a singleton shared across requests).
         decision_costs: list[float] = []
@@ -389,20 +403,39 @@ class RAGGenerator:
                 context,
                 system_prompt,
                 query_type,
+                **_rate_limit_forward(rate_limit_key),
             )
 
         if samples:
             response = self._build_response_from_text(samples[0])
         else:
-            response = self._generate_single(query, context, system_prompt, query_type)
+            response = self._generate_single(
+                query,
+                context,
+                system_prompt,
+                query_type,
+                chunks=chunks,
+                **_rate_limit_forward(rate_limit_key),
+            )
 
         if enable_reflexion and response.text:
             critique = self._critique_with_jev_gate(
-                query, context, response.text, system_prompt, cost_sink=decision_costs
+                query,
+                context,
+                response.text,
+                system_prompt,
+                cost_sink=decision_costs,
+                **_rate_limit_forward(rate_limit_key),
             )
             if critique:
                 response = self._regenerate(
-                    query, context, system_prompt, query_type, response.text, critique
+                    query,
+                    context,
+                    system_prompt,
+                    query_type,
+                    response.text,
+                    critique,
+                    **_rate_limit_forward(rate_limit_key),
                 )
 
         verbalized_confidence = None
@@ -414,6 +447,7 @@ class RAGGenerator:
                 system_prompt,
                 cost_sink=decision_costs,
                 escalation_sink=escalations,
+                **_rate_limit_forward(rate_limit_key),
             )
 
         grounding_score = None
@@ -432,8 +466,11 @@ class RAGGenerator:
                     )
                     grounding_score = min(grounding_score, jev_grounded)
 
+        # Real cross-encoder participation flag, propagated by the retriever
+        # when it actually reranked these chunks (was: inferred from
+        # confidence > 0, which is virtually always true).
         cross_encoder_used = (
-            getattr(chunks[0], "confidence_score", 0) > 0 if chunks else False
+            bool(getattr(chunks[0], "cross_encoder_used", False)) if chunks else False
         )
 
         return GeneratedResponse(
@@ -460,6 +497,8 @@ class RAGGenerator:
         system_prompt: str,
         query_type: QueryType = QueryType.DIAGNOSTIC,
         temperature: Optional[float] = None,
+        chunks: Optional[list[RetrievedChunk]] = None,
+        rate_limit_key: Optional[str] = None,
     ) -> LLMResponse:
         """Generate a single response from the LLM."""
         prompt = self._build_prompt(query, context, query_type)
@@ -470,11 +509,12 @@ class RAGGenerator:
                 temperature=temperature
                 if temperature is not None
                 else config.temperature,
+                **_rate_limit_forward(rate_limit_key),
             )
         except Exception as e:
             logger.error(f"Generation failed: {e}")
             fallback_text = self._generate_fallback(
-                query, chunks=[], query_type=query_type
+                query, chunks=chunks or [], query_type=query_type
             )
             return LLMResponse(
                 text=fallback_text,
@@ -499,6 +539,7 @@ class RAGGenerator:
         system_prompt: str,
         query_type: QueryType,
         num_samples: int = config.self_consistency_samples,
+        rate_limit_key: Optional[str] = None,
     ) -> Tuple[Optional[float], list[str]]:
         """Compute self-consistency score by generating multiple samples in parallel.
 
@@ -519,6 +560,7 @@ class RAGGenerator:
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=0.7,
+                    **_rate_limit_forward(rate_limit_key),
                 )
                 for _ in range(num_samples)
             ]
@@ -559,6 +601,7 @@ class RAGGenerator:
         *,
         cost_sink: Optional[list[float]] = None,
         escalation_sink: Optional[list[int]] = None,
+        rate_limit_key: Optional[str] = None,
     ) -> Optional[float]:
         """Ask the LLM to rate its own confidence that the answer is supported by context.
 
@@ -624,7 +667,9 @@ class RAGGenerator:
                 logger.warning(
                     f"Jev confidence decision failed; falling back to LLM: {e}"
                 )
-        return self._llm_verbalized_confidence(query, context, answer, system_prompt)
+        return self._llm_verbalized_confidence(
+            query, context, answer, system_prompt, **_rate_limit_forward(rate_limit_key)
+        )
 
     def _llm_verbalized_confidence(
         self,
@@ -634,6 +679,7 @@ class RAGGenerator:
         system_prompt: str,
         *,
         cost_sink: Optional[list[float]] = None,
+        rate_limit_key: Optional[str] = None,
     ) -> Optional[float]:
         """Existing LLM verbalized-confidence path (kill-switch and escalation target).
 
@@ -664,6 +710,7 @@ Return ONLY a single number between 0.0 and 1.0. No explanation."""
                 system_prompt=system_prompt,
                 temperature=0.1,
                 max_tokens=10,
+                **_rate_limit_forward(rate_limit_key),
             )
             match = re.search(r"([01]\.\d+|0|1(?:\.0)?)", conf_response.text.strip())
             if match:
@@ -684,6 +731,7 @@ Return ONLY a single number between 0.0 and 1.0. No explanation."""
         context: str,
         answer: str,
         system_prompt: str,
+        rate_limit_key: Optional[str] = None,
     ) -> Optional[str]:
         """Critique the generated answer for unsupported claims.
 
@@ -711,6 +759,7 @@ If you find unsupported claims, list each one with:
                 prompt=critique_prompt,
                 system_prompt=system_prompt,
                 temperature=0.2,
+                **_rate_limit_forward(rate_limit_key),
             )
             critique_text = critique_response.text.strip()
             if "NO_ISSUES_FOUND" in critique_text:
@@ -730,6 +779,7 @@ If you find unsupported claims, list each one with:
         system_prompt: str,
         *,
         cost_sink: Optional[list[float]] = None,
+        rate_limit_key: Optional[str] = None,
     ) -> Optional[str]:
         """Reflexion entry: cheap Jev noul sound-gate before the LLM critique.
 
@@ -781,7 +831,9 @@ If you find unsupported claims, list each one with:
             logger.warning(
                 f"Jev sound-gate decision failed; falling back to LLM critique: {e}"
             )
-        return self._critique_response(query, context, answer, system_prompt)
+        return self._critique_response(
+            query, context, answer, system_prompt, **_rate_limit_forward(rate_limit_key)
+        )
 
     def _jev_grounding_score(
         self,
@@ -839,6 +891,7 @@ If you find unsupported claims, list each one with:
         query_type: QueryType,
         original_answer: str,
         critique: str,
+        rate_limit_key: Optional[str] = None,
     ) -> LLMResponse:
         """Regenerate an answer addressing the critique."""
         regenerate_prompt = f"""The previous answer had issues identified by quality review. Generate a corrected answer.
@@ -861,6 +914,7 @@ If the context doesn't contain enough information to fully answer the question, 
                 prompt=regenerate_prompt,
                 system_prompt=system_prompt,
                 temperature=0.3,
+                **_rate_limit_forward(rate_limit_key),
             )
         except Exception as e:
             logger.warning(f"Regeneration failed: {e}. Using original answer.")

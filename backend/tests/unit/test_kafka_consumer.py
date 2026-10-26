@@ -209,7 +209,7 @@ class TestRunConsumerRouting:
         handle_event = MagicMock(return_value=True)
         handle_metric = MagicMock(return_value=True)
         mock_dedup = MagicMock()
-        mock_dedup.is_duplicate.return_value = True
+        mock_dedup.check_and_mark.return_value = True
         mock_consumer = MagicMock()
         mock_consumer.poll = self._make_poll(mock_tp, mock_record)
         mock_consumer.commit = MagicMock()
@@ -232,7 +232,7 @@ class TestRunConsumerRouting:
                 pass
 
         handle_event.assert_not_called()
-        mock_dedup.is_duplicate.assert_called_once_with("dup-1")
+        mock_dedup.check_and_mark.assert_called_once_with("dup-1")
 
     def test_manual_commit_after_batch(self):
         mock_record = MagicMock()

@@ -23,6 +23,7 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const [detectorTypeFilter, setDetectorTypeFilter] = useState("all");
   const [entities, setEntities] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [fetchError, setFetchError] = useState(false);
 
   const handleQueryChange = (newQuery) => {
     setQuery(newQuery);
@@ -53,7 +54,11 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
         );
         if (cancelled) return;
         setAllAnomalies(anomalyRes?.data || []);
+        setFetchError(false);
       } catch (err) {
+        if (cancelled) return;
+        // Fetch failures must be distinguishable from an empty result.
+        setFetchError(true);
         console.error("Failed to fetch anomalies.", err);
       } finally {
         if (!cancelled) setLoading(false);
@@ -110,7 +115,10 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
 
   const totalCount = filtered.length;
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  // Clamp the active page to the result set: a filter change that shrinks the
+  // list must not leave a stale page N>totalPages rendering an empty slice.
+  const safePage = Math.min(currentPage, Math.max(totalPages, 1));
+  const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
   const pageAnomalies = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const atms = entities.filter(e => e.atm_id.startsWith("ATM-GB-"));
@@ -258,6 +266,12 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
           </div>
+        ) : fetchError ? (
+          <div className="text-center py-12">
+            <AlertCircle className="w-12 h-12 mx-auto text-destructive mb-4" />
+            <p className="font-medium">Failed to load anomalies</p>
+            <p className="text-muted-foreground text-sm mt-1">Something went wrong fetching the list. Please try again.</p>
+          </div>
         ) : pageAnomalies.length === 0 ? (
           <div className="text-center py-12">
             <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
@@ -284,11 +298,11 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
 
       {totalPages > 1 && (
         <div className="flex justify-center gap-2">
-          <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="px-3 py-1.5 border rounded disabled:opacity-50">First</button>
-          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1.5 border rounded disabled:opacity-50">Prev</button>
-          <span className="px-3 py-1.5">Page {currentPage} of {totalPages}</span>
-          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-3 py-1.5 border rounded disabled:opacity-50">Next</button>
-          <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="px-3 py-1.5 border rounded disabled:opacity-50">Last</button>
+          <button onClick={() => setCurrentPage(1)} disabled={safePage === 1} className="px-3 py-1.5 border rounded disabled:opacity-50">First</button>
+          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={safePage === 1} className="px-3 py-1.5 border rounded disabled:opacity-50">Prev</button>
+          <span className="px-3 py-1.5">Page {safePage} of {totalPages}</span>
+          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="px-3 py-1.5 border rounded disabled:opacity-50">Next</button>
+          <button onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages} className="px-3 py-1.5 border rounded disabled:opacity-50">Last</button>
         </div>
       )}
     </div>

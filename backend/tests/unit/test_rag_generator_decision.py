@@ -102,9 +102,7 @@ def _provider(answers: dict):
 @pytest.fixture
 def gen_factory(monkeypatch):
     """Kill-switch-safe RAGGenerator factory (get_decision_provider → None)."""
-    monkeypatch.setattr(
-        "backend.src.rag.generator.get_decision_provider", lambda: None
-    )
+    monkeypatch.setattr("backend.src.rag.generator.get_decision_provider", lambda: None)
 
     def _make(provider=None):
         gen = RAGGenerator()
@@ -134,7 +132,13 @@ class TestKillSwitch:
         assert kwargs == {}
         conf_args, conf_kwargs = gen._estimate_verbalized_confidence.call_args
         assert conf_args == ("q", expected_context, "sample text", DIAGNOSTIC_PROMPT)
-        assert conf_kwargs == {"cost_sink": ANY, "escalation_sink": ANY}
+        # Finding #9: generate() always passes a request-scoped rate-limit
+        # bucket so internal LLM calls count as one user query.
+        assert conf_kwargs == {
+            "cost_sink": ANY,
+            "escalation_sink": ANY,
+            "rate_limit_key": ANY,
+        }
         assert conf_kwargs["cost_sink"] == []
         assert conf_kwargs["escalation_sink"] == []
         assert response.verbalized_confidence == 0.85
@@ -145,7 +149,9 @@ class TestKillSwitch:
         # self-consistency helper, so the raw client is never called here.
         gen.llm_client.generate.assert_not_called()
 
-    def test_estimate_verbalized_confidence_uses_llm_without_provider(self, gen_factory):
+    def test_estimate_verbalized_confidence_uses_llm_without_provider(
+        self, gen_factory
+    ):
         gen = gen_factory()
         gen.llm_client.generate.return_value = LLMResponse(
             text="0.85", raw_response={}, model="m", finish_reason="stop"
@@ -214,7 +220,9 @@ class TestJevScoreSwap:
         assert confidence == 0.85
         gen.decision_provider.decide.assert_called_once()
 
-    def test_generate_propagates_jev_confidence_and_cost(self, gen_factory, sample_chunks):
+    def test_generate_propagates_jev_confidence_and_cost(
+        self, gen_factory, sample_chunks
+    ):
         gen = gen_factory()
         gen.decision_provider = _provider({"answer_confidence": _score_answer(0.72)})
         gen._compute_self_consistency = MagicMock(return_value=(0.9, ["sample text"]))
@@ -241,7 +249,9 @@ class TestJevSoundGate:
         cfg = _mock_config(jev_escalation_threshold=0.7)
 
         with patch("backend.src.rag.generator.config", cfg):
-            critique = gen._critique_with_jev_gate("q", "ctx", "a", "sys", cost_sink=sink)
+            critique = gen._critique_with_jev_gate(
+                "q", "ctx", "a", "sys", cost_sink=sink
+            )
 
         assert critique is None
         gen._critique_response.assert_not_called()
@@ -269,7 +279,9 @@ class TestJevSoundGate:
         cfg = _mock_config(jev_escalation_threshold=0.7)
 
         with patch("backend.src.rag.generator.config", cfg):
-            critique = gen._critique_with_jev_gate("q", "ctx", "a", "sys", cost_sink=sink)
+            critique = gen._critique_with_jev_gate(
+                "q", "ctx", "a", "sys", cost_sink=sink
+            )
 
         assert critique == "claim X lacks evidence"
         gen._critique_response.assert_called_once_with("q", "ctx", "a", "sys")
@@ -326,7 +338,9 @@ class TestJevSoundGate:
         assert response.decision_cost_usd == pytest.approx(NOUL_COST)
         gen.llm_client.generate.assert_called_once()  # critique + regen skipped
 
-    def test_generate_accumulates_costs_across_jev_calls(self, gen_factory, sample_chunks):
+    def test_generate_accumulates_costs_across_jev_calls(
+        self, gen_factory, sample_chunks
+    ):
         gen = gen_factory()
         gen.decision_provider = MagicMock()
         gen.decision_provider.decide.side_effect = [
@@ -432,16 +446,19 @@ class TestAgentCostWiring:
             "backend.src.rag.uncertainty.get_uncertainty_estimator",
             lambda: MagicMock(),
         )
-        monkeypatch.setattr(
-            "backend.src.rag.uncertainty.emit_gate_event", MagicMock()
-        )
+        monkeypatch.setattr("backend.src.rag.uncertainty.emit_gate_event", MagicMock())
         generator = MagicMock()
         first = GeneratedResponse(
-            text="answer", sources=[], model="m", raw_response={},
+            text="answer",
+            sources=[],
+            model="m",
+            raw_response={},
             decision_cost_usd=0.00005,
         )
         generator.generate.return_value = first
-        monkeypatch.setattr("backend.src.rag.generator.get_generator", lambda: generator)
+        monkeypatch.setattr(
+            "backend.src.rag.generator.get_generator", lambda: generator
+        )
 
         evidence = [
             {
@@ -457,7 +474,10 @@ class TestAgentCostWiring:
 
         # Retry round: a second _generate call accumulates instead of overwrite.
         second = GeneratedResponse(
-            text="answer 2", sources=[], model="m", raw_response={},
+            text="answer 2",
+            sources=[],
+            model="m",
+            raw_response={},
             decision_cost_usd=0.00003,
         )
         generator.generate.return_value = second
@@ -480,14 +500,14 @@ class TestAgentCostWiring:
             "backend.src.rag.uncertainty.get_uncertainty_estimator",
             lambda: MagicMock(),
         )
-        monkeypatch.setattr(
-            "backend.src.rag.uncertainty.emit_gate_event", MagicMock()
-        )
+        monkeypatch.setattr("backend.src.rag.uncertainty.emit_gate_event", MagicMock())
         generator = MagicMock()
         generator.generate.return_value = GeneratedResponse(
             text="answer", sources=[], model="m", raw_response={}
         )
-        monkeypatch.setattr("backend.src.rag.generator.get_generator", lambda: generator)
+        monkeypatch.setattr(
+            "backend.src.rag.generator.get_generator", lambda: generator
+        )
 
         evidence = [
             {

@@ -66,9 +66,12 @@ const request = async (endpoint, options = {}) => {
 // anomaly_type: filter by anomaly type (A1-A7, UNKNOWN)
 // severity: filter by severity (CRITICAL, HIGH, MAJOR, LOW)
 // entity_type: filter by entity type ('atm' or 'server')
+// limit: server-side row cap (default 200) — the list pages paginate client-side
+const ANOMALY_LIST_LIMIT = 200;
 export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null, entity_type = null) => {
     const params = new URLSearchParams();
     params.append('sort_by', sort_by);
+    params.append('limit', ANOMALY_LIST_LIMIT);
     if (hours !== null && hours !== undefined) {
         const now = new Date();
         const from = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();

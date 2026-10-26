@@ -295,24 +295,36 @@ class TestConsumerHelpers:
         from backend.kafka import consumer
 
         with patch.object(consumer, "get_redis_client", return_value=None):
-            assert consumer._acquire_detection_lock() is True
-            assert consumer._release_detection_lock() is None
+            # Redis unavailable → proceed without a lock, nothing to release.
+            should_run, token = consumer._acquire_detection_lock()
+            assert should_run is True
+            assert token is None
+            assert consumer._release_detection_lock(token) is None
         client = MagicMock()
         client.set.return_value = True
         with patch.object(consumer, "get_redis_client", return_value=client):
-            assert consumer._acquire_detection_lock() is True
-            consumer._release_detection_lock()
-            client.delete.assert_called_once()
+            should_run, token = consumer._acquire_detection_lock()
+            assert should_run is True
+            assert token
+            consumer._release_detection_lock(token)
+            # Ownership-checked release (compare-and-delete), not a bare delete.
+            client.delete.assert_not_called()
+            client.eval.assert_called_once()
+            assert client.eval.call_args.args[3] == token
         client2 = MagicMock()
         client2.set.return_value = None
         with patch.object(consumer, "get_redis_client", return_value=client2):
-            assert consumer._acquire_detection_lock() is False
+            should_run, token = consumer._acquire_detection_lock()
+            assert should_run is False
+            assert token is None
         bad = MagicMock()
         bad.set.side_effect = RuntimeError("redis")
-        bad.delete.side_effect = RuntimeError("redis")
+        bad.eval.side_effect = RuntimeError("redis")
         with patch.object(consumer, "get_redis_client", return_value=bad):
-            assert consumer._acquire_detection_lock() is True
-            assert consumer._release_detection_lock() is None
+            should_run, token = consumer._acquire_detection_lock()
+            assert should_run is True
+            assert token is None
+            assert consumer._release_detection_lock(token) is None
 
     def test_trigger_detection(self):
         from backend.kafka import consumer
@@ -411,13 +423,16 @@ class TestDedupDlqProducer:
 
         client = MagicMock()
         client.ping.return_value = True
-        client.sismember.return_value = True
+        client.exists.return_value = True
         with patch.object(dd, "get_redis_client", return_value=client):
             d = Deduplicator()
             assert d.is_duplicate("m") is True
             d.mark_seen("m")
-            client.sadd.assert_called_once()
-            client.expire.assert_called_once()
+            # Per-message key with a bounded TTL (no shared sliding-EXPIRE set).
+            client.set.assert_called_once()
+            set_args, set_kwargs = client.set.call_args
+            assert set_args[0].startswith("kafka:dedup:id:")
+            assert set_kwargs.get("ex") == 3600
         with patch.object(dd, "get_redis_client", return_value=None):
             d2 = Deduplicator()
             assert d2._is_redis_available() is False
@@ -1091,13 +1106,13 @@ class TestGapClosers:
             assert d._is_redis_available() is False
         flaky = MagicMock()
         flaky.ping.return_value = True
-        flaky.sismember.side_effect = RuntimeError("read fail")
+        flaky.exists.side_effect = RuntimeError("read fail")
         with patch.object(dd, "get_redis_client", return_value=flaky):
             d = Deduplicator()
             assert d.is_duplicate("x") is False
         flaky2 = MagicMock()
         flaky2.ping.return_value = True
-        flaky2.sadd.side_effect = RuntimeError("write fail")
+        flaky2.set.side_effect = RuntimeError("write fail")
         with patch.object(dd, "get_redis_client", return_value=flaky2):
             d = Deduplicator()
             d.mark_seen("x")
