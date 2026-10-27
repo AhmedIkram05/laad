@@ -58,9 +58,9 @@ describe("DiagnosticAssistant - extended coverage", () => {
     );
   }
 
-  // ─── getRAGStats on mount ──────────────────────────────
+  // ─── no stats call on mount ────────────────────────────
 
-  it("calls getRAGStats on mount", async () => {
+  it("does not call getRAGStats on mount", async () => {
     const api = await import("../../api/api");
     mockFetch(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
@@ -68,27 +68,7 @@ describe("DiagnosticAssistant - extended coverage", () => {
 
     await renderComponent();
 
-    await waitFor(() => {
-      expect(api.getRAGStats).toHaveBeenCalled();
-    });
-  });
-
-  it("logs error when getRAGStats fails", async () => {
-    const api = await import("../../api/api");
-    api.getRAGStats.mockRejectedValueOnce(new Error("stats fail"));
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    mockFetch(() =>
-      Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-    );
-
-    await renderComponent();
-
-    await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalled();
-    });
-
-    consoleSpy.mockRestore();
+    expect(api.getRAGStats).not.toHaveBeenCalled();
   });
 
   // ─── tab switching to history ──────────────────────────

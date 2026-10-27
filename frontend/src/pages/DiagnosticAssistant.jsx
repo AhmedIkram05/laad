@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getRAGStats, getRAGHistory } from "../api/api";
+import { getRAGHistory } from "../api/api";
 import { useRAG } from "../providers/useRAG";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -250,17 +250,6 @@ function DiagnosticAssistant() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        await getRAGStats();
-      } catch (err) {
-        console.error("Failed to fetch stats:", err);
-      }
-    };
-    fetchStats();
-  }, []);
 
   useEffect(() => {
     if (activeTab === "history") {

@@ -196,3 +196,25 @@ class TestHandleEvent:
             assert result is True
             call_args = mock_cur.execute.call_args[0][1]
             assert call_args[0].tzinfo is not None
+
+    def test_offset_timestamp_buckets_by_utc_hour(self):
+        msg = {
+            "message_id": "msg-offset-ts",
+            "timestamp": "2026-05-12T23:30:00+05:00",  # == 18:30 UTC
+            "source": "ATM_APP",
+            "severity": "INFO",
+        }
+
+        with patch(
+            "backend.kafka.handlers.event_handler.increment_event_counter"
+        ) as mock_counter:
+            buffer = MockChromaBuffer()
+            rows: list[tuple] = []
+            result = handle_event(msg, buffer, row_buffer=rows)
+
+        assert result is True
+        assert len(rows) == 1
+        # DB row keeps the source instant as given.
+        assert rows[0][0].utcoffset().total_seconds() == 5 * 3600
+        # Analytics bucket is the UTC hour, not the +05:00 local hour.
+        mock_counter.assert_called_once_with("ATM_APP", "2026-05-12T18")

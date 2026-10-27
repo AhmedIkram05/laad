@@ -388,3 +388,42 @@ class TestRunConsumerRouting:
         handle_event.assert_not_called()
         handle_metric.assert_not_called()
         mock_log.warning.assert_called()
+
+    def test_tombstone_message_skipped(self):
+        mock_record = MagicMock()
+        mock_record.value = None  # tombstone: null-valued message
+        mock_tp = MagicMock()
+        mock_tp.topic = TOPIC_EVENTS
+
+        handle_event = MagicMock(return_value=True)
+        handle_metric = MagicMock(return_value=True)
+        route_errors = MagicMock()
+        mock_consumer = MagicMock()
+        mock_consumer.poll = self._make_poll(mock_tp, mock_record)
+        mock_consumer.commit = MagicMock()
+        mock_consumer.close = MagicMock()
+        mock_dedup = MagicMock()
+
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch.object(metric_handler, "handle_metric", side_effect=handle_metric),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors", route_errors),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
+            try:
+                run_consumer()
+            except _PollOnceThenStop:
+                pass
+
+        # Tombstone consumed without crashing the loop; routed as neither a
+        # handler message nor a deserialise error.
+        handle_event.assert_not_called()
+        handle_metric.assert_not_called()
+        route_errors.assert_not_called()
+        mock_dedup.check_and_mark.assert_not_called()
+        mock_consumer.commit.assert_called()
