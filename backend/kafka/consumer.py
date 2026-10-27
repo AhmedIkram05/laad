@@ -358,6 +358,16 @@ def run_consumer() -> None:
                 topic = topic_partition.topic
 
                 for raw_msg in messages:
+                    if raw_msg.value is None:
+                        # Tombstone (null value, e.g. a compaction delete
+                        # marker): nothing to deserialise, not an error.
+                        log.debug(
+                            "Skipping tombstone message (topic=%s, offset=%s).",
+                            topic,
+                            raw_msg.offset,
+                        )
+                        continue
+
                     msg = _deserialise(raw_msg.value)
 
                     if msg is None:
