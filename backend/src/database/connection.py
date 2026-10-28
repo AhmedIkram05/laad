@@ -3,6 +3,7 @@ from __future__ import annotations
 import psycopg2
 import psycopg2.pool
 import psycopg2.extras
+import threading
 from contextlib import contextmanager
 from typing import Optional
 
@@ -10,17 +11,24 @@ from backend.src.database.config import DB_CONFIG
 
 # Thread-safe connection pool (lazy initialisation)
 _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+_pool_lock = threading.Lock()
 
 
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        # Increased from maxconn=20 to 50 to handle concurrent loads from:
-        # - Multiple API client requests (typically 4-8 concurrent)
-        # - Generator (1 per second)
-        # - ML detector (1 per 10 seconds)
-        # - Background cleanup tasks
-        _pool = psycopg2.pool.ThreadedConnectionPool(minconn=5, maxconn=50, **DB_CONFIG)
+        # Double-checked lock: two threads racing past the outer check must
+        # not each construct a pool (the loser leaks its connections).
+        with _pool_lock:
+            if _pool is None:
+                # Increased from maxconn=20 to 50 to handle concurrent loads from:
+                # - Multiple API client requests (typically 4-8 concurrent)
+                # - Generator (1 per second)
+                # - ML detector (1 per 10 seconds)
+                # - Background cleanup tasks
+                _pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=5, maxconn=50, **DB_CONFIG
+                )
     return _pool
 
 
