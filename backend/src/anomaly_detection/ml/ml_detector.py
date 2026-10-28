@@ -214,6 +214,7 @@ class MLAnomalyDetector:
         self._scaler: object | None = None
         self._if_feature_indices: list[int] | None = None
         self._if_unknown_threshold: float = UNKNOWN_ANOMALY_THRESHOLD
+        self._sm_runtime = None
         self._loaded = self._load_models()
         if not self._loaded:
             self._download_models_from_s3()
@@ -392,13 +393,18 @@ class MLAnomalyDetector:
             import boto3
             from botocore.config import Config
 
-            runtime = boto3.client(
-                "runtime.sagemaker",
-                config=Config(
-                    connect_timeout=SAGEMAKER_CONNECT_TIMEOUT_S,
-                    read_timeout=SAGEMAKER_READ_TIMEOUT_S,
-                ),
-            )
+            # Build the runtime client once per detector instead of per cycle;
+            # getattr default keeps unbound stub-instance callers working.
+            runtime = getattr(self, "_sm_runtime", None)
+            if runtime is None:
+                runtime = boto3.client(
+                    "runtime.sagemaker",
+                    config=Config(
+                        connect_timeout=SAGEMAKER_CONNECT_TIMEOUT_S,
+                        read_timeout=SAGEMAKER_READ_TIMEOUT_S,
+                    ),
+                )
+                self._sm_runtime = runtime
             if features.ndim == 1:
                 features = features.reshape(1, -1)
 
