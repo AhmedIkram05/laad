@@ -15,8 +15,13 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const RAG_TIMEOUT_MS = 90000;
 
 const request = async (endpoint, options = {}) => {
-    const { headers: optionHeaders, timeoutMs, ...restOptions } = options;
+    const { headers: optionHeaders, timeoutMs, signal: externalSignal, ...restOptions } = options;
     const controller = new AbortController();
+    // A caller-supplied signal must abort alongside the internal timeout abort.
+    if (externalSignal) {
+        if (externalSignal.aborted) controller.abort();
+        else externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
     const timeout = setTimeout(
         () => controller.abort(),
         timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -68,7 +73,7 @@ const request = async (endpoint, options = {}) => {
 // entity_type: filter by entity type ('atm' or 'server')
 // limit: server-side row cap (default 200) — the list pages paginate client-side
 const ANOMALY_LIST_LIMIT = 200;
-export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null, entity_type = null) => {
+export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', detection_source = null, is_starred = null, atm_id = null, anomaly_type = null, severity = null, entity_type = null, signal = null) => {
     const params = new URLSearchParams();
     params.append('sort_by', sort_by);
     params.append('limit', ANOMALY_LIST_LIMIT);
@@ -98,7 +103,7 @@ export const fetchAnomalies = (is_active = 1, hours = null, sort_by = 'score', d
     if (entity_type) {
         params.append('entity_type', encodeURIComponent(entity_type));
     }
-    return request(`/api/anomalies?${params.toString()}`);
+    return request(`/api/anomalies?${params.toString()}`, signal ? { signal } : undefined);
 };
 
 // Fetches all entity IDs (ATMs + servers) from the analytics entities endpoint

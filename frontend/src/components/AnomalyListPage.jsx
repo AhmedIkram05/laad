@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { useGlobalSearch } from "./SearchContext";
 
 const ITEMS_PER_PAGE = 20;
+// 60s: fresh enough that an ops list never sits stale on an open tab,
+// slow enough not to hammer the API from every open tab.
+const REFRESH_INTERVAL_MS = 60_000;
 
 function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
   const { query, setQuery } = useGlobalSearch();
@@ -38,9 +41,16 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    let inFlight = false;
+    const controller = new AbortController();
+    const load = async (isIntervalRefresh = false) => {
+      // Mirrors Analytics: skip a tick whose predecessor is still running.
+      if (inFlight) return;
+      inFlight = true;
       try {
-        setLoading(true);
+        if (!isIntervalRefresh) {
+          setLoading(true);
+        }
         const anomalyRes = await fetchAnomalies(
           isActive,
           undefined,
@@ -50,7 +60,8 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
           atmIdFilter !== "all" ? atmIdFilter : undefined,
           anomalyTypeFilter !== "all" ? anomalyTypeFilter : undefined,
           severityFilter !== "all" ? severityFilter : undefined,
-          entityTypeFilter !== "all" ? entityTypeFilter : undefined
+          entityTypeFilter !== "all" ? entityTypeFilter : undefined,
+          controller.signal
         );
         if (cancelled) return;
         setAllAnomalies(anomalyRes?.data || []);
@@ -61,11 +72,17 @@ function AnomalyListPage({ title, subtitle, isActive = 1, isStarred = null }) {
         setFetchError(true);
         console.error("Failed to fetch anomalies.", err);
       } finally {
+        inFlight = false;
         if (!cancelled) setLoading(false);
       }
     };
     load();
-    return () => { cancelled = true; };
+    const timer = setInterval(() => load(true), REFRESH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      controller.abort();
+    };
   }, [isActive, isStarred, sortBy, atmIdFilter, anomalyTypeFilter, severityFilter, entityTypeFilter, detectorTypeFilter]);
 
   useEffect(() => {
