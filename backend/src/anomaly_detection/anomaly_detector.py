@@ -989,7 +989,10 @@ class AnomalyDetector:
                         "(detected_at, anomaly_type, atm_id, correlation_id, transaction_id, "
                         "model_confidence_score, severity, title, explanation, "
                         "recommended_action, sources_involved, feedback_rating, is_active, is_starred) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                        # uq_anomalies_type_atm_detected (migration 002) is the race
+                        # safety net for the SELECT guard above; ignore the loser, not crash
+                        "ON CONFLICT (anomaly_type, atm_id, detected_at) DO NOTHING",
                         (
                             detected_at,
                             anomaly_type,

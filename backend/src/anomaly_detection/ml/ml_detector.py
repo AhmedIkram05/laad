@@ -582,6 +582,9 @@ class MLAnomalyDetector:
                      severity, title, explanation, recommended_action, sources_involved,
                      correlation_id, is_active, is_starred)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0)
+                -- uq_anomalies_type_atm_detected (migration 002) backs the _is_active
+                -- check above; ignore the race loser instead of failing the batch
+                ON CONFLICT (anomaly_type, atm_id, detected_at) DO NOTHING
                 """,
                 (
                     datetime.now(timezone.utc),
