@@ -24,6 +24,58 @@ data "aws_ami" "amazon_linux_2023" {
 }
 
 # ---------------------------------------------------------------------------
+# IAM role — instance profile so user-data fetches S3 artifacts without
+# pre-signed URLs (long-lived key IDs must never be embedded in user-data)
+# ---------------------------------------------------------------------------
+
+data "aws_iam_policy_document" "kafka_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "kafka" {
+  name               = "${var.project_name}-kafka-instance-role"
+  description        = "EC2 instance role for the Kafka broker (S3 artifact fetch)"
+  assume_role_policy = data.aws_iam_policy_document.kafka_assume.json
+
+  tags = {
+    Name        = "${var.project_name}-kafka-instance-role"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+data "aws_iam_policy_document" "kafka_s3" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:GetObject"
+    ]
+    resources = [
+      "arn:aws:s3:::${var.project_name}-mlflow-artifacts/kafka/*"
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "kafka_s3" {
+  name   = "${var.project_name}-kafka-s3"
+  role   = aws_iam_role.kafka.id
+  policy = data.aws_iam_policy_document.kafka_s3.json
+}
+
+resource "aws_iam_instance_profile" "kafka" {
+  name = "${var.project_name}-kafka-instance-profile"
+  role = aws_iam_role.kafka.name
+}
+
+# ---------------------------------------------------------------------------
 # EC2 Kafka Instance (KRaft mode - no Zookeeper)
 # ---------------------------------------------------------------------------
 
@@ -37,6 +89,7 @@ resource "aws_instance" "kafka" {
   subnet_id                   = var.public_subnet_id
   vpc_security_group_ids      = [var.kafka_sg_id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.kafka.name
   key_name                    = null
 
   root_block_device {
