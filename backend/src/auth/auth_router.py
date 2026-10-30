@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Generator
 
@@ -39,7 +40,9 @@ def _load_secret_key() -> str:
     """Returns an HS256-compatible JWT secret key.
 
     JWT_SECRET_KEY must be set in production via AWS Secrets Manager.
-    Raises RuntimeError at module import time if not configured.
+    Raises RuntimeError at module import time if not configured or shorter
+    than MIN_SECRET_KEY_BYTES — padding a short secret up would silently
+    weaken entropy, so fail fast instead.
     """
     secret_key = os.environ.get("JWT_SECRET_KEY")
     if secret_key is None:
@@ -48,9 +51,13 @@ def _load_secret_key() -> str:
             "Set it in production via AWS Secrets Manager."
         )
     secret_key_bytes = len(secret_key.encode("utf-8"))
-    if secret_key_bytes >= MIN_SECRET_KEY_BYTES:
-        return secret_key
-    return secret_key + ("!" * (MIN_SECRET_KEY_BYTES - secret_key_bytes))
+    if secret_key_bytes < MIN_SECRET_KEY_BYTES:
+        raise RuntimeError(
+            f"JWT_SECRET_KEY must be at least {MIN_SECRET_KEY_BYTES} bytes "
+            f"(got {secret_key_bytes}). Set a longer secret in production "
+            "via AWS Secrets Manager."
+        )
+    return secret_key
 
 
 SECRET_KEY = _load_secret_key()
@@ -63,6 +70,18 @@ _optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_erro
 
 AUTH_COOKIE_NAME = "access_token"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+if os.getenv("LAAD_ENV") == "production" and not COOKIE_SECURE:
+    logger.warning(
+        "COOKIE_SECURE=false with LAAD_ENV=production — auth cookies will be "
+        "sent over plaintext HTTP; set COOKIE_SECURE=true behind TLS"
+    )
+
+# Burn-hash for uniform login timing: when the username is unknown we still
+# run a bcrypt comparison against this throwaway hash so response latency
+# does not reveal whether the account exists. Derived from random bytes at
+# import time — it is not a real password and never matches user input.
+_DUMMY_HASH = bcrypt.hashpw(secrets.token_bytes(32), bcrypt.gensalt())
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -101,12 +120,24 @@ def _get_token_hash(token: str) -> str:
 
 
 def _is_token_blacklisted(token: str) -> bool:
-    """Check if a token is in the Redis blacklist."""
+    """Check if a token is in the Redis blacklist.
+
+    Fail-open on Redis failure is a deliberate availability trade-off: during
+    an outage, revoked tokens remain valid until Redis recovers. The short
+    token TTL (ACCESS_TOKEN_EXPIRE_HOURS) bounds the exposure window.
+    Failures are logged at ERROR (auth_blocklist_fail_open) so they are
+    alertable rather than silent.
+    """
     client = get_redis_client()
     if client is None:
+        logger.error("auth_blocklist_fail_open reason=%s", "redis_unavailable")
         return False
-    token_hash = _get_token_hash(token)
-    return bool(client.get(f"blacklist:{token_hash}"))
+    try:
+        token_hash = _get_token_hash(token)
+        return bool(client.get(f"blacklist:{token_hash}"))
+    except Exception as exc:
+        logger.error("auth_blocklist_fail_open reason=%s", exc)
+        return False
 
 
 def _blacklist_token(token: str, expires_at: datetime) -> None:
@@ -163,11 +194,32 @@ def get_current_user(
     return payload
 
 
-def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+def require_admin(
+    current_user: dict = Depends(get_current_user),
+    conn=Depends(get_db_connection),
+) -> dict:
     """Raises 403 if the current user is not an admin.
     Inject with Depends(require_admin) on any admin-only route.
+
+    The JWT role claim is a login-time snapshot (valid up to
+    ACCESS_TOKEN_EXPIRE_HOURS), so it is only a fast path: before granting
+    access we re-read the user's CURRENT role from the DB, which costs one
+    indexed primary-key lookup per admin request. Non-admins are rejected
+    by the JWT check before any DB round-trip.
     """
     if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT role FROM users WHERE username = %s", (current_user["sub"],)
+        )
+        row = cur.fetchone()
+    if not row or row[0] != "admin":
+        # User deleted or demoted since login — the stale JWT no longer
+        # grants admin access.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -196,9 +248,17 @@ def login(
         )
         row = cur.fetchone()
 
-    if not row or not bcrypt.checkpw(
-        form.password.encode(), row["password_hash"].encode()
-    ):
+    if not row:
+        # Uniform timing for unknown usernames: burn a bcrypt comparison
+        # against the throwaway hash so latency matches the wrong-password
+        # path and does not leak account existence.
+        bcrypt.checkpw(form.password.encode(), _DUMMY_HASH)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    if not bcrypt.checkpw(form.password.encode(), row["password_hash"].encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -219,12 +279,25 @@ def get_me(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/register", status_code=201)
-def register(request: RegisterRequest, conn=Depends(get_db_connection)):
+def register(
+    request: RegisterRequest,
+    conn=Depends(get_db_connection),
+    token: str | None = Depends(_optional_oauth2_scheme),
+    http_request: Request = None,  # type: ignore[assignment]
+):
     """Create a new user account.
 
     Minimal fields required: `username`, `password`.
     Does not auto-login; returns HTTP 201 on success.
+
+    Requires an admin session by default. Set ALLOW_OPEN_REGISTRATION=true
+    (or "1") in the environment to restore open self-service signup. The
+    initial admin account is seeded at startup by init_db()
+    (seed_default_admin), so operators can always bootstrap.
     """
+    if os.getenv("ALLOW_OPEN_REGISTRATION", "false").lower() not in ("true", "1"):
+        current_user = get_current_user(token=token, request=http_request)
+        require_admin(current_user, conn)
     # Basic validation
     if not request.username or not request.password:
         raise HTTPException(
