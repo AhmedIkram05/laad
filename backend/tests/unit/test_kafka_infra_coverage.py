@@ -823,8 +823,13 @@ class TestAdminLeftovers:
             side_effect=RuntimeError("boom"),
         ):
             fn()
+        # Each spawn acquires the lock once, so the second run needs its own
+        # trigger_training() call (mirroring the route) rather than reusing fn.
+        tasks2 = MagicMock()
+        ar.trigger_training(background_tasks=tasks2)
+        fn2 = tasks2.add_task.call_args[0][0]
         with patch("backend.src.anomaly_detection.ml.train.train") as tr:
-            fn()
+            fn2()
             tr.assert_called()
 
 
