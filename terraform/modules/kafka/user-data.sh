@@ -13,9 +13,6 @@ KAFKA_VERSION="3.7.0"
 KAFKA_TGZ="kafka_2.13-${KAFKA_VERSION}.tgz"
 KAFKA_DIR="kafka_2.13-${KAFKA_VERSION}"
 
-# S3 pre-signed URL (refreshed: 2026-06-23, expires 7 days)
-S3_URL="https://laad-mlflow-artifacts.s3.eu-west-2.amazonaws.com/kafka/kafka_2.13-3.7.0.tgz?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAZ27UN27KPZUPWSP2%2F20260623%2Feu-west-2%2Fs3%2Faws4_request&X-Amz-Date=20260623T004424Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=67dcebbefe5f5e94f5ce95acee81e0ab03878da69c8107e6101d9f76461ea53d"
-
 download_with() {
     local url="$1"
     local label="$2"
@@ -46,19 +43,28 @@ echo "Java version:"
 java -version 2>&1
 
 # ---------------------------------------------------------------------------
-# 2. Download Kafka (try S3 pre-signed first, then mirrors)
+# 2. Download Kafka (try S3 via instance profile first, then mirrors)
 # ---------------------------------------------------------------------------
 echo "--- Downloading Kafka ---"
 cd /opt
 
 if [ ! -f "/opt/$KAFKA_TGZ" ]; then
-    # Round 1: S3 pre-signed (fastest, same-region)
-    download_with "$S3_URL" "S3 pre-signed URL" || \
-    # Round 2: Apache mirrors (dlcdn uses Fastly CDN)
-    download_with "https://dlcdn.apache.org/kafka/${KAFKA_VERSION}/$KAFKA_TGZ" "dlcdn.apache.org" || \
-    download_with "https://downloads.apache.org/kafka/${KAFKA_VERSION}/$KAFKA_TGZ" "downloads.apache.org" || \
-    download_with "https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/$KAFKA_TGZ" "archive.apache.org" || \
-        echo "WARNING: All downloads failed!"
+    # Round 1: S3 via the instance profile (same-region, no pre-signed URL)
+    METADATA_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+        -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+    AWS_DEFAULT_REGION=$(curl -s -H "X-aws-ec2-metadata-token: $METADATA_TOKEN" \
+        http://169.254.169.254/latest/meta-data/placement/region)
+    if aws s3 cp "s3://laad-mlflow-artifacts/kafka/${KAFKA_TGZ}" "/opt/${KAFKA_TGZ}" --region "${AWS_DEFAULT_REGION}"; then
+        echo "SUCCESS: Downloaded from S3 via instance profile"
+        ls -lh "/opt/$KAFKA_TGZ"
+    else
+        echo "FAILED: S3 via instance profile (exit $?)"
+        # Round 2: Apache mirrors (dlcdn uses Fastly CDN)
+        download_with "https://dlcdn.apache.org/kafka/${KAFKA_VERSION}/$KAFKA_TGZ" "dlcdn.apache.org" || \
+        download_with "https://downloads.apache.org/kafka/${KAFKA_VERSION}/$KAFKA_TGZ" "downloads.apache.org" || \
+        download_with "https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/$KAFKA_TGZ" "archive.apache.org" || \
+            echo "WARNING: All downloads failed!"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
