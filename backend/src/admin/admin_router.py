@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -17,6 +18,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 ALLOWED_RETENTION_DAYS = [1, 7, 30, 60, 90, 365]
+
+# Serialises background retraining runs within this process. The Kafka
+# consumer loads artifacts on its own schedule — train.py's atomic
+# os.replace writes are the cross-process guarantee against torn reads.
+_training_lock = threading.Lock()
 
 
 class RetentionUpdateRequest(BaseModel):
@@ -170,7 +176,11 @@ def trigger_training(background_tasks: BackgroundTasks):
 
     Trains Isolation Forest + XGBoost on the last 60 minutes of data from
     v_unified_analysis, then saves artifacts to ml/artifacts/.
+
+    Returns 409 if a retraining run is already in progress in this process.
     """
+    if not _training_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Training already in progress")
 
     def _run_training():
         try:
@@ -179,6 +189,8 @@ def trigger_training(background_tasks: BackgroundTasks):
             run_train()
         except Exception as exc:
             logger.error("Training failed: %s", exc)
+        finally:
+            _training_lock.release()
 
     background_tasks.add_task(_run_training)
     return TrainingResponse(
