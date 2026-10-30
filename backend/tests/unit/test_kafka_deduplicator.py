@@ -59,3 +59,31 @@ class TestDeduplicator:
         dedup._use_redis = False
         dedup.mark_seen("msg-1")
         assert dedup.is_duplicate("msg-1") is False
+
+    def test_mark_batch_marks_all_ids(self):
+        dedup = Deduplicator(max_size=10)
+        dedup._use_redis = False
+        dedup.mark_batch(["m1", "m2"])
+        assert dedup.is_duplicate("m1") is True
+        assert dedup.is_duplicate("m2") is True
+
+    def test_mark_batch_skips_empty_ids(self):
+        dedup = Deduplicator(max_size=10)
+        dedup._use_redis = False
+        dedup.mark_batch(["", "m1"])
+        assert dedup.is_duplicate("") is False
+        assert dedup.is_duplicate("m1") is True
+
+    def test_mark_batch_empty_list_is_noop(self):
+        dedup = Deduplicator(max_size=10)
+        dedup._use_redis = False
+        dedup.mark_batch([])
+        assert not dedup._seen
+
+    def test_mark_batch_respects_max_size(self):
+        dedup = Deduplicator(max_size=2)
+        dedup._use_redis = False
+        dedup.mark_batch(["a", "b", "c"])
+        assert dedup.is_duplicate("a") is False
+        assert dedup.is_duplicate("b") is True
+        assert dedup.is_duplicate("c") is True

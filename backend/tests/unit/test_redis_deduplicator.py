@@ -184,3 +184,40 @@ class TestDeduplicatorRedis:
         mock_client.set.assert_called_once_with(
             "kafka:dedup:id:msg-ttl-test", 1, ex=7200
         )
+
+    @patch("backend.kafka.deduplicator.get_redis_client")
+    def test_mark_batch_uses_single_pipeline(self, mock_get_client):
+        """mark_batch writes all keys through one pipelined round-trip."""
+        from backend.kafka.deduplicator import Deduplicator
+
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_pipe = MagicMock()
+        mock_client.pipeline.return_value = mock_pipe
+        mock_get_client.return_value = mock_client
+
+        dedup = Deduplicator()
+        dedup._use_redis = None
+
+        dedup.mark_batch(["a", "b", ""])
+
+        assert mock_client.pipeline.call_count == 1
+        assert mock_pipe.set.call_count == 2
+        mock_pipe.set.assert_any_call("kafka:dedup:id:a", 1, ex=3600)
+        mock_pipe.set.assert_any_call("kafka:dedup:id:b", 1, ex=3600)
+        mock_pipe.execute.assert_called_once_with()
+
+    @patch("backend.kafka.deduplicator.get_redis_client")
+    def test_mark_batch_redis_failure_falls_back_to_memory(self, mock_get_client):
+        from backend.kafka.deduplicator import Deduplicator
+
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_client.pipeline.side_effect = Exception("Redis error")
+        mock_get_client.return_value = mock_client
+
+        dedup = Deduplicator()
+        dedup._use_redis = None
+
+        dedup.mark_batch(["m-fb"])
+        assert dedup.is_duplicate("m-fb") is True
