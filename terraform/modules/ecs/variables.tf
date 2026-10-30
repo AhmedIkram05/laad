@@ -117,6 +117,11 @@ variable "rag_ollama_secret_arn" {
   type        = string
 }
 
+variable "redis_password_secret_arn" {
+  description = "ARN of the Redis password secret"
+  type        = string
+}
+
 variable "aws_region" {
   description = "AWS region for log groups and dashboard"
   type        = string

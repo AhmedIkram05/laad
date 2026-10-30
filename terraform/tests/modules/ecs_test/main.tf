@@ -27,6 +27,7 @@ variable "jwt_secret_arn" { type = string }
 variable "sagemaker_secret_arn" { type = string }
 variable "mlflow_tracking_secret_arn" { type = string }
 variable "rag_ollama_secret_arn" { type = string }
+variable "redis_password_secret_arn" { type = string }
 variable "aws_region" { type = string }
 variable "cors_origins" { type = string }
 
@@ -56,6 +57,7 @@ module "ecs" {
   sagemaker_secret_arn       = var.sagemaker_secret_arn
   mlflow_tracking_secret_arn = var.mlflow_tracking_secret_arn
   rag_ollama_secret_arn      = var.rag_ollama_secret_arn
+  redis_password_secret_arn  = var.redis_password_secret_arn
   aws_region                 = var.aws_region
   cors_origins               = var.cors_origins
 }

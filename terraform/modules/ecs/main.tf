@@ -179,6 +179,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "POSTGRES_USER", value = "laad_admin" },
         { name = "CORS_ORIGINS", value = var.cors_origins },
         { name = "AWS_REGION", value = var.aws_region },
+        { name = "REDIS_HOST", value = "redis.laad.internal" },
+        { name = "REDIS_PORT", value = "6379" },
       ]
 
       secrets = [
@@ -189,6 +191,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "MLFLOW_S3_ARTIFACT_ROOT", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_S3_ARTIFACT_ROOT::" },
         { name = "OLLAMA_API_KEY", valueFrom = "${var.rag_ollama_secret_arn}:OLLAMA_API_KEY::" },
         { name = "OPENROUTER_API_KEY", valueFrom = "${var.rag_ollama_secret_arn}:OPENROUTER_API_KEY::" },
+        { name = "REDIS_PASSWORD", valueFrom = "${var.redis_password_secret_arn}:REDIS_PASSWORD::" },
       ]
 
       healthCheck = {
@@ -258,6 +261,7 @@ resource "aws_ecs_task_definition" "consumer" {
         { name = "SAGEMAKER_ENDPOINT_NAME", valueFrom = "${var.sagemaker_secret_arn}:SAGEMAKER_ENDPOINT_NAME::" },
         { name = "MLFLOW_TRACKING_URI", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_TRACKING_URI::" },
         { name = "MLFLOW_S3_ARTIFACT_ROOT", valueFrom = "${var.mlflow_tracking_secret_arn}:MLFLOW_S3_ARTIFACT_ROOT::" },
+        { name = "REDIS_PASSWORD", valueFrom = "${var.redis_password_secret_arn}:REDIS_PASSWORD::" },
       ]
 
       healthCheck = {
@@ -339,6 +343,9 @@ resource "aws_ecs_task_definition" "redis" {
       image     = "redis:7-alpine"
       essential = true
 
+      # requirepass read from the REDIS_PASSWORD secret injected below
+      command = ["sh", "-c", "exec redis-server --requirepass \"$REDIS_PASSWORD\""]
+
       portMappings = [
         {
           containerPort = 6379
@@ -346,8 +353,12 @@ resource "aws_ecs_task_definition" "redis" {
         }
       ]
 
+      secrets = [
+        { name = "REDIS_PASSWORD", valueFrom = "${var.redis_password_secret_arn}:REDIS_PASSWORD::" },
+      ]
+
       healthCheck = {
-        command     = ["CMD-SHELL", "redis-cli ping || exit 1"]
+        command     = ["CMD-SHELL", "REDISCLI_AUTH=$REDIS_PASSWORD redis-cli ping || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3

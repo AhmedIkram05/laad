@@ -55,3 +55,9 @@ output "mlflow_secret_arn" {
   description = "ARN of the MLflow tracking secret (laad/mlflow)"
   value       = aws_secretsmanager_secret.mlflow.arn
 }
+
+# Secret 8 – Redis
+output "redis_secret_arn" {
+  description = "ARN of the Redis password secret (laad/redis)"
+  value       = aws_secretsmanager_secret.redis.arn
+}
