@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Secrets Manager module — LAAD platform
 # ---------------------------------------------------------------------------
-# Creates 7 secrets:
+# Creates 8 secrets:
 #   1. laad/db/master          – RDS master credentials (auto-generated password)
 #   2. laad/db/mlflow          – MLflow RDS connection params
 #   3. laad/app/jwt            – JWT signing key (auto-generated)
@@ -9,6 +9,7 @@
 #   5. laad/app/backend        – Backend runtime environment variables
 #   6. laad/sagemaker          – SageMaker endpoint info (updated in Batch 3)
 #   7. laad/mlflow             – MLflow tracking configuration
+#   8. laad/redis              – Redis requirepass (auto-generated)
 # ---------------------------------------------------------------------------
 
 # ===========================================================================
@@ -167,5 +168,27 @@ resource "aws_secretsmanager_secret_version" "mlflow" {
     MLFLOW_TRACKING_URI     = "http://laad-mlflow-postgres.cz6ckmy2u089.eu-west-2.rds.amazonaws.com:5000"
     MLFLOW_S3_ARTIFACT_ROOT = "s3://laad-mlflow-artifacts"
     MLFLOW_REGION           = "eu-west-2"
+  })
+}
+
+# ===========================================================================
+# Secret 8 – Redis requirepass
+# ===========================================================================
+
+resource "random_password" "redis" {
+  length  = 32
+  special = false
+}
+
+# checkov:skip=CKV2_AWS_57:SecretsManager automatic rotation not configured — passwords rotated manually
+# checkov:skip=CKV_AWS_149:SecretsManager KMS key not required for dev secrets
+resource "aws_secretsmanager_secret" "redis" {
+  name = "${var.project_name}/redis"
+}
+
+resource "aws_secretsmanager_secret_version" "redis" {
+  secret_id = aws_secretsmanager_secret.redis.id
+  secret_string = jsonencode({
+    REDIS_PASSWORD = random_password.redis.result
   })
 }

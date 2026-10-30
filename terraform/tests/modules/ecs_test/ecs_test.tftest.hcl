@@ -100,6 +100,7 @@ variables {
   sagemaker_secret_arn       = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:laad/sagemaker"
   mlflow_tracking_secret_arn = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:laad/mlflow"
   rag_ollama_secret_arn      = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:laad/rag-ollama"
+  redis_password_secret_arn  = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:laad/redis"
   aws_region                 = "eu-west-2"
   cors_origins               = "https://example.com"
 }
@@ -175,6 +176,7 @@ run "test_ecs_variable_overrides" {
     sagemaker_secret_arn       = "arn:aws:secretsmanager:us-east-1:999999999999:secret:test/sagemaker"
     mlflow_tracking_secret_arn = "arn:aws:secretsmanager:us-east-1:999999999999:secret:test/mlflow"
     rag_ollama_secret_arn      = "arn:aws:secretsmanager:us-east-1:999999999999:secret:test/rag-ollama"
+    redis_password_secret_arn  = "arn:aws:secretsmanager:us-east-1:999999999999:secret:test/redis"
     cors_origins               = "https://test.example.com"
   }
   assert {

@@ -85,6 +85,7 @@ module "ecs" {
   sagemaker_secret_arn       = module.secrets.sagemaker_secret_arn
   mlflow_tracking_secret_arn = module.secrets.mlflow_secret_arn
   rag_ollama_secret_arn      = module.secrets.rag_ollama_secret_arn
+  redis_password_secret_arn  = module.secrets.redis_secret_arn
   aws_region                 = var.aws_region
   cors_origins               = "http://localhost:5173"
 }
