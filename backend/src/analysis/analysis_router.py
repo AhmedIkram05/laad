@@ -1,8 +1,9 @@
 from __future__ import annotations
 import logging
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 
+from backend.src.auth.auth_router import get_current_user
 from backend.src.analysis.analysis import main as run_analysis
 from backend.src.analysis.metrics import (
     get_time_bucketed_anomalies,
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 
 @router.get("/detailed")
-def get_detailed_analysis():
+def get_detailed_analysis(current_user: dict = Depends(get_current_user)):
     """
     Returns anomalies ranked by weighted criticality score with root cause,
     operational impact, and recommended remediation action.
@@ -37,6 +38,7 @@ def get_anomaly_metrics(
     anomaly_type: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
     is_active: Optional[int] = Query(None),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Returns time-bucketed anomaly counts for dashboard visualization.

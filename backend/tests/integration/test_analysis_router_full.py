@@ -9,8 +9,16 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
+from backend.src.api.server import app
 from backend.src.database.connection import get_conn, release_conn
 from backend.tests.helpers import reset_test_db
+
+
+def _login(client) -> dict:
+    resp = client.post("/auth/login", data={"username": "admin", "password": "admin"})
+    assert resp.status_code == 200, resp.text
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 def seed_anomaly_data(conn):
@@ -44,6 +52,20 @@ def seed_anomaly_data(conn):
     conn.commit()
 
 
+class TestAnalysisAuthEnforcement:
+    """Both analysis endpoints reject unauthenticated requests."""
+
+    def test_detailed_requires_auth(self):
+        with TestClient(app) as client:
+            resp = client.get("/analysis/detailed")
+        assert resp.status_code == 401
+
+    def test_metrics_requires_auth(self):
+        with TestClient(app) as client:
+            resp = client.get("/analysis/metrics?hours=24")
+        assert resp.status_code == 401
+
+
 class TestAnalysisDetailedEndpoint:
     """Tests for GET /analysis/detailed."""
 
@@ -52,10 +74,9 @@ class TestAnalysisDetailedEndpoint:
         conn = get_conn()
         try:
             seed_anomaly_data(conn)
-            from backend.src.api.server import app
 
             with TestClient(app) as client:
-                resp = client.get("/analysis/detailed")
+                resp = client.get("/analysis/detailed", headers=_login(client))
                 assert resp.status_code == 200
                 data = resp.json()
                 assert "data" in data
@@ -64,10 +85,8 @@ class TestAnalysisDetailedEndpoint:
 
     def test_detailed_with_no_data(self):
         reset_test_db()
-        from backend.src.api.server import app
-
         with TestClient(app) as client:
-            resp = client.get("/analysis/detailed")
+            resp = client.get("/analysis/detailed", headers=_login(client))
 
         assert resp.status_code == 200
         data = resp.json()
@@ -82,10 +101,9 @@ class TestAnalysisMetricsEndpoint:
         conn = get_conn()
         try:
             seed_anomaly_data(conn)
-            from backend.src.api.server import app
 
             with TestClient(app) as client:
-                resp = client.get("/analysis/metrics?hours=24")
+                resp = client.get("/analysis/metrics?hours=24", headers=_login(client))
                 assert resp.status_code == 200
                 data = resp.json()
                 assert "time_series" in data
@@ -102,7 +120,6 @@ class TestAnalysisMetricsEndpoint:
         conn = get_conn()
         try:
             seed_anomaly_data(conn)
-            from backend.src.api.server import app
 
             with TestClient(app) as client:
                 resp = client.get(
@@ -113,6 +130,7 @@ class TestAnalysisMetricsEndpoint:
                         "severity": "CRITICAL",
                         "bucket_minutes": 60,
                     },
+                    headers=_login(client),
                 )
             assert resp.status_code == 200
             data = resp.json()
@@ -123,10 +141,11 @@ class TestAnalysisMetricsEndpoint:
 
     def test_metrics_no_data_returns_empty(self):
         reset_test_db()
-        from backend.src.api.server import app
-
         with TestClient(app) as client:
-            resp = client.get("/analysis/metrics?hours=168&bucket_minutes=1440")
+            resp = client.get(
+                "/analysis/metrics?hours=168&bucket_minutes=1440",
+                headers=_login(client),
+            )
 
         assert resp.status_code == 200
         data = resp.json()

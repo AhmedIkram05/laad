@@ -114,7 +114,9 @@ class TestAnalyticsCounters:
         mock_client.pfcount.return_value = 10
         mock_get_client.return_value = mock_client
 
-        result = get_realtime_stats(hours=24)
+        result = get_realtime_stats(
+            hours=24, current_user={"sub": "admin", "role": "admin"}
+        )
 
         assert "events_by_source" in result
         assert "anomaly_types" in result
@@ -131,7 +133,9 @@ class TestAnalyticsCounters:
         # Redis client should not be called for hours=0
         mock_get_client.return_value = MagicMock()
 
-        result = get_realtime_stats(hours=0)
+        result = get_realtime_stats(
+            hours=0, current_user={"sub": "admin", "role": "admin"}
+        )
 
         # Should have the structure even if DB is empty
         assert "events_by_source" in result
@@ -145,7 +149,9 @@ class TestAnalyticsCounters:
 
         mock_get_client.return_value = None
 
-        result = get_realtime_stats(hours=24)
+        result = get_realtime_stats(
+            hours=24, current_user={"sub": "admin", "role": "admin"}
+        )
 
         assert "events_by_source" in result
         assert "anomaly_types" in result

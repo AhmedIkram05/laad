@@ -10,19 +10,24 @@ from fastapi.testclient import TestClient
 import backend.src.analysis.analysis as analysis
 from backend.src.analysis import analysis_router
 from backend.src.analytics import analytics_router
+from backend.src.auth.auth_router import get_current_user
 
 pytestmark = pytest.mark.analytics
+
+_AUTH_USER = {"sub": "admin", "role": "admin"}
 
 
 def _analysis_client():
     app = FastAPI()
     app.include_router(analysis_router.router)
+    app.dependency_overrides[get_current_user] = lambda: _AUTH_USER
     return TestClient(app, raise_server_exceptions=False)
 
 
 def _analytics_client():
     app = FastAPI()
     app.include_router(analytics_router.router)
+    app.dependency_overrides[get_current_user] = lambda: _AUTH_USER
     return TestClient(app, raise_server_exceptions=False)
 
 
