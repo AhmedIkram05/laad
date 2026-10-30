@@ -1,7 +1,9 @@
 """Training pipeline for the ML anomaly detector.
 
 Steps:
-    1. Query v_unified_analysis from PostgreSQL, split into NON-overlapping windows
+    1. Query v_unified_analysis from PostgreSQL, cut into 60s windows at a 30s
+       step (consecutive windows overlap 50%; the temporal train/holdout
+       boundary is de-conflicted so no row appears in both splits)
     2. Extract features and labels per window
     3. Train XGBoost on all labelled windows (normal + anomaly types) with class balancing
     4. Select top-K features from XGBoost feature importance for Isolation Forest
@@ -210,13 +212,21 @@ def _calibrate_unknown_threshold(
 def _temporal_split(
     times: list[datetime], train_frac: float = 0.8
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Boolean masks: train = window starts before the train_frac quantile."""
+    """Boolean masks for the chronological train/holdout split.
+
+    Windows span WINDOW_SECONDS at a STEP_SECONDS stride, so consecutive
+    windows overlap 50%. A train window whose end crosses the cutoff would
+    share rows with holdout windows, inflating the temporal metrics — such
+    straddling windows are excluded from BOTH masks so no row appears in
+    train and holdout.
+    """
     if not times:
         return np.zeros(0, dtype=bool), np.zeros(0, dtype=bool)
     epoch = np.array([t.timestamp() for t in times])
     cutoff = np.quantile(epoch, train_frac)
-    train_mask = epoch < cutoff
-    return train_mask, ~train_mask
+    train_mask = epoch + WINDOW_SECONDS <= cutoff
+    test_mask = epoch >= cutoff
+    return train_mask, test_mask
 
 
 def _build_windows(
@@ -259,6 +269,37 @@ def _build_windows(
     return np.stack(X_list), labels, times
 
 
+def _atomic_dump_models(models: list[tuple[object, Path]]) -> None:
+    """Dump models to temp files, then os.replace each into place.
+
+    os.replace is atomic per file; dumping all temps first and replacing them
+    back-to-back shrinks the window in which a consumer loading artifacts on
+    its own schedule could observe a torn mix of old and new models.
+    """
+    written: list[tuple[Path, Path]] = []
+    try:
+        for obj, final_path in models:
+            tmp_path = final_path.with_name(final_path.name + ".tmp")
+            written.append((tmp_path, final_path))
+            joblib.dump(obj, tmp_path)
+        for tmp_path, final_path in written:
+            os.replace(tmp_path, final_path)
+    finally:
+        for tmp_path, _ in written:
+            tmp_path.unlink(missing_ok=True)
+
+
+def _atomic_write_json(path: Path, data) -> None:
+    """Write JSON to a temp file, then os.replace it into place atomically."""
+    tmp_path = path.with_name(path.name + ".tmp")
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp_path, path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def train() -> None:
     """Run the full training pipeline."""
     import subprocess
@@ -286,7 +327,9 @@ def train() -> None:
             {
                 "window_seconds": WINDOW_SECONDS,
                 "step_seconds": STEP_SECONDS,
-                "overlapping": False,
+                # 60s windows at a 30s step overlap 50%; only the
+                # train/holdout boundary is de-conflicted (no shared rows).
+                "overlapping": True,
                 "if_contamination": IF_CONTAMINATION,
                 "xgb_n_estimators": XGB_N_ESTIMATORS,
                 "n_features": FEATURE_COUNT,
@@ -347,7 +390,8 @@ def train() -> None:
         }
         label_counts["NORMAL"] = labels.count(None)
         print(
-            f"Loaded {len(X_all)} non-overlapping windows. Label distribution: {label_counts}"
+            f"Loaded {len(X_all)} windows (60s @ 30s step, 50% overlap). "
+            f"Label distribution: {label_counts}"
         )
 
         normal_mask = np.array([lb is None for lb in labels])
@@ -397,6 +441,13 @@ def train() -> None:
         # Fit on the train portion first so CV and the temporal holdout are
         # both honest; the shipped champion is refit on all data below.
         train_mask, test_mask = _temporal_split(times)
+        n_straddling = int(np.sum(~(train_mask | test_mask)))
+        if n_straddling:
+            log.info(
+                "Temporal split: %d windows straddle the train/holdout cutoff "
+                "and are excluded from both splits",
+                n_straddling,
+            )
         X_tr, y_tr = X_all[train_mask], y[train_mask]
         w_tr = sample_weights[train_mask]
         clf.fit(X_tr, y_tr, sample_weight=w_tr)
@@ -507,8 +558,7 @@ def train() -> None:
         if_feature_indices = sorted(sorted_idx[:k].tolist())
         if_feature_names = [FEATURE_NAMES[i] for i in if_feature_indices]
 
-        with open(ARTIFACT_DIR / "if_feature_indices.json", "w") as f:
-            json.dump(if_feature_indices, f)
+        _atomic_write_json(ARTIFACT_DIR / "if_feature_indices.json", if_feature_indices)
         mlflow.log_artifact(str(ARTIFACT_DIR / "if_feature_indices.json"))
 
         print(f"Selected {len(if_feature_indices)} features for IF:")
@@ -550,7 +600,31 @@ def train() -> None:
 
         best_if_params = _grid_search_if(X_normal_tr, X_normal_val, X_anomaly_scaled_if)
 
-        # Train final IF on ALL normal windows with best params
+        # Chronological fit/calibration split for honest threshold
+        # calibration: IF is fit on the earlier ~80% of normal windows only;
+        # the UNKNOWN threshold is calibrated on the held-out later ~20%
+        # (plus all anomaly windows). Calibrating on windows the forest was
+        # fit on produces an optimistically low threshold.
+        normal_times = [t for t, lb in zip(times, labels) if lb is None]
+        if_fit_mask, if_calib_mask = _temporal_split(normal_times)
+        X_normal_fit_if = X_normal_scaled_if[if_fit_mask]
+        X_normal_calib_if = X_normal_scaled_if[if_calib_mask]
+        if len(X_normal_fit_if) == 0 or len(X_normal_calib_if) == 0:
+            log.warning(
+                "Degenerate IF fit/calibration split (%d fit / %d calibration) "
+                "— fitting and calibrating on all normal windows instead",
+                len(X_normal_fit_if),
+                len(X_normal_calib_if),
+            )
+            X_normal_fit_if = X_normal_scaled_if
+            X_normal_calib_if = X_normal_scaled_if
+        log.info(
+            "IF chronological split: %d fit / %d calibration normal windows",
+            len(X_normal_fit_if),
+            len(X_normal_calib_if),
+        )
+
+        # Train final IF on the fit subset with best params
         final_params = {
             "n_estimators": 200,
             "random_state": 42,
@@ -559,11 +633,11 @@ def train() -> None:
             **best_if_params,
         }
         print(
-            f"Training final Isolation Forest on {len(X_normal_scaled_if)} normal windows..."
+            f"Training final Isolation Forest on {len(X_normal_fit_if)} normal windows..."
         )
         log.info("Final IF params: %s", final_params)
         iso_forest = IsolationForest(**final_params)
-        iso_forest.fit(X_normal_scaled_if)
+        iso_forest.fit(X_normal_fit_if)
 
         # Evaluate IF anomaly detection accuracy on all windows
         X_all_scaled = scaler.transform(X_all)
@@ -580,21 +654,27 @@ def train() -> None:
         mlflow.log_metric("if_anomaly_precision", if_precision)
         print(f"Isolation Forest anomaly detection precision: {if_precision:.3f}")
 
-        # Calibrate UNKNOWN anomaly threshold via F1 score maximization
-        all_if_density_scores = iso_forest.score_samples(X_all_scaled_if)
-        y_anomaly_binary = (~normal_mask).astype(int)
-        unknown_threshold = _calibrate_unknown_threshold(
-            all_if_density_scores, y_anomaly_binary
+        # Calibrate UNKNOWN anomaly threshold via F1 score maximization —
+        # scored on held-out normal windows plus all anomaly windows, so
+        # the threshold reflects out-of-sample IF scores.
+        calib_X = (
+            np.vstack([X_normal_calib_if, X_anomaly_scaled_if])
+            if len(X_anomaly_scaled_if) > 0
+            else X_normal_calib_if
         )
-        if len(np.unique(y_anomaly_binary)) > 1:
-            pr_auc = float(
-                average_precision_score(y_anomaly_binary, -all_if_density_scores)
-            )
+        y_calib = np.array(
+            [0] * len(X_normal_calib_if) + [1] * len(X_anomaly_scaled_if)
+        )
+        calib_scores = iso_forest.score_samples(calib_X)
+        unknown_threshold = _calibrate_unknown_threshold(calib_scores, y_calib)
+        if len(np.unique(y_calib)) > 1:
+            pr_auc = float(average_precision_score(y_calib, -calib_scores))
             mlflow.log_metric("if_pr_auc", pr_auc)
             print(f"Isolation Forest PR-AUC: {pr_auc:.4f}")
 
-        with open(ARTIFACT_DIR / "if_unknown_threshold.json", "w") as f:
-            json.dump({"threshold": unknown_threshold}, f)
+        _atomic_write_json(
+            ARTIFACT_DIR / "if_unknown_threshold.json", {"threshold": unknown_threshold}
+        )
         mlflow.log_artifact(str(ARTIFACT_DIR / "if_unknown_threshold.json"))
 
         # ─────────────────────────────────────────────────────────────────────
@@ -608,13 +688,21 @@ def train() -> None:
         # ─────────────────────────────────────────────────────────────────────
         # Log remaining metrics and save artifacts
         # ─────────────────────────────────────────────────────────────────────
-        joblib.dump(clf, ARTIFACT_DIR / "xgb_classifier.joblib")
-        joblib.dump(le, ARTIFACT_DIR / "label_encoder.joblib")
+        # Atomic artifact write: dump all four models to temp files first,
+        # then replace them back-to-back so a consumer loading artifacts on
+        # its own schedule never sees a torn mix of old and new models.
+        # os.replace is the cross-process guarantee; the admin training lock
+        # only serialises concurrent runs within the API process.
+        _atomic_dump_models(
+            [
+                (clf, ARTIFACT_DIR / "xgb_classifier.joblib"),
+                (le, ARTIFACT_DIR / "label_encoder.joblib"),
+                (iso_forest, ARTIFACT_DIR / "isolation_forest.joblib"),
+                (scaler, ARTIFACT_DIR / "scaler.joblib"),
+            ]
+        )
         mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_classifier.joblib"))
         mlflow.log_artifact(str(ARTIFACT_DIR / "label_encoder.joblib"))
-
-        joblib.dump(iso_forest, ARTIFACT_DIR / "isolation_forest.joblib")
-        joblib.dump(scaler, ARTIFACT_DIR / "scaler.joblib")
         mlflow.log_artifact(str(ARTIFACT_DIR / "isolation_forest.joblib"))
         mlflow.log_artifact(str(ARTIFACT_DIR / "scaler.joblib"))
 
@@ -663,7 +751,7 @@ def train() -> None:
         )
 
         if_description = (
-            f"Isolation Forest trained on {len(X_normal)} normal windows, "
+            f"Isolation Forest trained on {len(X_normal_fit_if)} normal windows, "
             f"precision={if_precision:.3f}, {FEATURE_COUNT} features, "
             f"contamination={IF_CONTAMINATION}, git_sha={git_sha}"
         )
