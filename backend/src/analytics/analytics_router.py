@@ -1,10 +1,11 @@
 from __future__ import annotations
 import logging
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 from psycopg2.extras import RealDictCursor
 
+from backend.src.auth.auth_router import get_current_user
 from backend.src.database.connection import get_conn, release_conn
 from backend.src.cache import get_redis_client
 
@@ -19,6 +20,7 @@ UNIQUE_ATMS_KEY = "stats:unique:atms"
 
 @router.get("/events")
 def get_events_timeline(
+    current_user: dict = Depends(get_current_user),
     hours: int = Query(24, ge=0, le=168),
     bucket_minutes: int = Query(60, ge=5, le=1440),
     sources: Optional[str] = Query(
@@ -138,13 +140,14 @@ def get_events_timeline(
 
     except Exception as e:
         logger.error("Events analytics endpoint failed: %s", e, exc_info=True)
-        return {"time_series": [], "error": str(e)}
+        return {"time_series": [], "error": "Internal error"}
     finally:
         release_conn(conn)
 
 
 @router.get("/metrics")
 def get_metrics_timeline(
+    current_user: dict = Depends(get_current_user),
     hours: int = Query(24, ge=0, le=168),
     bucket_minutes: int = Query(60, ge=5, le=1440),
     sources: Optional[str] = Query(
@@ -271,13 +274,15 @@ def get_metrics_timeline(
 
     except Exception as e:
         logger.error("Metrics analytics endpoint failed: %s", e, exc_info=True)
-        return {"time_series": [], "error": str(e)}
+        return {"time_series": [], "error": "Internal error"}
     finally:
         release_conn(conn)
 
 
 @router.get("/metrics/list")
-def get_available_metrics():
+def get_available_metrics(
+    current_user: dict = Depends(get_current_user),
+):
     """
     Returns list of unique metric names available in the database.
     """
@@ -293,7 +298,7 @@ def get_available_metrics():
             return {"metrics": [row["metric_name"] for row in rows]}
     except Exception as e:
         logger.error("Metrics list endpoint failed: %s", e, exc_info=True)
-        return {"metrics": [], "error": str(e)}
+        return {"metrics": [], "error": "Internal error"}
     finally:
         release_conn(conn)
 
@@ -350,6 +355,7 @@ def get_unique_atm_count() -> int:
 
 @router.get("/stats/realtime")
 def get_realtime_stats(
+    current_user: dict = Depends(get_current_user),
     hours: int = Query(24, ge=0, le=168),
 ):
     """Get real-time analytics stats from Redis counters.
@@ -484,7 +490,7 @@ def get_realtime_stats(
 
 
 @router.get("/entities")
-def list_entities():
+def list_entities(current_user: dict = Depends(get_current_user)):
     """Return all ATM and server entity IDs from the atms table."""
     conn = get_conn()
     try:

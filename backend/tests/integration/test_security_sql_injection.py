@@ -89,11 +89,16 @@ class TestSQLInjection:
 
     # ── 8: SQLi on analytics endpoint ─────────────────────────────────
 
-    def test_analytics_injection(self, client):
+    def test_analytics_injection(self, client, admin_token):
         """SQLi payload in analytics sources parameter."""
-        resp = client.get(f"/api/analytics/events?sources={SQLI_PAYLOADS[0]}")
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        resp = client.get(
+            f"/api/analytics/events?sources={SQLI_PAYLOADS[0]}", headers=headers
+        )
         assert resp.status_code < 500
-        resp2 = client.get(f"/api/analytics/metrics?sources={SQLI_PAYLOADS[2]}")
+        resp2 = client.get(
+            f"/api/analytics/metrics?sources={SQLI_PAYLOADS[2]}", headers=headers
+        )
         assert resp2.status_code < 500
 
     # ── 9: SQLi on analysis endpoint ──────────────────────────────────

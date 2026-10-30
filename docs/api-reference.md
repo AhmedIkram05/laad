@@ -67,13 +67,13 @@ bcrypt password hashing, 2 roles (`admin`, `user`), `require_admin` dependency g
 
 ## Analytics — `/api/analytics`
 
-| Method | Endpoint | Parameters | Description |
-|---|---|---|---|
-| GET | `/api/analytics/stats/realtime` | `hours` (0 = all time) | Real-time stats from Redis (events by source, anomaly types, unique ATMs) |
-| GET | `/api/analytics/events` | `hours`, `bucket_minutes`, `sources` | Time-bucketed event counts with anomaly markers |
-| GET | `/api/analytics/metrics` | `hours`, `bucket_minutes`, `sources` | Time-bucketed metric averages with anomaly markers |
-| GET | `/api/analytics/metrics/list` | None | List of all unique metric names in the database |
-| GET | `/api/analytics/entities` | None | All 13 entities with `atm_id`, `os_version`, `location_code` |
+| Method | Endpoint | Auth | Parameters | Description |
+|---|---|---|---|---|
+| GET | `/api/analytics/stats/realtime` | JWT | `hours` (0 = all time) | Real-time stats from Redis (events by source, anomaly types, unique ATMs) |
+| GET | `/api/analytics/events` | JWT | `hours`, `bucket_minutes`, `sources` | Time-bucketed event counts with anomaly markers |
+| GET | `/api/analytics/metrics` | JWT | `hours`, `bucket_minutes`, `sources` | Time-bucketed metric averages with anomaly markers |
+| GET | `/api/analytics/metrics/list` | JWT | None | List of all unique metric names in the database |
+| GET | `/api/analytics/entities` | JWT | None | All 13 entities with `atm_id`, `os_version`, `location_code` |
 
 ## Health
 
