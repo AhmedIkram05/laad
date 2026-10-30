@@ -191,7 +191,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-atm_platform}
       - POSTGRES_USER=${POSTGRES_USER:-atm_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-your_password_here}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-only-secret-change-in-production}
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - GIT_COMMIT_SHA=${GIT_COMMIT_SHA:-}
       - CHROMA_HOST=chromadb
@@ -397,7 +397,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_CACHE_TTL=300
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-test-secret-key-for-laad}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-test-secret-key-for-laad-tests}
       - TEST_DATA_DIR=backend/custom_synthetic_data_sources
       - STRESS_TEST_BASE_URL=http://backend:8000
       - CHROMA_HOST=chromadb
