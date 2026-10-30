@@ -123,14 +123,63 @@ class TestFeedback:
                 assert body["feedback_rating"] == "DISLIKE"
                 assert body["false_positive_count"] == 1
 
-                # Second DISLIKE increments again
+                # Same user DISLIKEing again is idempotent — count stays 1
                 resp2 = client.patch(
                     f"/anomalies/{aid}/feedback",
                     json={"rating": "DISLIKE"},
                     headers=headers,
                 )
                 assert resp2.status_code == 200
+                assert resp2.json()["false_positive_count"] == 1
+        finally:
+            app.dependency_overrides.clear()
+            release_conn(conn)
+
+    def test_dislike_from_second_user_increments_again(self):
+        conn = _setup()
+        try:
+            with TestClient(app) as client:
+                aid = _seed_anomaly(conn)
+                admin_headers = _login(client)
+
+                resp = client.post(
+                    "/auth/register",
+                    json={"username": "fpuser2", "password": "password123"},
+                )
+                assert resp.status_code == 201, resp.text
+                login_resp = client.post(
+                    "/auth/login",
+                    data={"username": "fpuser2", "password": "password123"},
+                )
+                assert login_resp.status_code == 200, login_resp.text
+                user2_headers = {
+                    "Authorization": f"Bearer {login_resp.json()['access_token']}"
+                }
+
+                resp = client.patch(
+                    f"/anomalies/{aid}/feedback",
+                    json={"rating": "DISLIKE"},
+                    headers=admin_headers,
+                )
+                assert resp.json()["false_positive_count"] == 1
+
+                # A different user's DISLIKE increments the counter once more
+                resp2 = client.patch(
+                    f"/anomalies/{aid}/feedback",
+                    json={"rating": "DISLIKE"},
+                    headers=user2_headers,
+                )
+                assert resp2.status_code == 200
                 assert resp2.json()["false_positive_count"] == 2
+
+                # And their repeat is idempotent too
+                resp3 = client.patch(
+                    f"/anomalies/{aid}/feedback",
+                    json={"rating": "DISLIKE"},
+                    headers=user2_headers,
+                )
+                assert resp3.status_code == 200
+                assert resp3.json()["false_positive_count"] == 2
         finally:
             app.dependency_overrides.clear()
             release_conn(conn)
