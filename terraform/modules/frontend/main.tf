@@ -127,6 +127,10 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   # ALB origin for API requests (auth, admin, insights, health)
+  # http-only is deliberate: the ALB has no HTTPS:443 listener because the
+  # stack has no ACM cert or custom domain (ACM cannot issue for
+  # *.elb.amazonaws.com). Do not switch to https-only until the ALB has an
+  # HTTPS listener backed by an ACM certificate.
   origin {
     domain_name = var.alb_dns_name
     origin_id   = "ALB"
