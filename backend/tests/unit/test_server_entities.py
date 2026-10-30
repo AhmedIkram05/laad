@@ -80,7 +80,7 @@ class TestEntitiesEndpoint:
     def test_entities_endpoint_returns_thirteen_entities(self):
         from backend.src.analytics.analytics_router import list_entities
 
-        result = list_entities()
+        result = list_entities({"sub": "admin", "role": "admin"})
         entities = result.get("entities", [])
         assert len(entities) == 13, f"Expected 13, got {len(entities)}"
         ids = [e["atm_id"] for e in entities]
@@ -90,7 +90,7 @@ class TestEntitiesEndpoint:
     def test_entities_include_os_and_location(self):
         from backend.src.analytics.analytics_router import list_entities
 
-        result = list_entities()
+        result = list_entities({"sub": "admin", "role": "admin"})
         server = next(e for e in result["entities"] if e["atm_id"] == "ATM-SERVER-001")
         assert server["os_version"] == "Windows-Server-2019"
         assert server["location_code"] == "SRV-001"
