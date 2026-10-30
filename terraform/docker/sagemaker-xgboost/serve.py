@@ -101,8 +101,9 @@ def invocations():
         return flask.Response(response=result, status=200, mimetype="application/json")
 
     except Exception as e:
+        app.logger.error("inference failed: %s", e, exc_info=True)
         return flask.Response(
-            response=json.dumps({"error": str(e)}),
+            response=json.dumps({"error": "Invalid input"}),
             status=400,
             mimetype="application/json",
         )
