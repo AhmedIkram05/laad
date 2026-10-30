@@ -338,9 +338,12 @@ class TestHandlerRowBuffering:
         with (
             patch.object(consumer_mod, "write_batch") as wb,
             patch.object(consumer_mod, "get_conn", return_value="conn"),
+            patch.object(consumer_mod, "release_conn") as rc,
         ):
             assert consumer_mod.flush_rows(rows, "INSERT INTO t VALUES %s", "t") is True
             wb.assert_called_once_with("conn", "INSERT INTO t VALUES %s", rows)
+            # Pooled connection must be returned to the pool on success.
+            rc.assert_called_once_with("conn")
 
     def test_flush_rows_failure_reports_false(self):
         with (
@@ -348,10 +351,13 @@ class TestHandlerRowBuffering:
                 consumer_mod, "write_batch", side_effect=RuntimeError("db down")
             ),
             patch.object(consumer_mod, "get_conn", return_value="conn"),
+            patch.object(consumer_mod, "release_conn") as rc,
         ):
             assert (
                 consumer_mod.flush_rows([(1,)], "INSERT INTO t VALUES %s", "t") is False
             )
+            # Pooled connection must be returned to the pool on failure too.
+            rc.assert_called_once_with("conn")
 
     def test_flush_rows_empty_is_noop(self):
         with patch.object(consumer_mod, "write_batch") as wb:

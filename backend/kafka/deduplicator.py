@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import OrderedDict
-from typing import Optional
+from typing import Iterable, Optional
 
 
 from backend.src.cache import get_redis_client
@@ -154,3 +154,30 @@ class Deduplicator:
             self._seen[message_id] = None
             if len(self._seen) > self._max_size:
                 self._seen.popitem(last=False)
+
+    def mark_batch(self, message_ids: Iterable[str]) -> None:
+        """Mark many message_ids as seen (idempotent, one Redis round-trip).
+
+        Used after a poll batch has been flushed to Postgres: marks must not
+        land before the data is durable, or redelivered messages would be
+        wrongly skipped as duplicates.
+        """
+        ids = [mid for mid in message_ids if mid]
+        if not ids:
+            return
+        if self._is_redis_available():
+            try:
+                client = get_redis_client()
+                if client is not None:
+                    pipe = client.pipeline(transaction=False)
+                    for mid in ids:
+                        pipe.set(f"{self._key_prefix}:{mid}", 1, ex=self._ttl_seconds)
+                    pipe.execute()
+                    return
+            except Exception as e:
+                logger.warning(
+                    f"Redis dedup mark_batch failed, falling back to in-memory: {e}"
+                )
+                self._mark_redis_unavailable()
+        for mid in ids:
+            self._check_and_mark_memory(mid)

@@ -50,7 +50,7 @@ from backend.kafka.handlers.event_handler import EVENT_BATCH_INSERT_SQL
 from backend.kafka.handlers.metric_handler import METRIC_BATCH_INSERT_SQL
 from backend.src.anomaly_detection.ml.ml_detector import MLAnomalyDetector
 from backend.src.cache import get_redis_client
-from backend.src.database.connection import get_conn
+from backend.src.database.connection import get_conn, release_conn
 from backend.src.ingestion.write_helper import write_batch
 from backend.src.observability.tracing import setup_tracing
 from opentelemetry import trace
@@ -283,12 +283,17 @@ def flush_rows(rows: list[tuple], sql: str, topic: str) -> bool:
     """
     if not rows:
         return True
+    conn = None
     try:
-        write_batch(get_conn(), sql, rows)
+        conn = get_conn()
+        write_batch(conn, sql, rows)
         return True
     except Exception as exc:
         log.error("Batched %s write failed (%d rows): %s", topic, len(rows), exc)
         return False
+    finally:
+        if conn is not None:
+            release_conn(conn)
 
 
 def run_consumer() -> None:
@@ -354,6 +359,14 @@ def run_consumer() -> None:
         while _running:
             records = consumer.poll(timeout_ms=POLL_TIMEOUT_MS)
 
+            # Per-poll dedup bookkeeping. Marks are deferred until the flush
+            # succeeds (at-least-once: a failed flush leaves the batch
+            # uncommitted, so redelivered messages must not look already-seen);
+            # batch_ids keeps in-batch duplicate skipping working meanwhile.
+            batch_ids: set[str] = set()
+            event_ids: list[str] = []
+            metric_ids: list[str] = []
+
             for topic_partition, messages in records.items():
                 topic = topic_partition.topic
 
@@ -380,9 +393,17 @@ def run_consumer() -> None:
                         continue
 
                     message_id = msg.get("message_id", "")
-                    if message_id and dedup.check_and_mark(message_id) is True:
+                    if message_id and (
+                        message_id in batch_ids or dedup.is_duplicate(message_id)
+                    ):
                         log.debug("Duplicate message_id=%s — skipping.", message_id)
                         continue
+                    if message_id:
+                        batch_ids.add(message_id)
+                        if topic == TOPIC_EVENTS:
+                            event_ids.append(message_id)
+                        elif topic == TOPIC_METRICS:
+                            metric_ids.append(message_id)
 
                     # Consume span joins the producer's trace via the injected
                     # traceparent; attrs are IDs/locations only — never bodies.
@@ -419,6 +440,9 @@ def run_consumer() -> None:
             if event_rows:
                 if flush_rows(event_rows, EVENT_BATCH_INSERT_SQL, TOPIC_EVENTS):
                     event_rows.clear()
+                    # Mark only after a successful flush: a failed flush must
+                    # leave ids unmarked so redelivery reprocesses the batch.
+                    dedup.mark_batch(event_ids)
                 else:
                     processed -= len(event_rows)
                     errors += len(event_rows)
@@ -426,6 +450,7 @@ def run_consumer() -> None:
             if metric_rows:
                 if flush_rows(metric_rows, METRIC_BATCH_INSERT_SQL, TOPIC_METRICS):
                     metric_rows.clear()
+                    dedup.mark_batch(metric_ids)
                 else:
                     processed -= len(metric_rows)
                     errors += len(metric_rows)

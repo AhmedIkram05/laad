@@ -105,6 +105,55 @@ class TestHandleSigterm:
             c._running = original
 
 
+class TestFlushRows:
+    @patch("backend.kafka.consumer.release_conn")
+    @patch("backend.kafka.consumer.write_batch")
+    @patch("backend.kafka.consumer.get_conn")
+    def test_success_releases_connection(
+        self, mock_get_conn, mock_write_batch, mock_release
+    ):
+        conn = MagicMock()
+        mock_get_conn.return_value = conn
+
+        assert c.flush_rows([("row",)], "INSERT INTO t VALUES %s", TOPIC_EVENTS) is True
+
+        mock_write_batch.assert_called_once_with(
+            conn, "INSERT INTO t VALUES %s", [("row",)]
+        )
+        mock_release.assert_called_once_with(conn)
+
+    @patch("backend.kafka.consumer.release_conn")
+    @patch("backend.kafka.consumer.write_batch")
+    @patch("backend.kafka.consumer.get_conn")
+    def test_write_failure_still_releases_connection(
+        self, mock_get_conn, mock_write_batch, mock_release
+    ):
+        conn = MagicMock()
+        mock_get_conn.return_value = conn
+        mock_write_batch.side_effect = Exception("db down")
+
+        assert (
+            c.flush_rows([("row",)], "INSERT INTO t VALUES %s", TOPIC_METRICS) is False
+        )
+
+        mock_release.assert_called_once_with(conn)
+
+    @patch("backend.kafka.consumer.release_conn")
+    @patch("backend.kafka.consumer.write_batch")
+    @patch("backend.kafka.consumer.get_conn")
+    def test_get_conn_failure_releases_nothing(
+        self, mock_get_conn, mock_write_batch, mock_release
+    ):
+        mock_get_conn.side_effect = Exception("pool exhausted")
+
+        assert (
+            c.flush_rows([("row",)], "INSERT INTO t VALUES %s", TOPIC_EVENTS) is False
+        )
+
+        mock_release.assert_not_called()
+        mock_write_batch.assert_not_called()
+
+
 class _PollOnceThenStop(Exception):
     pass
 
@@ -135,6 +184,7 @@ class TestRunConsumerRouting:
         mock_consumer.commit = MagicMock()
         mock_consumer.close = MagicMock()
         mock_dedup = MagicMock()
+        mock_dedup.is_duplicate.return_value = False
 
         with (
             patch(
@@ -174,6 +224,7 @@ class TestRunConsumerRouting:
         mock_consumer.commit = MagicMock()
         mock_consumer.close = MagicMock()
         mock_dedup = MagicMock()
+        mock_dedup.is_duplicate.return_value = False
 
         with (
             patch(
@@ -209,7 +260,7 @@ class TestRunConsumerRouting:
         handle_event = MagicMock(return_value=True)
         handle_metric = MagicMock(return_value=True)
         mock_dedup = MagicMock()
-        mock_dedup.check_and_mark.return_value = True
+        mock_dedup.is_duplicate.return_value = True
         mock_consumer = MagicMock()
         mock_consumer.poll = self._make_poll(mock_tp, mock_record)
         mock_consumer.commit = MagicMock()
@@ -232,7 +283,8 @@ class TestRunConsumerRouting:
                 pass
 
         handle_event.assert_not_called()
-        mock_dedup.check_and_mark.assert_called_once_with("dup-1")
+        mock_dedup.is_duplicate.assert_called_once_with("dup-1")
+        mock_dedup.mark_batch.assert_not_called()
 
     def test_manual_commit_after_batch(self):
         mock_record = MagicMock()
@@ -247,6 +299,7 @@ class TestRunConsumerRouting:
         mock_consumer.commit = MagicMock()
         mock_consumer.close = MagicMock()
         mock_dedup = MagicMock()
+        mock_dedup.is_duplicate.return_value = False
 
         with (
             patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
@@ -425,5 +478,82 @@ class TestRunConsumerRouting:
         handle_event.assert_not_called()
         handle_metric.assert_not_called()
         route_errors.assert_not_called()
-        mock_dedup.check_and_mark.assert_not_called()
+        mock_dedup.is_duplicate.assert_not_called()
+        mock_dedup.mark_batch.assert_not_called()
         mock_consumer.commit.assert_called()
+
+    def test_failed_flush_does_not_mark_ids(self):
+        """A failed flush must leave ids unmarked so Kafka redelivery
+        reprocesses them instead of skipping them as duplicates."""
+        mock_record = MagicMock()
+        mock_record.value = b'{"message_id": "f1", "timestamp": "2026-05-12T10:00:00Z", "source": "ATM_APP", "severity": "INFO"}'
+        mock_tp = MagicMock()
+        mock_tp.topic = TOPIC_EVENTS
+
+        def handle_event(msg, chroma, row_buffer=None):
+            if row_buffer is not None:
+                row_buffer.append(("row",))
+            return True
+
+        mock_consumer = MagicMock()
+        mock_consumer.poll = self._make_poll(mock_tp, mock_record)
+        mock_consumer.commit = MagicMock()
+        mock_consumer.close = MagicMock()
+        mock_dedup = MagicMock()
+        mock_dedup.is_duplicate.return_value = False
+
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch("backend.kafka.consumer.flush_rows", return_value=False),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
+            try:
+                run_consumer()
+            except _PollOnceThenStop:
+                pass
+
+        mock_dedup.mark_batch.assert_not_called()
+
+    def test_successful_flush_marks_ids(self):
+        mock_record = MagicMock()
+        mock_record.value = b'{"message_id": "f1", "timestamp": "2026-05-12T10:00:00Z", "source": "ATM_APP", "severity": "INFO"}'
+        mock_tp = MagicMock()
+        mock_tp.topic = TOPIC_EVENTS
+
+        def handle_event(msg, chroma, row_buffer=None):
+            if row_buffer is not None:
+                row_buffer.append(("row",))
+            return True
+
+        mock_consumer = MagicMock()
+        mock_consumer.poll = self._make_poll(mock_tp, mock_record)
+        mock_consumer.commit = MagicMock()
+        mock_consumer.close = MagicMock()
+        mock_dedup = MagicMock()
+        mock_dedup.is_duplicate.return_value = False
+        mock_flush = MagicMock(return_value=True)
+
+        with (
+            patch("backend.kafka.consumer.KafkaConsumer", return_value=mock_consumer),
+            patch("backend.kafka.consumer.Deduplicator", return_value=mock_dedup),
+            patch("backend.kafka.consumer.ChromaBuffer", return_value=MagicMock()),
+            patch.object(event_handler, "handle_event", side_effect=handle_event),
+            patch("backend.kafka.consumer.flush_rows", new=mock_flush),
+            patch("backend.kafka.consumer.route_raw_ingestion_errors"),
+            patch(
+                "backend.kafka.consumer.time.monotonic", side_effect=cycle([0.0, 1.0])
+            ),
+        ):
+            try:
+                run_consumer()
+            except _PollOnceThenStop:
+                pass
+
+        mock_flush.assert_called_once()
+        mock_dedup.mark_batch.assert_called_once_with(["f1"])
