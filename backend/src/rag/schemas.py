@@ -111,6 +111,7 @@ class RAGFeedbackResponse(BaseModel):
 
     success: bool
     message: str
+    id: Optional[int] = Field(None, description="ID of the inserted feedback row")
 
 
 class RAGHistoryItem(BaseModel):

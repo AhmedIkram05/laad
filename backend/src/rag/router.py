@@ -578,8 +578,20 @@ async def provide_feedback(
 
         logger.info(f"User feedback for query {request.query_id}: {request.feedback}")
 
+        with get_cursor(commit=True) as cur:
+            cur.execute(
+                """
+                INSERT INTO rag_feedback (query_id, feedback_rating)
+                VALUES (%s, %s)
+                RETURNING id
+                """,
+                (request.query_id, request.feedback),
+            )
+            feedback_id = cur.fetchone()["id"]
+
         return RAGFeedbackResponse(
             success=True,
+            id=feedback_id,
             message="Feedback recorded. Thank you for helping improve accuracy.",
         )
 
@@ -793,24 +805,21 @@ def _save_query_history_fallback(
     answer: str,
     uncertainty_score: float,
 ) -> Optional[int]:
-    """Save query history without user_id (fallback for anonymous/unresolved users)."""
+    """Save query history for anonymous/unresolved users.
+
+    Stored with user_id NULL so the rows stay queryable (stats, audit) without
+    polluting any real user's history — previously they were misattributed to
+    the admin account.
+    """
     try:
-        with get_cursor() as cur:
-            cur.execute("SELECT id FROM users WHERE username = 'admin' LIMIT 1")
-            row = cur.fetchone()
-            user_id = row["id"] if row else None
-
-        if user_id is None:
-            return None
-
         with get_cursor(commit=True) as cur:
             cur.execute(
                 """
                 INSERT INTO rag_queries (user_id, query_text, answer_text, uncertainty_score)
-                VALUES (%s, %s, %s, %s)
+                VALUES (NULL, %s, %s, %s)
                 RETURNING id
                 """,
-                (user_id, query, answer, uncertainty_score),
+                (query, answer, uncertainty_score),
             )
             row = cur.fetchone()
             return row["id"] if row else None

@@ -568,15 +568,28 @@ class TestAgentEndpoint:
 class TestFeedbackHistoryStats:
     def test_feedback_success(self):
         client = _make_client()
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": 77}
+        ctx = MagicMock()
+        ctx.__enter__.return_value = cur
+        ctx.__exit__.return_value = False
         with (
             patch.object(rag_router, "_get_user_id_from_username", return_value=1),
             patch.object(rag_router, "_get_query_by_id", return_value={"id": 1}),
+            patch.object(rag_router, "get_cursor", return_value=ctx) as mock_gc,
         ):
             resp = client.post(
                 "/api/rag/feedback", json={"query_id": 1, "feedback": "helpful"}
             )
             assert resp.status_code == 200
-            assert resp.json()["success"] is True
+            body = resp.json()
+            assert body["success"] is True
+            assert body["id"] == 77
+            # Feedback is actually persisted, not just acknowledged
+            mock_gc.assert_called_once_with(commit=True)
+            sql, params = cur.execute.call_args[0][0], cur.execute.call_args[0][1]
+            assert "INSERT INTO rag_feedback" in sql
+            assert params == (1, "helpful")
 
     def test_feedback_missing_query_returns_404(self):
         client = _make_client()
@@ -769,7 +782,7 @@ class TestDbHelpers:
                 is None
             )
 
-    def test_fallback_history_no_admin_returns_none(self):
+    def test_fallback_history_none_row_returns_none(self):
         cur = MagicMock()
         cur.fetchone.return_value = None
         ctx = MagicMock()
@@ -784,23 +797,23 @@ class TestDbHelpers:
             )
 
     def test_fallback_history_success(self):
-        admin_cur = MagicMock()
-        admin_cur.fetchone.return_value = {"id": 1}
-        admin_ctx = MagicMock()
-        admin_ctx.__enter__.return_value = admin_cur
-        admin_ctx.__exit__.return_value = False
-        ins_cur = MagicMock()
-        ins_cur.fetchone.return_value = {"id": 33}
-        ins_ctx = MagicMock()
-        ins_ctx.__enter__.return_value = ins_cur
-        ins_ctx.__exit__.return_value = False
-        with patch.object(rag_router, "get_cursor", side_effect=[admin_ctx, ins_ctx]):
+        cur = MagicMock()
+        cur.fetchone.return_value = {"id": 33}
+        ctx = MagicMock()
+        ctx.__enter__.return_value = cur
+        ctx.__exit__.return_value = False
+        with patch.object(rag_router, "get_cursor", return_value=ctx):
             assert (
                 rag_router._save_query_history_fallback(
                     query="q", answer="a", uncertainty_score=0.5
                 )
                 == 33
             )
+            # Anonymous/unresolved users are stored with NULL user_id — never
+            # attributed to a real account.
+            sql = cur.execute.call_args[0][0]
+            assert "NULL" in sql
+            assert cur.execute.call_args[0][1] == ("q", "a", 0.5)
 
     def test_fallback_history_exception_returns_none(self):
         with patch.object(
