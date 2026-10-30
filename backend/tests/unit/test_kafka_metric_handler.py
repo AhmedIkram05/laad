@@ -154,3 +154,30 @@ class TestHandleMetric:
             assert result is True
             call_args = mock_cur.execute.call_args[0][1]
             assert call_args[4] == 42.0
+
+    def test_offset_timestamp_bucketed_in_utc(self):
+        # 2026-05-12T03:30+05:30 == 2026-05-11T22:00Z — the analytics hour
+        # bucket must be derived from UTC, not the producer's local offset.
+        msg = {
+            "message_id": "m-tz",
+            "timestamp": "2026-05-12T03:30:00+05:30",
+            "source": "PROMETHEUS",
+            "entity_id": "pod-0",
+            "metric_name": "cpu",
+            "metric_value": 1.0,
+        }
+
+        with (
+            patch("backend.kafka.handlers.metric_handler.get_cursor") as mock_gc,
+            patch(
+                "backend.kafka.handlers.metric_handler.increment_event_counter"
+            ) as mock_incr,
+        ):
+            mock_cur = MagicMock()
+            mock_gc.return_value.__enter__ = MagicMock(return_value=mock_cur)
+            mock_gc.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = handle_metric(msg)
+
+            assert result is True
+            mock_incr.assert_called_once_with("PROMETHEUS", "2026-05-11T22")
