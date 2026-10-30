@@ -6,6 +6,11 @@ mock_provider "aws" {
       name         = "al2023-ami-2023.5.20241001.0-arm64"
     }
   }
+  mock_data "aws_iam_policy_document" {
+    defaults = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ec2.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+    }
+  }
   mock_resource "aws_instance" {
     defaults = {
       id         = "i-1234567890abcdef0"
