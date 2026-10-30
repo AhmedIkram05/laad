@@ -85,6 +85,12 @@ resource "aws_db_instance" "main" {
   allocated_storage = 20
   storage_type      = "gp3"
 
+  # Encrypted at rest with the default AWS-managed KMS key.
+  # Existing databases cannot gain encryption in place — they require a
+  # snapshot-copy migration (copy snapshot with encryption, restore from it),
+  # so flipping this on an already-provisioned instance forces replacement.
+  storage_encrypted = true
+
   db_name  = "laad_db"
   username = "laad_admin"
   password = random_password.rds_master.result
