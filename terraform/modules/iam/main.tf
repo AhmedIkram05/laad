@@ -33,9 +33,7 @@ data "aws_iam_policy_document" "github_actions_assume" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:AhmedIkram05/laad:ref:refs/heads/main",
-        "repo:AhmedIkram05/laad:pull_request",
-        "repo:AhmedIkram05/laad:ref:refs/pull/*"
+        "repo:AhmedIkram05/laad:ref:refs/heads/main"
       ]
     }
   }
