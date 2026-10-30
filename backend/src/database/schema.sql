@@ -49,7 +49,9 @@ CREATE TABLE IF NOT EXISTS anomalies (
     feedback_rating TEXT,
     false_positive_count INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
-    is_starred INTEGER DEFAULT 0
+    is_starred INTEGER DEFAULT 0,
+    -- Guards against the consumer double-inserting the same detection.
+    UNIQUE (anomaly_type, atm_id, detected_at)
 );
 
 -- 5. ingestion_errors
@@ -109,6 +111,16 @@ CREATE TABLE IF NOT EXISTS rag_agent_traces (
     retry_trigger DOUBLE PRECISION,
     model_calls_truncated BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 11. anomaly_feedback (per-user anomaly feedback; idempotency for FP counting)
+CREATE TABLE IF NOT EXISTS anomaly_feedback (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    anomaly_id BIGINT NOT NULL REFERENCES anomalies(id) ON DELETE CASCADE,
+    feedback_type TEXT NOT NULL CHECK (feedback_type IN ('LIKE', 'DISLIKE')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, anomaly_id, feedback_type)
 );
 
 -- Indexes

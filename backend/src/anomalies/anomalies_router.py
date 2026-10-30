@@ -515,8 +515,10 @@ def setFeedback(
 ):
     """Record feedback (LIKE=confirm, DISLIKE=false positive) on an anomaly.
 
-    DISLIKE marks the anomaly as a false positive and increments the
-    false_positive_count for this anomaly.
+    DISLIKE marks the anomaly as a false positive. Each user's feedback is
+    recorded once (UNIQUE(user_id, anomaly_id, feedback_type) in
+    anomaly_feedback); the false_positive_count is only incremented the first
+    time a given user DISLIKEs the same anomaly.
     """
     rating = body.rating.upper()
     if rating not in ("LIKE", "DISLIKE"):
@@ -528,28 +530,49 @@ def setFeedback(
             (anomalyId,),
         )
         row = cur.fetchone()
+
+        cur.execute("SELECT id FROM users WHERE username = %s", (currentUser["sub"],))
+        user_row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Anomaly not found")
+    if not user_row:
+        raise HTTPException(status_code=403, detail="Authenticated user not found")
 
-    fp_inc = 1 if rating == "DISLIKE" else 0
-    fp_count = (row["false_positive_count"] or 0) + fp_inc
-
-    with conn.cursor() as cur:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
-            "UPDATE anomalies SET feedback_rating = %s, false_positive_count = %s WHERE id = %s",
-            (rating, fp_count, anomalyId),
+            """
+            INSERT INTO anomaly_feedback (user_id, anomaly_id, feedback_type)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, anomaly_id, feedback_type) DO NOTHING
+            """,
+            (user_row["id"], anomalyId, rating),
         )
+        new_feedback = cur.rowcount == 1
+        fp_inc = 1 if (rating == "DISLIKE" and new_feedback) else 0
+        cur.execute(
+            """
+            UPDATE anomalies
+            SET feedback_rating = %s,
+                false_positive_count = COALESCE(false_positive_count, 0) + %s
+            WHERE id = %s
+            RETURNING false_positive_count
+            """,
+            (rating, fp_inc, anomalyId),
+        )
+        fp_count = cur.fetchone()["false_positive_count"]
     conn.commit()
     _invalidate_anomaly_cache()
 
     if rating == "DISLIKE":
         logger.info(
-            "False positive reported for anomaly %s (type=%s, atm=%s). "
-            "FP count for this (type, atm) pair incremented to %d",
+            "False positive reported for anomaly %s (type=%s, atm=%s, user=%s). %s",
             anomalyId,
             row["anomaly_type"],
             row["atm_id"],
-            fp_count,
+            currentUser["sub"],
+            f"FP count incremented to {fp_count}"
+            if new_feedback
+            else "Duplicate feedback ignored (already recorded)",
         )
 
     return {
