@@ -112,7 +112,9 @@ def handle_metric(msg: dict, row_buffer: "list[tuple] | None" = None) -> bool:
     if entity_id.startswith("ATM-"):
         track_unique_atm(entity_id)
 
-    hour_bucket = ts.strftime("%Y-%m-%dT%H")
+    # Bucket by UTC hour — an offset-bearing producer timestamp must not
+    # skew the analytics bucket toward its local offset.
+    hour_bucket = ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
     increment_event_counter(msg["source"], hour_bucket)
 
     return True
