@@ -108,9 +108,7 @@ def load_jev_confs(items: list[dict]) -> tuple[dict[int, float], dict[int, float
         for entry in report.get("items", []):
             score_raw = entry.get("score_raw")
             conf = (
-                _score_interpolated(score_raw)
-                if isinstance(score_raw, dict)
-                else None
+                _score_interpolated(score_raw) if isinstance(score_raw, dict) else None
             )
             if conf is None and entry.get("score_probability") is not None:
                 conf = float(entry["score_probability"])
@@ -153,8 +151,11 @@ def run_llm_arm(items: list[dict], generator: RAGGenerator) -> dict[int, dict]:
         # state carried (query + reference answer); golden items carry no logs.
         cost_sink: list[float] = []
         confidence = generator._llm_verbalized_confidence(
-            item["query"], item["query"], item.get("reference_answer", ""),
-            system_prompt="", cost_sink=cost_sink,
+            item["query"],
+            item["query"],
+            item.get("reference_answer", ""),
+            system_prompt="",
+            cost_sink=cost_sink,
         )
         if confidence is None:
             continue
@@ -207,9 +208,10 @@ def arm_metrics(
         "n_items": n,
         "agreement_rate": round(
             sum(1 for c in final_confs if c >= POSITIVE_THRESHOLD) / n, 4
-        ) if n else None,
-        "escalation_rate": round(sum(1 for e in escalated if e) / n, 4)
-        if n else None,
+        )
+        if n
+        else None,
+        "escalation_rate": round(sum(1 for e in escalated if e) / n, 4) if n else None,
         "est_cost_usd": round(est_cost_usd, 6),
         "ece_10bin": round(ece, 4) if ece is not None else None,
     }
@@ -293,8 +295,11 @@ def run(tau: Optional[float] = None, limit: Optional[int] = None) -> dict:
     llm_results = run_llm_arm(items, generator)
 
     llm_only_cost = sum(
-        (llm_results[i["id"]]["cost_usd"] if i["id"] in llm_results
-         else _llm_cost_fallback())
+        (
+            llm_results[i["id"]]["cost_usd"]
+            if i["id"] in llm_results
+            else _llm_cost_fallback()
+        )
         for i in items
     )
     jev_only_cost = len(items) * jev_per_call
@@ -351,11 +356,11 @@ def run(tau: Optional[float] = None, limit: Optional[int] = None) -> dict:
         "items_with_llm_result": len(llm_results),
         "items_with_stored_jev": len(jev_available),
         "llm_cost_source": (
-            "fallback" if len(llm_results) == 0 else
-            "real" if any(
-                r["cost_usd"] != _llm_cost_fallback()
-                for r in llm_results.values()
-            ) else "fallback (provider did not report usage.cost)"
+            "fallback"
+            if len(llm_results) == 0
+            else "real"
+            if any(r["cost_usd"] != _llm_cost_fallback() for r in llm_results.values())
+            else "fallback (provider did not report usage.cost)"
         ),
         "notes": [
             "Golden items carry no retrieved log context; the llm-only arm "
@@ -373,8 +378,10 @@ def run(tau: Optional[float] = None, limit: Optional[int] = None) -> dict:
     report["mlflow_logged"] = _mlflow_log(arms, tau)
     BENCHMARK_REPORT_PATH.write_text(json.dumps(report, indent=2))
     _print_table(arms, tau)
-    print(f"Report written to {BENCHMARK_REPORT_PATH} "
-          f"(mlflow_logged={report['mlflow_logged']})")
+    print(
+        f"Report written to {BENCHMARK_REPORT_PATH} "
+        f"(mlflow_logged={report['mlflow_logged']})"
+    )
     return report
 
 
@@ -382,11 +389,15 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--tau", type=float, default=None,
+        "--tau",
+        type=float,
+        default=None,
         help="escalation threshold (default: config.jev_escalation_threshold)",
     )
     parser.add_argument(
-        "--limit", type=int, default=None,
+        "--limit",
+        type=int,
+        default=None,
         help="cap the number of golden items (cost control)",
     )
     args = parser.parse_args(argv)

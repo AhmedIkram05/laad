@@ -31,6 +31,7 @@ def _stop_ragas_analytics_flusher():
     except Exception:  # pragma: no cover - ragas not installed / API drift
         pass
 
+
 _KEY_VARS = ("WANDB_API_KEY", "LLM_API_KEY", "OPENROUTER_API_KEY", "TYPESAFE_API_KEY")
 
 

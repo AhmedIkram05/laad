@@ -86,9 +86,7 @@ def _provider(answers: dict):
 @pytest.fixture
 def gen_factory(monkeypatch):
     """Kill-switch-safe RAGGenerator factory (get_decision_provider → None)."""
-    monkeypatch.setattr(
-        "backend.src.rag.generator.get_decision_provider", lambda: None
-    )
+    monkeypatch.setattr("backend.src.rag.generator.get_decision_provider", lambda: None)
 
     def _make(provider=None):
         gen = RAGGenerator()
@@ -203,9 +201,7 @@ class TestEscalationCascade:
         gen.llm_client.generate.return_value = LLMResponse(
             text="0.85", raw_response={}, model="m", finish_reason="stop"
         )
-        gen._llm_verbalized_confidence = MagicMock(
-            wraps=gen._llm_verbalized_confidence
-        )
+        gen._llm_verbalized_confidence = MagicMock(wraps=gen._llm_verbalized_confidence)
         sink: list[int] = []
 
         result = gen._estimate_verbalized_confidence(
@@ -220,7 +216,10 @@ class TestEscalationCascade:
     def test_llm_cost_recorded_in_cost_sink(self, gen_factory):
         gen = gen_factory()
         gen.llm_client.generate.return_value = LLMResponse(
-            text="0.85", raw_response={}, model="m", finish_reason="stop",
+            text="0.85",
+            raw_response={},
+            model="m",
+            finish_reason="stop",
             cost_usd=LLM_CALL_COST,
         )
         cost_sink: list[float] = []
@@ -262,9 +261,7 @@ class TestEscalationCascade:
         assert response.decision_escalations == 0
 
     def test_generate_escalation_field_defaults_zero(self):
-        response = GeneratedResponse(
-            text="t", sources=[], model="m", raw_response={}
-        )
+        response = GeneratedResponse(text="t", sources=[], model="m", raw_response={})
         assert response.decision_escalations == 0
         assert response.decision_cost_usd is None
 
@@ -320,10 +317,16 @@ class TestScoreSemantics:
 
     def test_semantics_stats_both_normalizations(self):
         items = [
-            {"label": 1, "score_probability": 0.6,
-             "score_raw": {"type": "score", "score": 5.4}},
-            {"label": 1, "score_probability": 0.3,
-             "score_raw": {"type": "score", "score": 2.7}},
+            {
+                "label": 1,
+                "score_probability": 0.6,
+                "score_raw": {"type": "score", "score": 5.4},
+            },
+            {
+                "label": 1,
+                "score_probability": 0.3,
+                "score_raw": {"type": "score", "score": 2.7},
+            },
         ]
         semantics = score_semantics(items)
         top = semantics["top_level_certainty_probability"]
@@ -395,7 +398,9 @@ class TestBenchmarkRunMonkeypatched:
 
         monkeypatch.setattr(bench, "load_golden_items", lambda limit=None: self.ITEMS)
         monkeypatch.setattr(
-            bench, "load_jev_confs", lambda items: (dict(self.JEV), dict(self.JEV_COSTS))
+            bench,
+            "load_jev_confs",
+            lambda items: (dict(self.JEV), dict(self.JEV_COSTS)),
         )
         monkeypatch.setattr(bench, "_live_jev_fill", lambda missing: {})
         monkeypatch.setattr(bench, "_mlflow_log", lambda runs, tau: False)

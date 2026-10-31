@@ -835,7 +835,8 @@ def _build_schedule(
             jitter = period_h / 2 + rng.random() * period_h / 2
             schedule.append(
                 (
-                    start + timedelta(hours=offset + jitter, seconds=rng.randint(0, 30)),
+                    start
+                    + timedelta(hours=offset + jitter, seconds=rng.randint(0, 30)),
                     a_type,
                 )
             )
