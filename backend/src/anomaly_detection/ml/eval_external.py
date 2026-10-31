@@ -54,7 +54,9 @@ def main() -> None:
     )
     macro_f1 = float(f1_score(y_true, y_pred, average="macro"))
     bacc = float(balanced_accuracy_score(y_true, y_pred))
-    print(f"Config-B XGBoost macro-F1: {macro_f1:.3f} · balanced acc: {bacc:.3f} · n={len(labels)}")
+    print(
+        f"Config-B XGBoost macro-F1: {macro_f1:.3f} · balanced acc: {bacc:.3f} · n={len(labels)}"
+    )
 
     scaler = joblib.load(ARTIFACT_DIR / "scaler.joblib")
     with open(ARTIFACT_DIR / "if_feature_indices.json") as f:
@@ -68,7 +70,9 @@ def main() -> None:
     if_precision = float(np.mean(pred_bin == y_bin))
     pr_auc = float(average_precision_score(y_bin, -scores))
     auc = float(roc_auc_score(y_bin, -scores))
-    print(f"Config-B IF: precision={if_precision:.3f} PR-AUC={pr_auc:.4f} AUC={auc:.4f}")
+    print(
+        f"Config-B IF: precision={if_precision:.3f} PR-AUC={pr_auc:.4f} AUC={auc:.4f}"
+    )
 
     if os.getenv("EVAL_LOG_MLFLOW", "").lower() == "true":
         import mlflow

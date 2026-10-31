@@ -60,7 +60,9 @@ from backend.src.rag.decision_client import (  # noqa: E402
 )
 
 GOLDEN_SET_PATH = REPO_ROOT / "backend" / "tests" / "eval" / "golden_set.json"
-REPORT_PATH = REPO_ROOT / "backend" / "tests" / "eval" / "decision_calibration_report.json"
+REPORT_PATH = (
+    REPO_ROOT / "backend" / "tests" / "eval" / "decision_calibration_report.json"
+)
 
 POSITIVE_THRESHOLD = 0.5
 STATE_MAX_CHARS = 2000
@@ -130,8 +132,13 @@ def expected_calibration_error(
 ) -> tuple[float, list[dict]]:
     """ECE over 10 equal-width bins of predicted probability."""
     bins = [
-        {"bin_low": i / ECE_BINS, "bin_high": (i + 1) / ECE_BINS, "n": 0,
-         "conf_sum": 0.0, "correct_sum": 0.0}
+        {
+            "bin_low": i / ECE_BINS,
+            "bin_high": (i + 1) / ECE_BINS,
+            "n": 0,
+            "conf_sum": 0.0,
+            "correct_sum": 0.0,
+        }
         for i in range(ECE_BINS)
     ]
     for prob, label in zip(probabilities, labels):
@@ -247,9 +254,9 @@ def tau_sweep_table(
                 "agreement_rate": round(agreement_rate, 4),
                 "cascade_est_cost_usd": round(cascade_cost, 6),
                 "llm_only_est_cost_usd": round(llm_only_cost, 6),
-                "cost_ratio_cascade_vs_llm": round(
-                    cascade_cost / llm_only_cost, 4
-                ) if llm_only_cost else None,
+                "cost_ratio_cascade_vs_llm": round(cascade_cost / llm_only_cost, 4)
+                if llm_only_cost
+                else None,
             }
         )
     return table
@@ -361,8 +368,13 @@ def run() -> int:
             else:
                 skipped_unknown_verdict += 1
             results.append(
-                {"id": item.get("id"), "verdict": item.get("human_verdict"),
-                 "probability": None, "label": None, "skipped": "no_verdict"}
+                {
+                    "id": item.get("id"),
+                    "verdict": item.get("human_verdict"),
+                    "probability": None,
+                    "label": None,
+                    "skipped": "no_verdict",
+                }
             )
             continue
         try:
@@ -374,8 +386,13 @@ def run() -> int:
             skipped_errors += 1
             print(f"  skip id={item.get('id')}: decision call failed ({exc})")
             results.append(
-                {"id": item.get("id"), "verdict": item.get("human_verdict"),
-                 "probability": None, "label": label, "skipped": "error"}
+                {
+                    "id": item.get("id"),
+                    "verdict": item.get("human_verdict"),
+                    "probability": None,
+                    "label": label,
+                    "skipped": "error",
+                }
             )
             continue
         answer = answers.get(QUESTION_NAME)
@@ -383,8 +400,13 @@ def run() -> int:
         if answer is None and score_answer is None:
             skipped_errors += 1
             results.append(
-                {"id": item.get("id"), "verdict": item.get("human_verdict"),
-                 "probability": None, "label": label, "skipped": "missing_answer"}
+                {
+                    "id": item.get("id"),
+                    "verdict": item.get("human_verdict"),
+                    "probability": None,
+                    "label": label,
+                    "skipped": "missing_answer",
+                }
             )
             continue
         cost = None
@@ -414,10 +436,18 @@ def run() -> int:
     probabilities = [r["probability"] for r in evaluated]
     labels = [r["label"] for r in evaluated]
 
-    tp = sum(1 for p, y in zip(probabilities, labels) if p >= POSITIVE_THRESHOLD and y == 1)
-    fp = sum(1 for p, y in zip(probabilities, labels) if p >= POSITIVE_THRESHOLD and y == 0)
-    tn = sum(1 for p, y in zip(probabilities, labels) if p < POSITIVE_THRESHOLD and y == 0)
-    fn = sum(1 for p, y in zip(probabilities, labels) if p < POSITIVE_THRESHOLD and y == 1)
+    tp = sum(
+        1 for p, y in zip(probabilities, labels) if p >= POSITIVE_THRESHOLD and y == 1
+    )
+    fp = sum(
+        1 for p, y in zip(probabilities, labels) if p >= POSITIVE_THRESHOLD and y == 0
+    )
+    tn = sum(
+        1 for p, y in zip(probabilities, labels) if p < POSITIVE_THRESHOLD and y == 0
+    )
+    fn = sum(
+        1 for p, y in zip(probabilities, labels) if p < POSITIVE_THRESHOLD and y == 1
+    )
     total = len(probabilities)
     accuracy = (tp + tn) / total if total else None
     precision = tp / (tp + fp) if (tp + fp) else None
@@ -467,17 +497,24 @@ def run() -> int:
 
     report = _append_offline_analytics(report)
     REPORT_PATH.write_text(json.dumps(report, indent=2))
-    print(f"\nGolden set items: {len(items)} (evaluated {n_calls}, "
-          f"skipped no-verdict {skipped_no_verdict}, "
-          f"unknown {skipped_unknown_verdict}, errors {skipped_errors})")
+    print(
+        f"\nGolden set items: {len(items)} (evaluated {n_calls}, "
+        f"skipped no-verdict {skipped_no_verdict}, "
+        f"unknown {skipped_unknown_verdict}, errors {skipped_errors})"
+    )
     print(f"Verdict distribution: {verdict_distribution}")
     print(f"Confusion matrix @ {POSITIVE_THRESHOLD}: TP={tp} FP={fp} TN={tn} FN={fn}")
-    print(f"Accuracy: {accuracy and round(accuracy, 4)}  "
-          f"Precision: {precision and round(precision, 4)}  "
-          f"Recall: {recall and round(recall, 4)}")
+    print(
+        f"Accuracy: {accuracy and round(accuracy, 4)}  "
+        f"Precision: {precision and round(precision, 4)}  "
+        f"Recall: {recall and round(recall, 4)}"
+    )
     print(f"ECE ({ECE_BINS} bins): {ece and round(ece, 4)}")
-    print(f"Cost: ${cost_usd_total:.6f} total "
-          f"(${cost_usd_total / n_calls:.6f}/call)" if n_calls else "Cost: $0")
+    print(
+        f"Cost: ${cost_usd_total:.6f} total (${cost_usd_total / n_calls:.6f}/call)"
+        if n_calls
+        else "Cost: $0"
+    )
     _print_sweep(report)
     print(f"Report written to {REPORT_PATH}")
     return 0 if n_calls else 1

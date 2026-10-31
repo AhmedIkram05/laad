@@ -150,7 +150,10 @@ class TestBuildSchedule:
         import datetime
         import random
 
-        from backend.generator.training_dataset import INJECTION_PERIODS, _build_schedule
+        from backend.generator.training_dataset import (
+            INJECTION_PERIODS,
+            _build_schedule,
+        )
 
         hours = 6
         start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
@@ -167,7 +170,10 @@ class TestBuildSchedule:
         import datetime
         import random
 
-        from backend.generator.training_dataset import INJECTION_PERIODS, _build_schedule
+        from backend.generator.training_dataset import (
+            INJECTION_PERIODS,
+            _build_schedule,
+        )
 
         start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
         schedule = _build_schedule(random.Random(42), 6, INJECTION_PERIODS, start)
