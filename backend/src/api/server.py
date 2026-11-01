@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.src.admin.cleanup import run_cleanup
@@ -138,6 +139,41 @@ app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
 
 instrument_fastapi(app)
 
+# Host header validation. Defaults keep local dev and the TestClient working;
+# production must set ALLOWED_HOSTS to the real API hostname(s).
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(
+        ","
+    ),
+    www_redirect=False,
+)
+
+# Reject oversized request bodies early. No endpoint accepts file uploads, so
+# 1 MiB is generous for this JSON API. Content-Length is checked as a cheap
+# guard; a chunked body without it is not covered here.
+MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(1024 * 1024)))
+
+
+@app.middleware("http")
+async def limit_request_body(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            too_large = int(content_length) > MAX_REQUEST_BODY_BYTES
+        except ValueError:
+            return JSONResponse(
+                status_code=400, content={"detail": "Invalid Content-Length header"}
+            )
+        if too_large:
+            return JSONResponse(
+                status_code=413, content={"detail": "Request body too large"}
+            )
+    return await call_next(request)
+
+
+# CORS registered last so it wraps the middlewares above and its headers are
+# present on the 400/413 error responses too.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173").split(","),
