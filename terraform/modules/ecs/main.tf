@@ -181,6 +181,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "AWS_REGION", value = var.aws_region },
         { name = "REDIS_HOST", value = "redis.laad.internal" },
         { name = "REDIS_PORT", value = "6379" },
+        { name = "ALLOWED_HOSTS", value = var.allowed_hosts },
       ]
 
       secrets = [

@@ -139,10 +139,26 @@ app = FastAPI(title="ATM Log Aggregation Platform", lifespan=lifespan)
 
 instrument_fastapi(app)
 
+
+class HealthExemptTrustedHostMiddleware(TrustedHostMiddleware):
+    """TrustedHostMiddleware that skips validation for the health endpoint.
+
+    The ALB health check sends the target's private IP as the Host header, so
+    strict validation would mark the target permanently unhealthy. The current
+    /health payload is static and host-independent, so exempting it is safe.
+    """
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"] == "/health":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
 # Host header validation. Defaults keep local dev and the TestClient working;
 # production must set ALLOWED_HOSTS to the real API hostname(s).
 app.add_middleware(
-    TrustedHostMiddleware,
+    HealthExemptTrustedHostMiddleware,
     allowed_hosts=os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(
         ","
     ),

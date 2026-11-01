@@ -12,14 +12,52 @@ def _client() -> TestClient:
 
 
 class TestHostValidation:
-    """TrustedHostMiddleware rejects unexpected Host headers."""
+    """TrustedHostMiddleware rejects unexpected Host headers.
+
+    /health is exempt (see HealthExemptTrustedHostMiddleware): the ALB sends
+    the target's private IP as the Host header on health checks.
+    """
 
     def test_allowed_host_passes(self):
         resp = _client().get("/health")
         assert resp.status_code == 200
 
+    def test_health_exempt_from_host_validation(self):
+        resp = _client().get("/health", headers={"host": "10.0.3.42:8000"})
+        assert resp.status_code == 200
+
+    def test_localhost_host_passes(self):
+        resp = _client().get("/nonexistent", headers={"host": "localhost"})
+        assert resp.status_code == 404
+
     def test_untrusted_host_rejected(self):
-        resp = _client().get("/health", headers={"host": "evil.example.com"})
+        resp = _client().get("/nonexistent", headers={"host": "evil.example.com"})
+        assert resp.status_code == 400
+
+    def test_allowed_wildcard_host_passes(self):
+        from fastapi import FastAPI
+
+        from backend.src.api.server import HealthExemptTrustedHostMiddleware
+
+        wildcard_app = FastAPI()
+        wildcard_app.add_middleware(
+            HealthExemptTrustedHostMiddleware,
+            allowed_hosts=[
+                "*.cloudfront.net",
+                "*.elb.amazonaws.com",
+                "localhost",
+                "127.0.0.1",
+            ],
+            www_redirect=False,
+        )
+        client = TestClient(wildcard_app)
+        for host in (
+            "d123.cloudfront.net",
+            "laad-alb-abc.eu-west-2.elb.amazonaws.com",
+        ):
+            resp = client.get("/health/ready", headers={"host": host})
+            assert resp.status_code == 404, f"{host} should pass host validation"
+        resp = client.get("/health/ready", headers={"host": "evil.example.com"})
         assert resp.status_code == 400
 
 
