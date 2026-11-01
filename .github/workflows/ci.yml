@@ -282,6 +282,7 @@ jobs:
           POSTGRES_PASSWORD: test_password
           JWT_SECRET_KEY: ci-test-secret-key-for-laad-pipeline
           LAAD_ENV: production
+          LOGIN_RATE_LIMIT: "0"
         run: |
           uvicorn backend.src.api.server:app --host 0.0.0.0 --port 8000 &
           for i in $(seq 1 60); do

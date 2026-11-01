@@ -13,6 +13,8 @@ import hashlib
 import logging
 import os
 import secrets
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Generator
 
@@ -152,6 +154,52 @@ def _blacklist_token(token: str, expires_at: datetime) -> None:
     logger.info(f"Token blacklisted (TTL={ttl_seconds}s)")
 
 
+# Login brute-force protection: same Redis sorted-set limiter used by the RAG
+# router (distributed, with in-memory fallback), keyed per client IP.
+# LOGIN_RATE_LIMIT=0 disables it (used by the test suite).
+LOGIN_RATE_LIMIT_WINDOW = 60
+LOGIN_RATE_LIMIT_MAX = int(os.getenv("LOGIN_RATE_LIMIT", "10"))
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_login_rate_limit(client_key: str) -> None:
+    """Reject a login when client_key exceeds LOGIN_RATE_LIMIT_MAX per window."""
+    if LOGIN_RATE_LIMIT_MAX <= 0:
+        return
+    client = get_redis_client()
+    if client is None:
+        return _check_login_rate_limit_in_memory(client_key)
+
+    now = time.time()
+    key = f"ratelimit:login:{client_key}"
+    pipe = client.pipeline()
+    pipe.zremrangebyscore(key, 0, now - LOGIN_RATE_LIMIT_WINDOW)
+    pipe.zadd(key, {f"{now}:{secrets.token_hex(4)}": now})
+    pipe.zcard(key)
+    pipe.expire(key, LOGIN_RATE_LIMIT_WINDOW + 10)
+    request_count = pipe.execute()[2]
+    if request_count > LOGIN_RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many login attempts ({LOGIN_RATE_LIMIT_MAX} per minute). Please wait and try again.",
+        )
+
+
+def _check_login_rate_limit_in_memory(client_key: str) -> None:
+    """In-memory login rate-limit fallback when Redis is unavailable."""
+    now = time.time()
+    attempts = [
+        t for t in _login_attempts[client_key] if t > now - LOGIN_RATE_LIMIT_WINDOW
+    ]
+    if len(attempts) >= LOGIN_RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many login attempts ({LOGIN_RATE_LIMIT_MAX} per minute). Please wait and try again.",
+        )
+    attempts.append(now)
+    _login_attempts[client_key] = attempts
+
+
 # Route dependency injectors
 def get_current_user(
     token: str | None = Depends(_optional_oauth2_scheme),
@@ -238,9 +286,15 @@ def login(
     response: Response,
     form: OAuth2PasswordRequestForm = Depends(),
     conn=Depends(get_db_connection),
+    request: Request = None,  # type: ignore[assignment]
 ):
     """Standard username/password login. Sets httpOnly cookie + returns a JWT
     (token in body kept for backwards compat with localStorage clients)."""
+    client_ip = (
+        request.client.host if request is not None and request.client else "unknown"
+    )
+    _check_login_rate_limit(client_ip)
+
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             "SELECT password_hash, role FROM users WHERE username = %s",

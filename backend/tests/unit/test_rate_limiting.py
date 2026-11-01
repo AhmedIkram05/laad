@@ -122,3 +122,64 @@ class TestRateLimiting:
         mock_get_client.return_value = mock_client
 
         _check_rate_limit("boundary_user")
+
+
+class TestLoginRateLimiting:
+    """Login brute-force limiter in auth_router (mirrors the RAG limiter)."""
+
+    def setup_method(self):
+        from backend.src.auth import auth_router
+
+        auth_router._login_attempts.clear()
+
+    def teardown_method(self):
+        from backend.src.auth import auth_router
+
+        auth_router._login_attempts.clear()
+
+    @patch("backend.src.auth.auth_router.get_redis_client")
+    def test_login_redis_blocks_over_limit(self, mock_get_client, monkeypatch):
+        """Login attempts over the limit raise 429 via Redis."""
+        from backend.src.auth import auth_router
+
+        monkeypatch.setattr(auth_router, "LOGIN_RATE_LIMIT_MAX", 10)
+        mock_client = MagicMock()
+        mock_client.pipeline.return_value.execute.return_value = [0, 0, 11, True]
+        mock_get_client.return_value = mock_client
+
+        with pytest.raises(HTTPException) as exc_info:
+            auth_router._check_login_rate_limit("1.2.3.4")
+
+        assert exc_info.value.status_code == 429
+        assert "Too many login attempts" in exc_info.value.detail
+
+    @patch("backend.src.auth.auth_router.get_redis_client")
+    def test_login_memory_fallback_blocks_over_limit(
+        self, mock_get_client, monkeypatch
+    ):
+        """In-memory fallback blocks over-limit logins when Redis is down."""
+        from backend.src.auth import auth_router
+
+        monkeypatch.setattr(auth_router, "LOGIN_RATE_LIMIT_MAX", 10)
+        mock_get_client.return_value = None
+
+        for _ in range(10):
+            auth_router._check_login_rate_limit("5.6.7.8")
+
+        with pytest.raises(HTTPException) as exc_info:
+            auth_router._check_login_rate_limit("5.6.7.8")
+
+        assert exc_info.value.status_code == 429
+
+    @patch("backend.src.auth.auth_router.get_redis_client")
+    def test_login_limit_disabled_when_zero(self, mock_get_client, monkeypatch):
+        """LOGIN_RATE_LIMIT_MAX=0 disables the limiter entirely."""
+        from backend.src.auth import auth_router
+
+        monkeypatch.setattr(auth_router, "LOGIN_RATE_LIMIT_MAX", 0)
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        auth_router._check_login_rate_limit("9.9.9.9")
+
+        mock_client.pipeline.assert_not_called()

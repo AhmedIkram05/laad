@@ -40,6 +40,11 @@ os.environ["POSTGRES_PASSWORD"] = os.getenv(
 # in test_auth_security.py via monkeypatch.
 os.environ.setdefault("ALLOW_OPEN_REGISTRATION", "true")
 
+# Disable the login brute-force rate limiter in tests: all TestClient requests
+# share one client IP, so the suite's many logins would trip the per-IP limit.
+# The limiter itself is covered directly in test_rate_limiting.py.
+os.environ.setdefault("LOGIN_RATE_LIMIT", "0")
+
 # Ensure TEST_DATA_DIR is set for legacy parser tests using existing synthetic data.
 # The root conftest.py does this on host but isn't available inside the Docker image.
 _test_data_dir = os.path.abspath(
