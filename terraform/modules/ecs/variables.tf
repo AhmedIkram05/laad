@@ -133,3 +133,13 @@ variable "cors_origins" {
   type        = string
   default     = "http://localhost:5173,https://d123.cloudfront.net"
 }
+
+# Wildcards because the CloudFront distribution domain is created in the
+# frontend module, which already depends on this module's ALB; passing the
+# exact domain would create a Terraform dependency cycle. Starlette supports
+# the leading-* suffix wildcard.
+variable "allowed_hosts" {
+  description = "Comma-separated Host header allowlist for the API (Starlette wildcards)"
+  type        = string
+  default     = "*.cloudfront.net,*.elb.amazonaws.com,localhost,127.0.0.1"
+}
