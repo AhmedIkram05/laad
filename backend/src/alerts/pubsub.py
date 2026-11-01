@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 ANOMALY_CHANNEL = "anomaly:detected"
 ATM_RANK_KEY = "stats:atm:rank"
+ATM_RANK_TTL_SECONDS = 86400 * 7
 
 
 def publish_anomaly(anomaly_data: Dict[str, Any]) -> bool:
@@ -46,6 +47,9 @@ def publish_anomaly(anomaly_data: Dict[str, Any]) -> bool:
         atm_id = anomaly_data.get("atm_id")
         if atm_id:
             client.zincrby(ATM_RANK_KEY, 1, atm_id)
+            # Set the TTL only on first write so the leaderboard key cannot
+            # accumulate forever (and repeated hits don't extend it).
+            client.expire(ATM_RANK_KEY, ATM_RANK_TTL_SECONDS, nx=True)
 
         logger.debug(
             f"Published anomaly to Redis Pub/Sub: {anomaly_data.get('anomaly_type')}"

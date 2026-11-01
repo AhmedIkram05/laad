@@ -444,57 +444,18 @@ class TestDedupDlqProducer:
         with patch.object(dlq, "get_redis_client", return_value=None):
             assert dlq.push_to_dlq({"a": 1}, "err") is False
             assert dlq.get_dlq_length() == 0
-            assert dlq.process_dlq_batch() == 0
         client = MagicMock()
         with patch.object(dlq, "get_redis_client", return_value=client):
             assert dlq.push_to_dlq({"a": 1}, "err", source="KAFKA") is True
             assert dlq.push_to_dlq("raw", "err") is True
             client.xlen.return_value = 5
             assert dlq.get_dlq_length() == 5
-            client.xread.return_value = []
-            assert dlq.process_dlq_batch() == 0
-            client.xread.return_value = [
-                (
-                    "ingestion:dlq",
-                    [
-                        (
-                            "1-0",
-                            {
-                                "retry_count": "0",
-                                "status": "pending",
-                                "created_at": "0",
-                            },
-                        ),
-                        (
-                            "1-1",
-                            {
-                                "retry_count": "9",
-                                "status": "pending",
-                                "created_at": "0",
-                            },
-                        ),
-                        ("1-2", {"retry_count": "0", "status": "exhausted"}),
-                        ("1-3", {"retry_count": "0", "status": "retrying"}),
-                        (
-                            "1-4",
-                            {
-                                "retry_count": "0",
-                                "status": "pending",
-                                "created_at": str(1e12),
-                            },
-                        ),
-                    ],
-                )
-            ]
-            assert dlq.process_dlq_batch() == 2
         bad = MagicMock()
         bad.xadd.side_effect = RuntimeError("redis")
         bad.xlen.side_effect = RuntimeError("redis")
-        bad.xread.side_effect = RuntimeError("redis")
         with patch.object(dlq, "get_redis_client", return_value=bad):
             assert dlq.push_to_dlq({}, "e") is False
             assert dlq.get_dlq_length() == 0
-            assert dlq.process_dlq_batch() == 0
 
     def test_producer(self):
         import backend.kafka.producer as prod

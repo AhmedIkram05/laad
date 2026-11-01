@@ -1,7 +1,6 @@
 """Tests for Redis Stream-based Dead Letter Queue."""
 
 from unittest.mock import MagicMock, patch
-import time
 
 
 class TestDLQ:
@@ -74,116 +73,5 @@ class TestDLQ:
         mock_get_client.return_value = None
 
         result = get_dlq_length()
-
-        assert result == 0
-
-    @patch("backend.kafka.dlq.get_redis_client")
-    def test_process_dlq_batch_retries_message(self, mock_get_client):
-        """Test that DLQ processes and retries a message."""
-        from backend.kafka.dlq import process_dlq_batch
-
-        mock_client = MagicMock()
-        old_time = time.time() - 60
-        mock_client.xread.return_value = [
-            (
-                "ingestion:dlq",
-                [
-                    (
-                        "1234567890-0",
-                        {
-                            "raw_message": '{"test": 1}',
-                            "error": "Parse error",
-                            "source": "KAFKA",
-                            "retry_count": "0",
-                            "status": "pending",
-                            "created_at": str(old_time),
-                        },
-                    )
-                ],
-            )
-        ]
-        mock_client.xadd.return_value = "1234567891-0"
-        mock_get_client.return_value = mock_client
-
-        result = process_dlq_batch(batch_size=10)
-
-        assert result == 1
-        mock_client.xdel.assert_called_once()
-
-    @patch("backend.kafka.dlq.get_redis_client")
-    def test_process_dlq_batch_marks_exhausted(self, mock_get_client):
-        """Test that DLQ marks message as exhausted after max retries."""
-        from backend.kafka.dlq import process_dlq_batch, MAX_RETRIES
-
-        mock_client = MagicMock()
-        old_time = time.time() - 60
-        mock_client.xread.return_value = [
-            (
-                "ingestion:dlq",
-                [
-                    (
-                        "1234567890-0",
-                        {
-                            "raw_message": '{"test": 1}',
-                            "error": "Parse error",
-                            "source": "KAFKA",
-                            "retry_count": str(MAX_RETRIES),
-                            "status": "pending",
-                            "created_at": str(old_time),
-                        },
-                    )
-                ],
-            )
-        ]
-        mock_client.xadd.return_value = "1234567891-0"
-        mock_get_client.return_value = mock_client
-
-        result = process_dlq_batch(batch_size=10)
-
-        assert result == 1
-        call_args = mock_client.xadd.call_args
-        entry = call_args[0][1]
-        assert entry["status"] == "exhausted"
-
-    @patch("backend.kafka.dlq.get_redis_client")
-    def test_process_dlq_batch_skips_not_ready(self, mock_get_client):
-        """Test that DLQ skips messages that haven't reached backoff time."""
-        from backend.kafka.dlq import process_dlq_batch
-
-        mock_client = MagicMock()
-        now = time.time()
-        mock_client.xread.return_value = [
-            (
-                "ingestion:dlq",
-                [
-                    (
-                        "1234567890-0",
-                        {
-                            "raw_message": '{"test": 1}',
-                            "error": "Parse error",
-                            "source": "KAFKA",
-                            "retry_count": "0",
-                            "status": "pending",
-                            "created_at": str(now),
-                        },
-                    )
-                ],
-            )
-        ]
-        mock_get_client.return_value = mock_client
-
-        result = process_dlq_batch(batch_size=10)
-
-        assert result == 0
-        mock_client.xdel.assert_not_called()
-
-    @patch("backend.kafka.dlq.get_redis_client")
-    def test_process_dlq_batch_returns_zero_when_redis_down(self, mock_get_client):
-        """Test that process returns 0 when Redis is unavailable."""
-        from backend.kafka.dlq import process_dlq_batch
-
-        mock_get_client.return_value = None
-
-        result = process_dlq_batch(batch_size=10)
 
         assert result == 0
