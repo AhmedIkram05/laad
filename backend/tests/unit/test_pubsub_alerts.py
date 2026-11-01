@@ -27,6 +27,8 @@ class TestPubSubAlerts:
         assert result is True
         mock_client.publish.assert_called_once()
         mock_client.zincrby.assert_called_once_with("stats:atm:rank", 1, "ATM-GB-0001")
+        # TTL set only on first write so the rank key cannot grow unbounded.
+        mock_client.expire.assert_called_once_with("stats:atm:rank", 86400 * 7, nx=True)
 
     @patch("backend.src.alerts.pubsub.get_redis_client")
     def test_publish_anomaly_returns_false_when_redis_down(self, mock_get_client):
