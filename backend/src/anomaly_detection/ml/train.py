@@ -300,11 +300,9 @@ def _atomic_write_json(path: Path, data) -> None:
         tmp_path.unlink(missing_ok=True)
 
 
-def train() -> None:
-    """Run the full training pipeline."""
+def _resolve_git_sha() -> str:
+    """Resolve the commit SHA for MLflow tagging, or 'unknown'."""
     import subprocess
-
-    ARTIFACT_DIR.mkdir(exist_ok=True)
 
     git_sha = os.getenv("GIT_COMMIT_SHA", "").strip()[:8]
     if not git_sha:
@@ -318,6 +316,484 @@ def train() -> None:
             )
         except Exception:
             git_sha = "unknown"
+    return git_sha
+
+
+def _load_training_rows() -> list[dict]:
+    """Load training rows from the offline dataset or the live DB view."""
+
+    def _query_live() -> list[dict]:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=360)
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                SELECT timestamp, source, atm_id, metric_name, metric_value,
+                       event_type, severity, raw_payload
+                FROM v_unified_analysis
+                WHERE timestamp >= %s
+                ORDER BY timestamp ASC
+                """,
+                (cutoff,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    if USE_OFFLINE_DATA:
+        all_rows = load_offline_dataset()
+        if all_rows:
+            log.info("Using %d offline rows for training", len(all_rows))
+            return all_rows
+        all_rows = _query_live()
+        log.info("Fell back to %d live rows from DB", len(all_rows))
+        return all_rows
+
+    all_rows = _query_live()
+    log.info("Loaded %d live rows from DB", len(all_rows))
+    return all_rows
+
+
+def _log_label_distribution(X_all: np.ndarray, labels: list[str | None]) -> None:
+    """Print the window count and per-label distribution."""
+    label_counts = {str(lb): labels.count(lb) for lb in set(labels) if lb is not None}
+    label_counts["NORMAL"] = labels.count(None)
+    print(
+        f"Loaded {len(X_all)} windows (60s @ 30s step, 50% overlap). "
+        f"Label distribution: {label_counts}"
+    )
+
+
+def _split_normal_anomaly(
+    X_all: np.ndarray, labels: list[str | None]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Split windows into normal (label None) and labelled anomaly subsets."""
+    normal_mask = np.array([lb is None for lb in labels])
+    return X_all[normal_mask], X_all[~normal_mask]
+
+
+def _has_enough_normal_windows(n_normal: int) -> bool:
+    """Warn on a thin normal-window set; return False when there are none."""
+    if n_normal < 10:
+        log.warning(
+            "Very few normal windows (%d) — training may be unreliable. "
+            "Normal windows should accumulate after ~15 min of generator running. "
+            "Consider re-running training after more normal data is generated.",
+            n_normal,
+        )
+        if n_normal == 0:
+            log.error(
+                "No normal windows available. Isolation Forest requires at least some normal samples."
+            )
+            return False
+    return True
+
+
+def _encode_labels(
+    labels: list[str | None],
+) -> tuple[LabelEncoder, np.ndarray, np.ndarray, list[str]]:
+    """Encode string labels and build class-balanced sample weights."""
+    label_strings = [lb if lb is not None else "NORMAL" for lb in labels]
+    le = LabelEncoder()
+    y = le.fit_transform(label_strings)
+
+    class_counts = Counter(label_strings)
+    normal_count = class_counts.get("NORMAL", 1)
+    sample_weights = np.array(
+        [normal_count / max(class_counts.get(lb, 1), 1) for lb in label_strings]
+    )
+    return le, y, sample_weights, label_strings
+
+
+def _train_and_evaluate_xgb(
+    X_all: np.ndarray,
+    y: np.ndarray,
+    sample_weights: np.ndarray,
+    times: list[datetime],
+    label_strings: list[str],
+    le: LabelEncoder,
+) -> tuple[xgb.XGBClassifier, float, float, float | None, float | None]:
+    """Fit XGBoost on the train split, evaluate, then refit on all windows.
+
+    Returns (clf, cv_mean, cv_std, macro_f1, temporal_f1). The returned clf is
+    the champion refit on all windows.
+    """
+    print(f"Training XGBoost classifier on {len(X_all)} windows (class-balanced)...")
+    clf = xgb.XGBClassifier(
+        n_estimators=XGB_N_ESTIMATORS,
+        max_depth=6,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        eval_metric="mlogloss",
+        random_state=42,
+        n_jobs=-1,
+    )
+    # Fit on the train portion first so CV and the temporal holdout are
+    # both honest; the shipped champion is refit on all data below.
+    train_mask, test_mask = _temporal_split(times)
+    n_straddling = int(np.sum(~(train_mask | test_mask)))
+    if n_straddling:
+        log.info(
+            "Temporal split: %d windows straddle the train/holdout cutoff "
+            "and are excluded from both splits",
+            n_straddling,
+        )
+    X_tr, y_tr = X_all[train_mask], y[train_mask]
+    w_tr = sample_weights[train_mask]
+    clf.fit(X_tr, y_tr, sample_weight=w_tr)
+
+    macro_f1 = None
+    train_class_counts = Counter(
+        lb for lb, keep in zip(label_strings, train_mask) if keep
+    )
+    cv_n_splits = min(5, min(train_class_counts.values()))
+    if cv_n_splits < 2:
+        log.warning("Not enough samples per class for CV. Skipping cross-validation.")
+        cv_scores = np.array([np.nan])
+    else:
+        cv = StratifiedKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
+        cv_scores = cross_val_score(
+            clf, X_tr, y_tr, cv=cv, scoring="accuracy", n_jobs=-1
+        )
+        # Held-out predictions across the train portion — per-class metrics
+        # must never be computed from predictions on the training set.
+        y_pred_cv = cross_val_predict(
+            clf, X_tr, y_tr, cv=cv, n_jobs=-1, params={"sample_weight": w_tr}
+        )
+        macro_f1 = float(f1_score(y_tr, y_pred_cv, average="macro"))
+        balanced_acc = float(balanced_accuracy_score(y_tr, y_pred_cv))
+
+    cv_mean = float(cv_scores.mean()) if not np.isnan(cv_scores.mean()) else 0.0
+    cv_std = float(cv_scores.std()) if not np.isnan(cv_scores.std()) else 0.0
+    mlflow.log_metric("xgb_cv_accuracy_mean", cv_mean)
+    mlflow.log_metric("xgb_cv_accuracy_std", cv_std)
+    print(f"XGBoost CV accuracy: {cv_mean:.3f} ± {cv_std:.3f}")
+
+    if macro_f1 is not None:
+        mlflow.log_metric("xgb_cv_macro_f1", macro_f1)
+        mlflow.log_metric("xgb_cv_balanced_accuracy", balanced_acc)
+        print(
+            f"XGBoost held-out macro-F1: {macro_f1:.3f} "
+            f"· balanced accuracy: {balanced_acc:.3f}"
+        )
+        report = classification_report(
+            y_tr,
+            y_pred_cv,
+            target_names=le.classes_,
+            output_dict=True,
+            zero_division=0,
+        )
+        for cls, metrics in report.items():
+            if isinstance(metrics, dict):
+                for metric, val in metrics.items():
+                    if not np.isnan(float(val)):
+                        mlflow.log_metric(
+                            f"xgb_{cls}_{metric}".replace(" ", "_"), float(val)
+                        )
+        cm = confusion_matrix(y_tr, y_pred_cv).tolist()
+        with open(ARTIFACT_DIR / "xgb_confusion_matrix.json", "w") as f:
+            json.dump({"classes": le.classes_.tolist(), "matrix": cm}, f)
+        mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_confusion_matrix.json"))
+
+    # Temporal holdout: evaluate on the last 20% of wall-clock windows the
+    # model never saw, then refit the champion on all data.
+    temporal_f1 = None
+    if len(np.unique(y[test_mask])) > 0 and len(test_mask) > 0:
+        y_pred_t = clf.predict(X_all[test_mask])
+        temporal_f1 = float(f1_score(y[test_mask], y_pred_t, average="macro"))
+        temporal_bacc = float(balanced_accuracy_score(y[test_mask], y_pred_t))
+        mlflow.log_metric("xgb_temporal_macro_f1", temporal_f1)
+        mlflow.log_metric("xgb_temporal_balanced_accuracy", temporal_bacc)
+        print(
+            f"XGBoost temporal holdout macro-F1: {temporal_f1:.3f} "
+            f"· balanced accuracy: {temporal_bacc:.3f}"
+        )
+        report_t = classification_report(
+            y[test_mask],
+            y_pred_t,
+            target_names=le.classes_,
+            output_dict=True,
+            zero_division=0,
+        )
+        for cls, metrics in report_t.items():
+            if isinstance(metrics, dict):
+                for metric, val in metrics.items():
+                    if not np.isnan(float(val)):
+                        mlflow.log_metric(
+                            f"xgb_temporal_{cls}_{metric}".replace(" ", "_"),
+                            float(val),
+                        )
+        cm_t = confusion_matrix(
+            y[test_mask], y_pred_t, labels=range(len(le.classes_))
+        ).tolist()
+        with open(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json", "w") as f:
+            json.dump({"classes": le.classes_.tolist(), "matrix": cm_t}, f)
+        mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json"))
+
+    # Refit champion on ALL windows — shipped model behavior unchanged.
+    clf.fit(X_all, y, sample_weight=sample_weights)
+    print("Refit XGBoost on all windows for the shipped champion model.")
+
+    return clf, cv_mean, cv_std, macro_f1, temporal_f1
+
+
+def _select_if_features(clf: xgb.XGBClassifier) -> tuple[list[int], list[str]]:
+    """Select top-K IF features from XGBoost importance and persist the indices.
+
+    Returns (if_feature_indices, if_feature_names).
+    """
+    importance = clf.feature_importances_
+    sorted_idx = np.argsort(importance)[::-1]
+    nonzero = int(np.sum(importance > 0))
+    k = min(max(IF_FEATURE_SELECTION_K, nonzero), FEATURE_COUNT)
+    if_feature_indices = sorted(sorted_idx[:k].tolist())
+    if_feature_names = [FEATURE_NAMES[i] for i in if_feature_indices]
+
+    _atomic_write_json(ARTIFACT_DIR / "if_feature_indices.json", if_feature_indices)
+    mlflow.log_artifact(str(ARTIFACT_DIR / "if_feature_indices.json"))
+
+    print(f"Selected {len(if_feature_indices)} features for IF:")
+    for name, idx in zip(if_feature_names, if_feature_indices):
+        imp = float(importance[idx])
+        print(f"  [{idx}] {name}: {imp:.4f}")
+        mlflow.log_metric(f"if_selected_feature_{name}", imp)
+
+    return if_feature_indices, if_feature_names
+
+
+def _fit_and_calibrate_if(
+    X_all: np.ndarray,
+    labels: list[str | None],
+    times: list[datetime],
+    X_normal: np.ndarray,
+    X_anomaly: np.ndarray,
+    if_feature_indices: list[int],
+) -> tuple[StandardScaler, IsolationForest, int, float, float]:
+    """Scale features, fit the Isolation Forest, and calibrate the threshold.
+
+    Returns (scaler, iso_forest, n_normal_fit, if_precision, unknown_threshold).
+    The IF is fit on the earlier ~80% of normal windows only; the UNKNOWN
+    threshold is calibrated on the held-out later ~20% plus all anomaly windows.
+    """
+    # Fit scaler on all features (inference pipeline scales before subsetting)
+    scaler = StandardScaler()
+    scaler.fit(X_normal)
+
+    X_normal_scaled = scaler.transform(X_normal)
+    X_normal_scaled_if = X_normal_scaled[:, if_feature_indices]
+    X_anomaly_scaled = (
+        scaler.transform(X_anomaly)
+        if len(X_anomaly) > 0
+        else np.array([]).reshape(0, FEATURE_COUNT)
+    )
+    X_anomaly_scaled_if = (
+        X_anomaly_scaled[:, if_feature_indices]
+        if len(X_anomaly_scaled) > 0
+        else np.array([]).reshape(0, len(if_feature_indices))
+    )
+
+    # Grid search: split normal windows into train/val, evaluate on val+anomaly
+    X_normal_tr, X_normal_val = train_test_split(
+        X_normal_scaled_if, test_size=0.2, random_state=42
+    )
+    log.info(
+        "IF grid search: %d train / %d val normal + %d anomaly windows",
+        len(X_normal_tr),
+        len(X_normal_val),
+        len(X_anomaly_scaled_if),
+    )
+
+    best_if_params = _grid_search_if(X_normal_tr, X_normal_val, X_anomaly_scaled_if)
+
+    # Chronological fit/calibration split for honest threshold
+    # calibration: IF is fit on the earlier ~80% of normal windows only;
+    # the UNKNOWN threshold is calibrated on the held-out later ~20%
+    # (plus all anomaly windows). Calibrating on windows the forest was
+    # fit on produces an optimistically low threshold.
+    normal_times = [t for t, lb in zip(times, labels) if lb is None]
+    if_fit_mask, if_calib_mask = _temporal_split(normal_times)
+    X_normal_fit_if = X_normal_scaled_if[if_fit_mask]
+    X_normal_calib_if = X_normal_scaled_if[if_calib_mask]
+    if len(X_normal_fit_if) == 0 or len(X_normal_calib_if) == 0:
+        log.warning(
+            "Degenerate IF fit/calibration split (%d fit / %d calibration) "
+            "— fitting and calibrating on all normal windows instead",
+            len(X_normal_fit_if),
+            len(X_normal_calib_if),
+        )
+        X_normal_fit_if = X_normal_scaled_if
+        X_normal_calib_if = X_normal_scaled_if
+    log.info(
+        "IF chronological split: %d fit / %d calibration normal windows",
+        len(X_normal_fit_if),
+        len(X_normal_calib_if),
+    )
+
+    # Train final IF on the fit subset with best params
+    final_params = {
+        "n_estimators": 200,
+        "random_state": 42,
+        "n_jobs": -1,
+        "bootstrap": True,
+        **best_if_params,
+    }
+    print(
+        f"Training final Isolation Forest on {len(X_normal_fit_if)} normal windows..."
+    )
+    log.info("Final IF params: %s", final_params)
+    iso_forest = IsolationForest(**final_params)
+    iso_forest.fit(X_normal_fit_if)
+
+    # Evaluate IF anomaly detection accuracy on all windows
+    X_all_scaled = scaler.transform(X_all)
+    X_all_scaled_if = X_all_scaled[:, if_feature_indices]
+    if_scores = iso_forest.predict(X_all_scaled_if)
+    if_precision = float(
+        np.mean(
+            [
+                (if_scores[i] == -1) == (labels[i] is not None)
+                for i in range(len(labels))
+            ]
+        )
+    )
+    mlflow.log_metric("if_anomaly_precision", if_precision)
+    print(f"Isolation Forest anomaly detection precision: {if_precision:.3f}")
+
+    # Calibrate UNKNOWN anomaly threshold via F1 score maximization —
+    # scored on held-out normal windows plus all anomaly windows, so
+    # the threshold reflects out-of-sample IF scores.
+    calib_X = (
+        np.vstack([X_normal_calib_if, X_anomaly_scaled_if])
+        if len(X_anomaly_scaled_if) > 0
+        else X_normal_calib_if
+    )
+    y_calib = np.array([0] * len(X_normal_calib_if) + [1] * len(X_anomaly_scaled_if))
+    calib_scores = iso_forest.score_samples(calib_X)
+    unknown_threshold = _calibrate_unknown_threshold(calib_scores, y_calib)
+    if len(np.unique(y_calib)) > 1:
+        pr_auc = float(average_precision_score(y_calib, -calib_scores))
+        mlflow.log_metric("if_pr_auc", pr_auc)
+        print(f"Isolation Forest PR-AUC: {pr_auc:.4f}")
+
+    _atomic_write_json(
+        ARTIFACT_DIR / "if_unknown_threshold.json", {"threshold": unknown_threshold}
+    )
+    mlflow.log_artifact(str(ARTIFACT_DIR / "if_unknown_threshold.json"))
+
+    return scaler, iso_forest, len(X_normal_fit_if), if_precision, unknown_threshold
+
+
+def _log_and_persist_models(
+    clf: xgb.XGBClassifier,
+    iso_forest: IsolationForest,
+    le: LabelEncoder,
+    scaler: StandardScaler,
+) -> tuple[object, object]:
+    """Log models to MLflow and atomically write all artifacts to disk.
+
+    Returns (xgb_uri, if_uri) for model registration.
+
+    log_model runs BEFORE additional metric logging to avoid UNIQUE
+    constraint conflicts (MLflow v3.1.1 re-logs existing run metrics
+    internally).
+    """
+    xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier")
+    if_uri = mlflow.sklearn.log_model(iso_forest, "isolation_forest")
+
+    # Atomic artifact write: dump all four models to temp files first,
+    # then replace them back-to-back so a consumer loading artifacts on
+    # its own schedule never sees a torn mix of old and new models.
+    # os.replace is the cross-process guarantee; the admin training lock
+    # only serialises concurrent runs within the API process.
+    _atomic_dump_models(
+        [
+            (clf, ARTIFACT_DIR / "xgb_classifier.joblib"),
+            (le, ARTIFACT_DIR / "label_encoder.joblib"),
+            (iso_forest, ARTIFACT_DIR / "isolation_forest.joblib"),
+            (scaler, ARTIFACT_DIR / "scaler.joblib"),
+        ]
+    )
+    mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_classifier.joblib"))
+    mlflow.log_artifact(str(ARTIFACT_DIR / "label_encoder.joblib"))
+    mlflow.log_artifact(str(ARTIFACT_DIR / "isolation_forest.joblib"))
+    mlflow.log_artifact(str(ARTIFACT_DIR / "scaler.joblib"))
+
+    with open(ARTIFACT_DIR / "feature_names.json", "w") as f:
+        json.dump(FEATURE_NAMES, f)
+    mlflow.log_artifact(str(ARTIFACT_DIR / "feature_names.json"))
+
+    feat_imp = pd.Series(clf.feature_importances_, index=FEATURE_NAMES).sort_values(
+        ascending=False
+    )
+    print("Top 10 features by importance:")
+    for feat, imp in feat_imp.head(10).items():
+        print(f"  {feat}: {imp:.4f}")
+        mlflow.log_metric(f"feat_importance_{feat}", float(imp))
+
+    return xgb_uri, if_uri
+
+
+def _register_champion_models(
+    *,
+    xgb_uri,
+    if_uri,
+    n_windows: int,
+    n_normal_fit: int,
+    if_precision: float,
+    git_sha: str,
+    cv_mean: float,
+    cv_std: float,
+    macro_f1: float | None,
+    temporal_f1: float | None,
+) -> None:
+    """Register both models, tag the champion alias, and set descriptions."""
+    xgb_reg = mlflow.register_model(
+        xgb_uri.model_uri, XGB_MODEL_NAME, await_registration_for=30
+    )
+    if_reg = mlflow.register_model(
+        if_uri.model_uri, IF_MODEL_NAME, await_registration_for=30
+    )
+
+    from mlflow.tracking import MlflowClient
+
+    client = MlflowClient()
+    client.set_registered_model_alias(
+        XGB_MODEL_NAME, "champion", version=str(xgb_reg.version)
+    )
+    client.set_registered_model_alias(
+        IF_MODEL_NAME, "champion", version=str(if_reg.version)
+    )
+
+    macro_txt = f", held-out macro-F1={macro_f1:.3f}" if macro_f1 is not None else ""
+    temporal_txt = (
+        f", temporal macro-F1={temporal_f1:.3f}" if temporal_f1 is not None else ""
+    )
+    description = (
+        f"XGBoost classifier trained on {n_windows} samples, "
+        f"{FEATURE_COUNT} features, "
+        f"CV accuracy={cv_mean:.3f} +/- {cv_std:.3f}{macro_txt}{temporal_txt}, git_sha={git_sha}"
+    )
+    client.update_model_version(
+        XGB_MODEL_NAME, version=str(xgb_reg.version), description=description
+    )
+
+    if_description = (
+        f"Isolation Forest trained on {n_normal_fit} normal windows, "
+        f"precision={if_precision:.3f}, {FEATURE_COUNT} features, "
+        f"contamination={IF_CONTAMINATION}, git_sha={git_sha}"
+    )
+    client.update_model_version(
+        IF_MODEL_NAME, version=str(if_reg.version), description=if_description
+    )
+
+    print(f"Registered XGBoost model: {XGB_MODEL_NAME} v{xgb_reg.version} (champion)")
+    print(f"Registered Isolation Forest: {IF_MODEL_NAME} v{if_reg.version} (champion)")
+    print(f"Training complete. Artifacts saved to {ARTIFACT_DIR}")
+
+
+def train() -> None:
+    """Run the full training pipeline."""
+    ARTIFACT_DIR.mkdir(exist_ok=True)
+
+    git_sha = _resolve_git_sha()
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
@@ -339,41 +815,7 @@ def train() -> None:
             }
         )
 
-        if USE_OFFLINE_DATA:
-            all_rows = load_offline_dataset()
-            if all_rows:
-                log.info("Using %d offline rows for training", len(all_rows))
-            else:
-                cutoff = datetime.now(timezone.utc) - timedelta(minutes=360)
-                with get_cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT timestamp, source, atm_id, metric_name, metric_value,
-                               event_type, severity, raw_payload
-                        FROM v_unified_analysis
-                        WHERE timestamp >= %s
-                        ORDER BY timestamp ASC
-                        """,
-                        (cutoff,),
-                    )
-                    all_rows = [dict(r) for r in cur.fetchall()]
-                log.info("Fell back to %d live rows from DB", len(all_rows))
-        else:
-            cutoff = datetime.now(timezone.utc) - timedelta(minutes=360)
-            with get_cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT timestamp, source, atm_id, metric_name, metric_value,
-                           event_type, severity, raw_payload
-                    FROM v_unified_analysis
-                    WHERE timestamp >= %s
-                    ORDER BY timestamp ASC
-                    """,
-                    (cutoff,),
-                )
-                all_rows = [dict(r) for r in cur.fetchall()]
-            log.info("Loaded %d live rows from DB", len(all_rows))
-
+        all_rows = _load_training_rows()
         if not all_rows:
             log.error("No training data found. Ensure the generator has been running.")
             return
@@ -385,388 +827,46 @@ def train() -> None:
             )
             return
 
-        label_counts = {
-            str(lb): labels.count(lb) for lb in set(labels) if lb is not None
-        }
-        label_counts["NORMAL"] = labels.count(None)
-        print(
-            f"Loaded {len(X_all)} windows (60s @ 30s step, 50% overlap). "
-            f"Label distribution: {label_counts}"
+        _log_label_distribution(X_all, labels)
+
+        X_normal, X_anomaly = _split_normal_anomaly(X_all, labels)
+        if not _has_enough_normal_windows(len(X_normal)):
+            return
+
+        # XGBoost training and evaluation — runs first so we can use its
+        # feature importance for IF feature selection.
+        le, y, sample_weights, label_strings = _encode_labels(labels)
+        clf, cv_mean, cv_std, macro_f1, temporal_f1 = _train_and_evaluate_xgb(
+            X_all, y, sample_weights, times, label_strings, le
         )
 
-        normal_mask = np.array([lb is None for lb in labels])
-        X_normal = X_all[normal_mask]
-        X_anomaly = X_all[~normal_mask]
+        if_feature_indices, _if_feature_names = _select_if_features(clf)
 
-        if len(X_normal) < 10:
-            log.warning(
-                "Very few normal windows (%d) — training may be unreliable. "
-                "Normal windows should accumulate after ~15 min of generator running. "
-                "Consider re-running training after more normal data is generated.",
-                len(X_normal),
-            )
-            if len(X_normal) == 0:
-                log.error(
-                    "No normal windows available. Isolation Forest requires at least some normal samples."
-                )
-                return
-
-        # ─────────────────────────────────────────────────────────────────────
-        # XGBoost training — runs first so we can use its feature importance
-        # for IF feature selection.
-        # ─────────────────────────────────────────────────────────────────────
-        label_strings = [lb if lb is not None else "NORMAL" for lb in labels]
-        le = LabelEncoder()
-        y = le.fit_transform(label_strings)
-
-        class_counts = Counter(label_strings)
-        normal_count = class_counts.get("NORMAL", 1)
-        sample_weights = np.array(
-            [normal_count / max(class_counts.get(lb, 1), 1) for lb in label_strings]
+        # Isolation Forest training with grid search and threshold calibration.
+        (
+            scaler,
+            iso_forest,
+            n_normal_fit,
+            if_precision,
+            _unknown_threshold,
+        ) = _fit_and_calibrate_if(
+            X_all, labels, times, X_normal, X_anomaly, if_feature_indices
         )
 
-        print(
-            f"Training XGBoost classifier on {len(X_all)} windows (class-balanced)..."
+        xgb_uri, if_uri = _log_and_persist_models(clf, iso_forest, le, scaler)
+
+        _register_champion_models(
+            xgb_uri=xgb_uri,
+            if_uri=if_uri,
+            n_windows=len(X_all),
+            n_normal_fit=n_normal_fit,
+            if_precision=if_precision,
+            git_sha=git_sha,
+            cv_mean=cv_mean,
+            cv_std=cv_std,
+            macro_f1=macro_f1,
+            temporal_f1=temporal_f1,
         )
-        clf = xgb.XGBClassifier(
-            n_estimators=XGB_N_ESTIMATORS,
-            max_depth=6,
-            learning_rate=0.1,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            eval_metric="mlogloss",
-            random_state=42,
-            n_jobs=-1,
-        )
-        # Fit on the train portion first so CV and the temporal holdout are
-        # both honest; the shipped champion is refit on all data below.
-        train_mask, test_mask = _temporal_split(times)
-        n_straddling = int(np.sum(~(train_mask | test_mask)))
-        if n_straddling:
-            log.info(
-                "Temporal split: %d windows straddle the train/holdout cutoff "
-                "and are excluded from both splits",
-                n_straddling,
-            )
-        X_tr, y_tr = X_all[train_mask], y[train_mask]
-        w_tr = sample_weights[train_mask]
-        clf.fit(X_tr, y_tr, sample_weight=w_tr)
-
-        macro_f1 = None
-        train_class_counts = Counter(
-            lb for lb, keep in zip(label_strings, train_mask) if keep
-        )
-        cv_n_splits = min(5, min(train_class_counts.values()))
-        if cv_n_splits < 2:
-            log.warning(
-                "Not enough samples per class for CV. Skipping cross-validation."
-            )
-            cv_scores = np.array([np.nan])
-        else:
-            cv = StratifiedKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
-            cv_scores = cross_val_score(
-                clf, X_tr, y_tr, cv=cv, scoring="accuracy", n_jobs=-1
-            )
-            # Held-out predictions across the train portion — per-class metrics
-            # must never be computed from predictions on the training set.
-            y_pred_cv = cross_val_predict(
-                clf, X_tr, y_tr, cv=cv, n_jobs=-1, params={"sample_weight": w_tr}
-            )
-            macro_f1 = float(f1_score(y_tr, y_pred_cv, average="macro"))
-            balanced_acc = float(balanced_accuracy_score(y_tr, y_pred_cv))
-
-        cv_mean = float(cv_scores.mean()) if not np.isnan(cv_scores.mean()) else 0.0
-        cv_std = float(cv_scores.std()) if not np.isnan(cv_scores.std()) else 0.0
-        mlflow.log_metric("xgb_cv_accuracy_mean", cv_mean)
-        mlflow.log_metric("xgb_cv_accuracy_std", cv_std)
-        print(f"XGBoost CV accuracy: {cv_mean:.3f} ± {cv_std:.3f}")
-
-        if macro_f1 is not None:
-            mlflow.log_metric("xgb_cv_macro_f1", macro_f1)
-            mlflow.log_metric("xgb_cv_balanced_accuracy", balanced_acc)
-            print(
-                f"XGBoost held-out macro-F1: {macro_f1:.3f} "
-                f"· balanced accuracy: {balanced_acc:.3f}"
-            )
-            report = classification_report(
-                y_tr,
-                y_pred_cv,
-                target_names=le.classes_,
-                output_dict=True,
-                zero_division=0,
-            )
-            for cls, metrics in report.items():
-                if isinstance(metrics, dict):
-                    for metric, val in metrics.items():
-                        if not np.isnan(float(val)):
-                            mlflow.log_metric(
-                                f"xgb_{cls}_{metric}".replace(" ", "_"), float(val)
-                            )
-            cm = confusion_matrix(y_tr, y_pred_cv).tolist()
-            with open(ARTIFACT_DIR / "xgb_confusion_matrix.json", "w") as f:
-                json.dump({"classes": le.classes_.tolist(), "matrix": cm}, f)
-            mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_confusion_matrix.json"))
-
-        # Temporal holdout: evaluate on the last 20% of wall-clock windows the
-        # model never saw, then refit the champion on all data.
-        temporal_f1 = None
-        if len(np.unique(y[test_mask])) > 0 and len(test_mask) > 0:
-            y_pred_t = clf.predict(X_all[test_mask])
-            temporal_f1 = float(f1_score(y[test_mask], y_pred_t, average="macro"))
-            temporal_bacc = float(balanced_accuracy_score(y[test_mask], y_pred_t))
-            mlflow.log_metric("xgb_temporal_macro_f1", temporal_f1)
-            mlflow.log_metric("xgb_temporal_balanced_accuracy", temporal_bacc)
-            print(
-                f"XGBoost temporal holdout macro-F1: {temporal_f1:.3f} "
-                f"· balanced accuracy: {temporal_bacc:.3f}"
-            )
-            report_t = classification_report(
-                y[test_mask],
-                y_pred_t,
-                target_names=le.classes_,
-                output_dict=True,
-                zero_division=0,
-            )
-            for cls, metrics in report_t.items():
-                if isinstance(metrics, dict):
-                    for metric, val in metrics.items():
-                        if not np.isnan(float(val)):
-                            mlflow.log_metric(
-                                f"xgb_temporal_{cls}_{metric}".replace(" ", "_"),
-                                float(val),
-                            )
-            cm_t = confusion_matrix(
-                y[test_mask], y_pred_t, labels=range(len(le.classes_))
-            ).tolist()
-            with open(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json", "w") as f:
-                json.dump({"classes": le.classes_.tolist(), "matrix": cm_t}, f)
-            mlflow.log_artifact(
-                str(ARTIFACT_DIR / "xgb_temporal_confusion_matrix.json")
-            )
-
-        # Refit champion on ALL windows — shipped model behavior unchanged.
-        clf.fit(X_all, y, sample_weight=sample_weights)
-        print("Refit XGBoost on all windows for the shipped champion model.")
-
-        # ─────────────────────────────────────────────────────────────────────
-        # Feature selection for IF — use top-K features from XGBoost importance
-        # ─────────────────────────────────────────────────────────────────────
-        importance = clf.feature_importances_
-        sorted_idx = np.argsort(importance)[::-1]
-        nonzero = int(np.sum(importance > 0))
-        k = min(max(IF_FEATURE_SELECTION_K, nonzero), FEATURE_COUNT)
-        if_feature_indices = sorted(sorted_idx[:k].tolist())
-        if_feature_names = [FEATURE_NAMES[i] for i in if_feature_indices]
-
-        _atomic_write_json(ARTIFACT_DIR / "if_feature_indices.json", if_feature_indices)
-        mlflow.log_artifact(str(ARTIFACT_DIR / "if_feature_indices.json"))
-
-        print(f"Selected {len(if_feature_indices)} features for IF:")
-        for name, idx in zip(if_feature_names, if_feature_indices):
-            imp = float(importance[idx])
-            print(f"  [{idx}] {name}: {imp:.4f}")
-            mlflow.log_metric(f"if_selected_feature_{name}", imp)
-
-        # ─────────────────────────────────────────────────────────────────────
-        # Isolation Forest training with grid search and threshold calibration
-        # ─────────────────────────────────────────────────────────────────────
-        # Fit scaler on all features (inference pipeline scales before subsetting)
-        scaler = StandardScaler()
-        scaler.fit(X_normal)
-
-        X_normal_scaled = scaler.transform(X_normal)
-        X_normal_scaled_if = X_normal_scaled[:, if_feature_indices]
-        X_anomaly_scaled = (
-            scaler.transform(X_anomaly)
-            if len(X_anomaly) > 0
-            else np.array([]).reshape(0, FEATURE_COUNT)
-        )
-        X_anomaly_scaled_if = (
-            X_anomaly_scaled[:, if_feature_indices]
-            if len(X_anomaly_scaled) > 0
-            else np.array([]).reshape(0, len(if_feature_indices))
-        )
-
-        # Grid search: split normal windows into train/val, evaluate on val+anomaly
-        X_normal_tr, X_normal_val = train_test_split(
-            X_normal_scaled_if, test_size=0.2, random_state=42
-        )
-        log.info(
-            "IF grid search: %d train / %d val normal + %d anomaly windows",
-            len(X_normal_tr),
-            len(X_normal_val),
-            len(X_anomaly_scaled_if),
-        )
-
-        best_if_params = _grid_search_if(X_normal_tr, X_normal_val, X_anomaly_scaled_if)
-
-        # Chronological fit/calibration split for honest threshold
-        # calibration: IF is fit on the earlier ~80% of normal windows only;
-        # the UNKNOWN threshold is calibrated on the held-out later ~20%
-        # (plus all anomaly windows). Calibrating on windows the forest was
-        # fit on produces an optimistically low threshold.
-        normal_times = [t for t, lb in zip(times, labels) if lb is None]
-        if_fit_mask, if_calib_mask = _temporal_split(normal_times)
-        X_normal_fit_if = X_normal_scaled_if[if_fit_mask]
-        X_normal_calib_if = X_normal_scaled_if[if_calib_mask]
-        if len(X_normal_fit_if) == 0 or len(X_normal_calib_if) == 0:
-            log.warning(
-                "Degenerate IF fit/calibration split (%d fit / %d calibration) "
-                "— fitting and calibrating on all normal windows instead",
-                len(X_normal_fit_if),
-                len(X_normal_calib_if),
-            )
-            X_normal_fit_if = X_normal_scaled_if
-            X_normal_calib_if = X_normal_scaled_if
-        log.info(
-            "IF chronological split: %d fit / %d calibration normal windows",
-            len(X_normal_fit_if),
-            len(X_normal_calib_if),
-        )
-
-        # Train final IF on the fit subset with best params
-        final_params = {
-            "n_estimators": 200,
-            "random_state": 42,
-            "n_jobs": -1,
-            "bootstrap": True,
-            **best_if_params,
-        }
-        print(
-            f"Training final Isolation Forest on {len(X_normal_fit_if)} normal windows..."
-        )
-        log.info("Final IF params: %s", final_params)
-        iso_forest = IsolationForest(**final_params)
-        iso_forest.fit(X_normal_fit_if)
-
-        # Evaluate IF anomaly detection accuracy on all windows
-        X_all_scaled = scaler.transform(X_all)
-        X_all_scaled_if = X_all_scaled[:, if_feature_indices]
-        if_scores = iso_forest.predict(X_all_scaled_if)
-        if_precision = float(
-            np.mean(
-                [
-                    (if_scores[i] == -1) == (labels[i] is not None)
-                    for i in range(len(labels))
-                ]
-            )
-        )
-        mlflow.log_metric("if_anomaly_precision", if_precision)
-        print(f"Isolation Forest anomaly detection precision: {if_precision:.3f}")
-
-        # Calibrate UNKNOWN anomaly threshold via F1 score maximization —
-        # scored on held-out normal windows plus all anomaly windows, so
-        # the threshold reflects out-of-sample IF scores.
-        calib_X = (
-            np.vstack([X_normal_calib_if, X_anomaly_scaled_if])
-            if len(X_anomaly_scaled_if) > 0
-            else X_normal_calib_if
-        )
-        y_calib = np.array(
-            [0] * len(X_normal_calib_if) + [1] * len(X_anomaly_scaled_if)
-        )
-        calib_scores = iso_forest.score_samples(calib_X)
-        unknown_threshold = _calibrate_unknown_threshold(calib_scores, y_calib)
-        if len(np.unique(y_calib)) > 1:
-            pr_auc = float(average_precision_score(y_calib, -calib_scores))
-            mlflow.log_metric("if_pr_auc", pr_auc)
-            print(f"Isolation Forest PR-AUC: {pr_auc:.4f}")
-
-        _atomic_write_json(
-            ARTIFACT_DIR / "if_unknown_threshold.json", {"threshold": unknown_threshold}
-        )
-        mlflow.log_artifact(str(ARTIFACT_DIR / "if_unknown_threshold.json"))
-
-        # ─────────────────────────────────────────────────────────────────────
-        # MLflow model registry — log_model BEFORE additional metric logging
-        # to avoid UNIQUE constraint conflicts (MLflow v3.1.1 re-logs
-        # existing run metrics internally).
-        # ─────────────────────────────────────────────────────────────────────
-        xgb_uri = mlflow.xgboost.log_model(clf, "xgb_classifier")
-        if_uri = mlflow.sklearn.log_model(iso_forest, "isolation_forest")
-
-        # ─────────────────────────────────────────────────────────────────────
-        # Log remaining metrics and save artifacts
-        # ─────────────────────────────────────────────────────────────────────
-        # Atomic artifact write: dump all four models to temp files first,
-        # then replace them back-to-back so a consumer loading artifacts on
-        # its own schedule never sees a torn mix of old and new models.
-        # os.replace is the cross-process guarantee; the admin training lock
-        # only serialises concurrent runs within the API process.
-        _atomic_dump_models(
-            [
-                (clf, ARTIFACT_DIR / "xgb_classifier.joblib"),
-                (le, ARTIFACT_DIR / "label_encoder.joblib"),
-                (iso_forest, ARTIFACT_DIR / "isolation_forest.joblib"),
-                (scaler, ARTIFACT_DIR / "scaler.joblib"),
-            ]
-        )
-        mlflow.log_artifact(str(ARTIFACT_DIR / "xgb_classifier.joblib"))
-        mlflow.log_artifact(str(ARTIFACT_DIR / "label_encoder.joblib"))
-        mlflow.log_artifact(str(ARTIFACT_DIR / "isolation_forest.joblib"))
-        mlflow.log_artifact(str(ARTIFACT_DIR / "scaler.joblib"))
-
-        with open(ARTIFACT_DIR / "feature_names.json", "w") as f:
-            json.dump(FEATURE_NAMES, f)
-        mlflow.log_artifact(str(ARTIFACT_DIR / "feature_names.json"))
-
-        feat_imp = pd.Series(clf.feature_importances_, index=FEATURE_NAMES).sort_values(
-            ascending=False
-        )
-        print("Top 10 features by importance:")
-        for feat, imp in feat_imp.head(10).items():
-            print(f"  {feat}: {imp:.4f}")
-            mlflow.log_metric(f"feat_importance_{feat}", float(imp))
-
-        xgb_reg = mlflow.register_model(
-            xgb_uri.model_uri, XGB_MODEL_NAME, await_registration_for=30
-        )
-        if_reg = mlflow.register_model(
-            if_uri.model_uri, IF_MODEL_NAME, await_registration_for=30
-        )
-
-        from mlflow.tracking import MlflowClient
-
-        client = MlflowClient()
-        client.set_registered_model_alias(
-            XGB_MODEL_NAME, "champion", version=str(xgb_reg.version)
-        )
-        client.set_registered_model_alias(
-            IF_MODEL_NAME, "champion", version=str(if_reg.version)
-        )
-
-        macro_txt = (
-            f", held-out macro-F1={macro_f1:.3f}" if macro_f1 is not None else ""
-        )
-        temporal_txt = (
-            f", temporal macro-F1={temporal_f1:.3f}" if temporal_f1 is not None else ""
-        )
-        description = (
-            f"XGBoost classifier trained on {len(X_all)} samples, "
-            f"{FEATURE_COUNT} features, "
-            f"CV accuracy={cv_mean:.3f} +/- {cv_std:.3f}{macro_txt}{temporal_txt}, git_sha={git_sha}"
-        )
-        client.update_model_version(
-            XGB_MODEL_NAME, version=str(xgb_reg.version), description=description
-        )
-
-        if_description = (
-            f"Isolation Forest trained on {len(X_normal_fit_if)} normal windows, "
-            f"precision={if_precision:.3f}, {FEATURE_COUNT} features, "
-            f"contamination={IF_CONTAMINATION}, git_sha={git_sha}"
-        )
-        client.update_model_version(
-            IF_MODEL_NAME, version=str(if_reg.version), description=if_description
-        )
-
-        print(
-            f"Registered XGBoost model: {XGB_MODEL_NAME} v{xgb_reg.version} (champion)"
-        )
-        print(
-            f"Registered Isolation Forest: {IF_MODEL_NAME} v{if_reg.version} (champion)"
-        )
-
-        print(f"Training complete. Artifacts saved to {ARTIFACT_DIR}")
 
 
 if __name__ == "__main__":
