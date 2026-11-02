@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
+import pytest
 
 from backend.src.anomaly_detection.ml.feature_engineering import (
     extract_features,
     extract_label,
+    _linear_slope,
+    _percentile,
     FEATURE_NAMES,
     FEATURE_COUNT,
 )
@@ -305,6 +309,132 @@ class TestExtractFeatures:
         feat = extract_features(rows)
         assert feat.shape == (len(FEATURE_NAMES),)
         assert not np.any(np.isnan(feat)), "No NaN values from unknown/malformed data"
+
+
+class TestLinearSlope:
+    """Direct tests for the regression slope used by the temporal features."""
+
+    def test_flat_series_has_zero_slope(self):
+        # Zero variance must yield slope 0, not a divide-by-zero.
+        assert _linear_slope(pd.Series([5.0, 5.0, 5.0])) == 0.0
+
+    def test_monotonically_increasing_series(self):
+        assert _linear_slope(pd.Series([1.0, 2.0, 3.0, 4.0])) == pytest.approx(1.0)
+
+    def test_monotonically_decreasing_series(self):
+        assert _linear_slope(pd.Series([4.0, 3.0, 2.0, 1.0])) == pytest.approx(-1.0)
+
+    def test_single_point_series_returns_zero(self):
+        assert _linear_slope(pd.Series([7.0])) == 0.0
+
+    def test_empty_series_returns_zero(self):
+        assert _linear_slope(pd.Series([], dtype=float)) == 0.0
+
+    def test_nan_values_are_dropped_before_regression(self):
+        # [1, NaN, 3] collapsing to [1, 3] gives a slope of 2.0 over two
+        # equally spaced samples; the NaN must not poison the result.
+        assert _linear_slope(pd.Series([1.0, None, 3.0])) == pytest.approx(2.0)
+
+
+class TestPercentile:
+    """Direct tests for _percentile, pinning the interpolation method in use.
+
+    The implementation calls np.percentile(vals, q) with no method argument,
+    which is numpy's default *linear* interpolation. A method that isn't
+    linear (lower/higher/midpoint/nearest) returns a different value for the
+    same inputs, so the exact assertions below pin linear.
+    """
+
+    def test_linear_interpolation_is_used(self):
+        # [1,2,3,4] p25: linear=1.75, lower=1, higher=2, midpoint=1.5, nearest=2
+        assert _percentile(pd.Series([1.0, 2.0, 3.0, 4.0]), 25) == pytest.approx(1.75)
+
+    def test_p75_and_p95_linear(self):
+        series = pd.Series([10.0, 20.0, 30.0, 40.0])
+        assert _percentile(series, 75) == pytest.approx(32.5)
+        assert _percentile(series, 95) == pytest.approx(38.5)
+
+    def test_empty_series_returns_zero(self):
+        assert _percentile(pd.Series([], dtype=float), 75) == 0.0
+
+    def test_all_nan_series_returns_zero(self):
+        assert _percentile(pd.Series([None, None], dtype="float64"), 50) == 0.0
+
+    def test_nan_values_are_dropped(self):
+        # dropna leaves [1, 3]; p50 with linear interpolation is 2.0.
+        assert _percentile(pd.Series([1.0, None, 3.0]), 50) == pytest.approx(2.0)
+
+
+class TestMetricStatsFoundations:
+    """Edge cases for the per-metric stats (mean/max/rate/p75/p95/slope).
+
+    metric_stats is a closure inside extract_features, so it is exercised
+    through that public boundary: a single named metric isolates its outputs.
+    """
+
+    @staticmethod
+    def _rows(values):
+        return [
+            {
+                "source": "PROMETHEUS",
+                "atm_id": "ATM-GB-0001",
+                "metric_name": "jvm_memory_used_bytes",
+                "metric_value": v,
+                "event_type": "METRIC",
+                "severity": "INFO",
+                "raw_payload": {},
+            }
+            for v in values
+        ]
+
+    def _stats(self, values):
+        feat = extract_features(self._rows(values))
+        return {
+            name: float(feat[FEATURE_NAMES.index(name)])
+            for name in (
+                "jvm_mem_mean",
+                "jvm_mem_max",
+                "jvm_mem_rate",
+                "jvm_mem_p75",
+                "jvm_mem_p95",
+                "jvm_mem_slope",
+            )
+        }
+
+    def test_flat_metric_has_zero_slope_and_rate(self):
+        stats = self._stats([5.0, 5.0, 5.0])
+        assert stats["jvm_mem_mean"] == pytest.approx(5.0)
+        assert stats["jvm_mem_max"] == pytest.approx(5.0)
+        assert stats["jvm_mem_rate"] == 0.0
+        assert stats["jvm_mem_slope"] == 0.0
+
+    def test_increasing_metric_stats(self):
+        stats = self._stats([10.0, 20.0, 30.0, 40.0])
+        assert stats["jvm_mem_mean"] == pytest.approx(25.0)
+        assert stats["jvm_mem_max"] == pytest.approx(40.0)
+        assert stats["jvm_mem_rate"] == pytest.approx(30.0)
+        assert stats["jvm_mem_p75"] == pytest.approx(32.5)
+        assert stats["jvm_mem_p95"] == pytest.approx(38.5)
+        assert stats["jvm_mem_slope"] == pytest.approx(10.0)
+
+    def test_single_point_metric_has_zero_slope_and_rate(self):
+        stats = self._stats([42.0])
+        assert stats["jvm_mem_mean"] == pytest.approx(42.0)
+        assert stats["jvm_mem_rate"] == 0.0
+        assert stats["jvm_mem_slope"] == 0.0
+
+    def test_nan_values_do_not_poison_stats(self):
+        stats = self._stats([1.0, None, 3.0])
+        assert stats["jvm_mem_mean"] == pytest.approx(2.0)
+        assert stats["jvm_mem_max"] == pytest.approx(3.0)
+        assert stats["jvm_mem_rate"] == pytest.approx(2.0)
+        assert stats["jvm_mem_p75"] == pytest.approx(2.5)
+        assert stats["jvm_mem_slope"] == pytest.approx(2.0)
+
+    def test_metric_absent_from_window_returns_zeros(self):
+        feat = extract_features(self._rows([]))
+        assert feat[FEATURE_NAMES.index("jvm_mem_mean")] == 0.0
+        assert feat[FEATURE_NAMES.index("jvm_mem_slope")] == 0.0
 
 
 class TestExtractLabel:

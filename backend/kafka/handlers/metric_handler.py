@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import psycopg2.extras
 
-from backend.src.database.connection import get_cursor
+from backend.src.ingestion.write_helper import get_cursor
 from backend.src.analytics.analytics_router import (
     increment_event_counter,
     track_unique_atm,

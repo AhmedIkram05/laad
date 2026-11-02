@@ -6,6 +6,7 @@ Run with:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -123,13 +124,18 @@ def _check_and_retrain_on_startup() -> None:
 
 
 def _do_retrain() -> None:
-    """Run the training pipeline."""
-    try:
-        import importlib
-        from backend.src.anomaly_detection.ml import train
+    """Run the training pipeline.
 
-        importlib.reload(train)
-        train.train()
+    Calls the train module's entry point directly. The previous
+    ``importlib.reload(train)`` re-read module-level constants that do not
+    change between reloads (the module is imported at startup and its only
+    module-level paths are derived from ``__file__``), while re-executing the
+    module reset unrelated state as a side effect.
+    """
+    try:
+        from backend.src.anomaly_detection.ml.train import train as run_train
+
+        run_train()
         logger.info("Startup retrain complete")
     except Exception as exc:
         logger.error("Startup retrain failed: %s", exc, exc_info=True)
@@ -167,25 +173,104 @@ app.add_middleware(
 
 # Reject oversized request bodies early. No endpoint accepts file uploads, so
 # 1 MiB is generous for this JSON API. Content-Length is checked as a cheap
-# guard; a chunked body without it is not covered here.
+# fast path; the body is also counted as it streams through the wrapped ASGI
+# receive callable, so a chunked body cannot bypass the cap by omitting
+# Content-Length.
 MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(1024 * 1024)))
 
 
-@app.middleware("http")
-async def limit_request_body(request: Request, call_next):
-    content_length = request.headers.get("content-length")
-    if content_length is not None:
-        try:
-            too_large = int(content_length) > MAX_REQUEST_BODY_BYTES
-        except ValueError:
-            return JSONResponse(
-                status_code=400, content={"detail": "Invalid Content-Length header"}
-            )
-        if too_large:
-            return JSONResponse(
-                status_code=413, content={"detail": "Request body too large"}
-            )
-    return await call_next(request)
+async def _send_json_response(send, status_code: int, content: dict) -> None:
+    body = json.dumps(content).encode()
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+class LimitRequestBodyMiddleware:
+    """Reject request bodies larger than MAX_REQUEST_BODY_BYTES.
+
+    Content-Length is a cheap fast path. When it is absent (chunked bodies),
+    the ASGI ``receive`` callable is wrapped to count bytes as they arrive and
+    the request is rejected with 413 as soon as the cap is exceeded, without
+    buffering the body. The body is passed through unchanged while under the
+    cap; once exceeded, the downstream response is discarded and replaced by
+    the 413 (FastAPI otherwise converts a mid-body abort into a 400).
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        max_bytes = MAX_REQUEST_BODY_BYTES
+        content_length = None
+        for key, value in scope["headers"]:
+            if key == b"content-length":
+                content_length = value
+                break
+
+        if content_length is not None:
+            try:
+                too_large = int(content_length) > max_bytes
+            except ValueError:
+                await _send_json_response(
+                    send, 400, {"detail": "Invalid Content-Length header"}
+                )
+                return
+            if too_large:
+                await _send_json_response(
+                    send, 413, {"detail": "Request body too large"}
+                )
+                return
+            # Content-Length within the cap: stream the body straight through.
+            await self.app(scope, receive, send)
+            return
+
+        received = 0
+        exceeded = False
+        response_started = False
+
+        async def limited_receive():
+            nonlocal received, exceeded
+            if exceeded:
+                # Stop feeding the body; the response is overridden below.
+                return {"type": "http.request", "body": b"", "more_body": False}
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > max_bytes:
+                    exceeded = True
+                    return {"type": "http.request", "body": b"", "more_body": False}
+            return message
+
+        async def limited_send(message):
+            nonlocal response_started
+            if exceeded:
+                if not response_started:
+                    response_started = True
+                    await _send_json_response(
+                        send, 413, {"detail": "Request body too large"}
+                    )
+                return
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        await self.app(scope, limited_receive, limited_send)
+
+
+app.add_middleware(LimitRequestBodyMiddleware)
 
 
 # CORS registered last so it wraps the middlewares above and its headers are

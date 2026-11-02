@@ -209,27 +209,17 @@ async def _run_champion_query(
     )
 
 
-def _run_legacy_query(
+def _retrieve_legacy_chunks(
+    retriever,
     *,
-    query: str,
     sanitized_query: str,
-    query_type,
     atm_id: Optional[str],
+    top_k: Optional[int],
     anomaly_type: Optional[str],
     error_only: bool,
     most_recent_first: bool,
-    top_k: Optional[int],
-    include_uncertainty: bool,
-    enable_reflexion: bool,
-    enable_citation_grounding: bool,
-    enable_self_consistency: bool,
-    current_user: dict,
-) -> RAGQueryResponse:
-    """Direct retriever+generator path (legacy fallback)."""
-    retriever = get_retriever()
-    generator = get_generator()
-    uncertainty_estimator = get_uncertainty_estimator()
-
+) -> list:
+    """Retrieve chunks for the legacy path; raise 404 when none are found."""
     chunks = retriever.retrieve(
         query=sanitized_query,
         atm_id=atm_id,
@@ -239,14 +229,26 @@ def _run_legacy_query(
         error_only=error_only,
         most_recent_first=most_recent_first,
     )
-
     if not chunks:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No relevant logs found for your query. Try rephrasing or check if the data generator is running.",
         )
+    return chunks
 
-    response = generator.generate(
+
+def _generate_legacy_response(
+    generator,
+    *,
+    query: str,
+    chunks: list,
+    query_type,
+    enable_reflexion: bool,
+    enable_citation_grounding: bool,
+    enable_self_consistency: bool,
+):
+    """Run the generator for the legacy path."""
+    return generator.generate(
         query=query,
         chunks=chunks,
         query_type=query_type,
@@ -255,32 +257,59 @@ def _run_legacy_query(
         enable_self_consistency=enable_self_consistency,
     )
 
-    uncertainty = None
-    if include_uncertainty:
-        uncertainty = uncertainty_estimator.estimate(
-            query=query,
-            chunks=chunks,
-            self_consistency_score=response.self_consistency_score,
-            verbalized_confidence=response.verbalized_confidence,
-            grounding_score=response.grounding_score,
-        )
 
+def _estimate_legacy_uncertainty(
+    uncertainty_estimator,
+    *,
+    query: str,
+    chunks: list,
+    response,
+    include_uncertainty: bool,
+):
+    """Estimate uncertainty for the legacy path, or None when disabled."""
+    if not include_uncertainty:
+        return None
+    return uncertainty_estimator.estimate(
+        query=query,
+        chunks=chunks,
+        self_consistency_score=response.self_consistency_score,
+        verbalized_confidence=response.verbalized_confidence,
+        grounding_score=response.grounding_score,
+    )
+
+
+def _persist_legacy_query(
+    *,
+    query: str,
+    answer: str,
+    uncertainty_score: float,
+    current_user: dict,
+) -> Optional[int]:
+    """Save a legacy query, falling back to a NULL-user row for anonymous users."""
     user_id = _get_user_id_from_username(current_user.get("sub", ""))
     query_id = _save_query_history(
         user_id=user_id,
         query=query,
-        answer=response.text,
-        uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
+        answer=answer,
+        uncertainty_score=uncertainty_score,
     )
-
     if query_id is None:
         query_id = _save_query_history_fallback(
             query=query,
-            answer=response.text,
-            uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
+            answer=answer,
+            uncertainty_score=uncertainty_score,
         )
+    return query_id
 
-    result = RAGQueryResponse(
+
+def _build_legacy_response(
+    *,
+    response,
+    uncertainty,
+    query_id: Optional[int],
+) -> RAGQueryResponse:
+    """Assemble the RAGQueryResponse for the legacy path."""
+    return RAGQueryResponse(
         query_id=query_id,
         answer=response.text,
         sources=[
@@ -309,7 +338,15 @@ def _run_legacy_query(
         critique_text=response.critique_text if response.critique_text else None,
     )
 
-    cache_payload = {
+
+def _build_legacy_cache_payload(
+    *,
+    response,
+    uncertainty,
+    query_id: Optional[int],
+) -> dict:
+    """Build the response-cache payload for the legacy path."""
+    return {
         "query_id": query_id,
         "answer": response.text,
         "sources": [
@@ -336,6 +373,64 @@ def _run_legacy_query(
         "was_revised": response.was_revised,
         "critique_text": response.critique_text,
     }
+
+
+def _run_legacy_query(
+    *,
+    query: str,
+    sanitized_query: str,
+    query_type,
+    atm_id: Optional[str],
+    anomaly_type: Optional[str],
+    error_only: bool,
+    most_recent_first: bool,
+    top_k: Optional[int],
+    include_uncertainty: bool,
+    enable_reflexion: bool,
+    enable_citation_grounding: bool,
+    enable_self_consistency: bool,
+    current_user: dict,
+) -> RAGQueryResponse:
+    """Direct retriever+generator path (legacy fallback)."""
+    retriever = get_retriever()
+    generator = get_generator()
+    uncertainty_estimator = get_uncertainty_estimator()
+
+    chunks = _retrieve_legacy_chunks(
+        retriever,
+        sanitized_query=sanitized_query,
+        atm_id=atm_id,
+        top_k=top_k,
+        anomaly_type=anomaly_type,
+        error_only=error_only,
+        most_recent_first=most_recent_first,
+    )
+    response = _generate_legacy_response(
+        generator,
+        query=query,
+        chunks=chunks,
+        query_type=query_type,
+        enable_reflexion=enable_reflexion,
+        enable_citation_grounding=enable_citation_grounding,
+        enable_self_consistency=enable_self_consistency,
+    )
+    uncertainty = _estimate_legacy_uncertainty(
+        uncertainty_estimator,
+        query=query,
+        chunks=chunks,
+        response=response,
+        include_uncertainty=include_uncertainty,
+    )
+    query_id = _persist_legacy_query(
+        query=query,
+        answer=response.text,
+        uncertainty_score=uncertainty.final_confidence if uncertainty else 0.5,
+        current_user=current_user,
+    )
+    result = _build_legacy_response(
+        response=response, uncertainty=uncertainty, query_id=query_id
+    )
+
     if _default_cache_profile(
         top_k=top_k,
         error_only=error_only,
@@ -347,7 +442,12 @@ def _run_legacy_query(
         atm_id=atm_id,
         anomaly_type=anomaly_type,
     ):
-        set_cached_response(sanitized_query, cache_payload)
+        set_cached_response(
+            sanitized_query,
+            _build_legacy_cache_payload(
+                response=response, uncertainty=uncertainty, query_id=query_id
+            ),
+        )
 
     return result
 
