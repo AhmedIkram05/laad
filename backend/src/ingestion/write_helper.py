@@ -3,6 +3,11 @@
 Uses psycopg2's execute_values for efficient bulk inserts. Retries on
 transient operational errors (deadlocks/serialization failures) with
 exponential backoff.
+
+This module is the ingestion-layer DB write seam: callers that only write
+(the Kafka handlers) obtain their cursor from here rather than importing
+``backend.src.database.connection`` directly, keeping the DB layer behind
+one module.
 """
 
 from __future__ import annotations
@@ -14,7 +19,11 @@ from typing import Iterable
 import psycopg2
 import psycopg2.extras
 
+from backend.src.database.connection import get_cursor
+
 logger = logging.getLogger(__name__)
+
+__all__ = ["write_batch", "get_cursor"]
 
 
 def write_batch(

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import psycopg2.extras
 
-from backend.src.database.connection import get_cursor
+from backend.src.ingestion.write_helper import get_cursor
 from backend.kafka.chroma_buffer import ChromaBuffer, format_event_text
 from backend.src.analytics.analytics_router import (
     increment_event_counter,
