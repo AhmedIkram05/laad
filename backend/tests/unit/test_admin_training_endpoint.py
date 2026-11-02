@@ -66,3 +66,18 @@ class TestTrainingLock:
 
         mock_train.assert_called_once()
         assert not admin_router._training_lock.locked()
+
+    def test_background_task_triggers_retrain(self):
+        """The endpoint still runs the train entry point via its background task."""
+        from backend.src.admin import admin_router
+
+        bg = BackgroundTasks()
+        response = admin_router.trigger_training(bg)
+        assert response.status == "started"
+        assert len(bg.tasks) == 1
+
+        with patch("backend.src.anomaly_detection.ml.train.train") as mock_train:
+            asyncio.run(bg())
+
+        mock_train.assert_called_once()
+        assert not admin_router._training_lock.locked()

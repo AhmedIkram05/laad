@@ -313,81 +313,62 @@ class TestCheckAndRetrainOnStartup:
 
 
 # ---------------------------------------------------------------------------
-# _do_retrain tests — via the REAL function with importlib.reload mocked
+# _do_retrain tests — via the REAL function with the train entry point patched
 # ---------------------------------------------------------------------------
 
 
 class TestDoRetrain:
-    """Test _do_retrain via the actual function with importlib.reload mocked.
+    """Test _do_retrain via the actual function with the entry point patched.
 
-    _do_retrain does:
-        import importlib
-        from backend.src.anomaly_detection.ml import train
-        importlib.reload(train)
-        train.train()
+    _do_retrain calls the train module's function directly:
+        from backend.src.anomaly_detection.ml.train import train
+        train()
 
-    The train module is already cached in sys.modules (server.py imports
-    ARTIFACT_DIR from it at module level).  We patch ``importlib.reload``
-    so it never re-executes the module source, and we patch the module's
-    ``train`` attribute to control behaviour.
+    Patching the module attribute controls behaviour; the function is
+    imported inside _do_retrain, so the patch is seen on every call.
     """
 
     def test_success_path(self):
-        """train.train() completes successfully."""
+        """The train entry point runs once and completes successfully."""
+        import backend.src.api.server as server_module
+
+        with patch("backend.src.anomaly_detection.ml.train.train") as mock_train:
+            server_module._do_retrain()
+
+        mock_train.assert_called_once()
+
+    def test_no_module_reload(self):
+        """Retraining must call the entry point, not reload the module."""
         import backend.src.api.server as server_module
 
         with (
-            patch("backend.src.anomaly_detection.ml.train") as mock_train_mod,
-            patch("importlib.reload", return_value=mock_train_mod) as mock_reload,
+            patch("backend.src.anomaly_detection.ml.train.train"),
+            patch("importlib.reload") as mock_reload,
         ):
             server_module._do_retrain()
 
-        mock_reload.assert_called_once()
-        mock_train_mod.train.assert_called_once()
+        mock_reload.assert_not_called()
 
     def test_train_raises_exception(self):
-        """train.train() raises — _do_retrain swallows it."""
+        """train raises — _do_retrain swallows it."""
         import backend.src.api.server as server_module
 
-        with patch("backend.src.anomaly_detection.ml.train") as mock_train_mod:
-            mock_train_mod.train.side_effect = RuntimeError("OOM")
-            with patch("importlib.reload", return_value=mock_train_mod):
-                # Must NOT raise
-                server_module._do_retrain()
-
-        mock_train_mod.train.assert_called_once()
-
-    def test_reload_raises_import_error(self):
-        """importlib.reload() raises — _do_retrain swallows it."""
-        import backend.src.api.server as server_module
-
-        with patch("importlib.reload", side_effect=ImportError("No xgboost")):
+        with patch("backend.src.anomaly_detection.ml.train.train") as mock_train:
+            mock_train.side_effect = RuntimeError("OOM")
             # Must NOT raise
             server_module._do_retrain()
 
+        mock_train.assert_called_once()
+
     def test_logger_error_called_on_train_failure(self):
-        """logger.error is called when train.train() raises."""
+        """logger.error is called when train raises."""
         import backend.src.api.server as server_module
 
         with (
-            patch("backend.src.anomaly_detection.ml.train") as mock_train_mod,
-            patch("importlib.reload", return_value=mock_train_mod),
+            patch("backend.src.anomaly_detection.ml.train.train") as mock_train,
             patch("backend.src.api.server.logger") as mock_logger,
         ):
-            mock_train_mod.train.side_effect = ValueError("bad data")
-            server_module._do_retrain()
-
-        mock_logger.error.assert_called_once()
-        assert "Startup retrain failed" in mock_logger.error.call_args[0][0]
-
-    def test_logger_error_called_on_reload_failure(self):
-        """logger.error is called when importlib.reload raises."""
-        import backend.src.api.server as server_module
-
-        with (
-            patch("importlib.reload", side_effect=ImportError("broken")),
-            patch("backend.src.api.server.logger") as mock_logger,
-        ):
+            mock_train.side_effect = ValueError("bad data")
             server_module._do_retrain()
 
         mock_logger.error.assert_called_once()
@@ -398,11 +379,10 @@ class TestDoRetrain:
         import backend.src.api.server as server_module
 
         with (
-            patch("backend.src.anomaly_detection.ml.train") as mock_train_mod,
-            patch("importlib.reload", return_value=mock_train_mod),
+            patch("backend.src.anomaly_detection.ml.train.train") as mock_train,
             patch("backend.src.api.server.logger") as mock_logger,
         ):
-            mock_train_mod.train.side_effect = RuntimeError("disk full")
+            mock_train.side_effect = RuntimeError("disk full")
             server_module._do_retrain()
 
         # The second format arg should be the exception instance
