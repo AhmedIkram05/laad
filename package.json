@@ -12,8 +12,8 @@
     "url": "git+https://github.com/AhmedIkram05/laad.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Ahmed Ikram",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/AhmedIkram05/laad/issues"
