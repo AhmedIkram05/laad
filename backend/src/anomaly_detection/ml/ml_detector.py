@@ -651,6 +651,220 @@ class MLAnomalyDetector:
             log.error("Heuristic detection failed: %s", e)
             return []
 
+    def _run_ml_ensemble(
+        self, atm_groups: dict[str | None, list[dict]], in_warmup: bool
+    ) -> tuple[int, set[tuple[str, str | None]]]:
+        """Layer 1 inference: per-entity XGBoost + Isolation Forest ensemble.
+
+        Runs per-ATM/pod so multiple anomalies can be detected in one cycle and
+        detects A1–7 (trained) plus UNKNOWN (via the IF anomaly-score threshold).
+
+        Returns (saved_count, {(anomaly_type, entity_id)}).
+        """
+        ml_ensemble_detections: set[tuple[str, str | None]] = set()
+        if not self._loaded:
+            return 0, ml_ensemble_detections
+
+        saved = 0
+        for entity_id, entity_rows in atm_groups.items():
+            if len(entity_rows) < 3:
+                continue
+
+            try:
+                features = extract_features(entity_rows).reshape(1, -1)
+                if self._scaler is not None:
+                    features_scaled = self._scaler.transform(features)
+                else:
+                    features_scaled = features
+                if self._if_feature_indices is not None:
+                    features_if = features_scaled[:, self._if_feature_indices]
+                else:
+                    features_if = features_scaled
+            except Exception as e:
+                log.warning(
+                    "ML[%s]: feature extraction/inference failed, entity skipped: %s",
+                    entity_id,
+                    e,
+                )
+                continue
+
+            is_anomaly = self._iso.predict(features_if)[0] == -1
+
+            if not is_anomaly:
+                continue
+
+            if_score = float(self._iso.score_samples(features_if)[0])
+            proba = self._clf.predict_proba(features)[0]
+            pred_idx = int(np.argmax(proba))
+            confidence = float(proba[pred_idx])
+            label = self._le.inverse_transform([pred_idx])[0]
+            log.info(
+                "ML[%s]: IF score=%.3f, XGB=%s (conf=%.2f)",
+                entity_id,
+                if_score,
+                label,
+                confidence,
+            )
+
+            if label != "NORMAL" and confidence >= CONFIDENCE_THRESHOLD:
+                if not self._is_active(label, entity_id):
+                    self._save_anomaly(
+                        anomaly_type=label,
+                        atm_id=entity_id,
+                        confidence=confidence,
+                        source="ML_ENSEMBLE",
+                        explanation={"if_score": if_score},
+                    )
+                    saved += 1
+                    ml_ensemble_detections.add((label, entity_id))
+                    log.info(
+                        "ML Ensemble detected: %s (atm=%s, conf=%.2f)",
+                        label,
+                        entity_id,
+                        confidence,
+                    )
+
+            elif (
+                not in_warmup
+                and label == "NORMAL"
+                and if_score <= self._if_unknown_threshold
+            ):
+                unknown_confidence = (
+                    min(abs(if_score) / abs(self._if_unknown_threshold), 1.0)
+                    if self._if_unknown_threshold != 0
+                    else 0.5
+                )
+                if not self._is_active("UNKNOWN", entity_id):
+                    self._save_anomaly(
+                        anomaly_type="UNKNOWN",
+                        atm_id=entity_id,
+                        confidence=round(unknown_confidence, 3),
+                        source="ML_ENSEMBLE",
+                        explanation={
+                            "if_score": if_score,
+                            "xgb_predicted": "NORMAL",
+                            "xgb_confidence": confidence,
+                        },
+                    )
+                    saved += 1
+                    ml_ensemble_detections.add(("UNKNOWN", entity_id))
+                    log.warning(
+                        "ML Ensemble detected: UNKNOWN (atm=%s, if_score=%.3f)",
+                        entity_id,
+                        if_score,
+                    )
+
+        log.info(
+            "ML: %d entity groups classified, %d anomalies saved",
+            len(atm_groups),
+            saved,
+        )
+        return saved, ml_ensemble_detections
+
+    def _run_zscore_layer(self, global_features: np.ndarray, in_warmup: bool) -> int:
+        """Layer 2 inference: rolling Z-score novelty detection (always runs).
+
+        Detects UNKNOWN via >3σ deviation from the rolling median. The Z-score
+        is a global detector, so it cannot identify the culprit entity and
+        attributes to None. Returns the number of anomalies saved.
+        """
+        # NOTE: Z-score is a global detector — it can't identify the culprit entity.
+        # Using the most frequent ATM is misleading, so we attribute to None.
+        # The ML ensemble (per-entity) is responsible for correct attribution.
+        if not self._baseline.ready:
+            return 0
+
+        z_scores = self._baseline.compute_z_scores(global_features.flatten())
+        max_z = float(np.max(np.abs(z_scores)))
+        n_deviating = int(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD))
+        if in_warmup or max_z <= ZSCORE_THRESHOLD:
+            return 0
+
+        base_confidence = min(max_z / 5.0, 1.0)
+        attributed_atm = None  # Z-score is global — can't identify the culprit entity
+        if self._is_active("UNKNOWN", attributed_atm):
+            return 0
+
+        self._save_anomaly(
+            anomaly_type="UNKNOWN",
+            atm_id=attributed_atm,
+            confidence=round(base_confidence, 3),
+            source="ZSCORE",
+            explanation={
+                "max_z_score": round(max_z, 3),
+                "n_features_deviating": n_deviating,
+                "z_threshold": ZSCORE_THRESHOLD,
+                "zscore_window": len(self._baseline._history),
+            },
+        )
+        log.warning(
+            "Z-score detected: UNKNOWN (max_z=%.2f, n_deviating=%d, atm=%s)",
+            max_z,
+            n_deviating,
+            attributed_atm,
+        )
+        return 1
+
+    def _save_heuristic_anomalies(
+        self,
+        heur_anomalies: list[dict],
+        ml_ensemble_detections: set[tuple[str, str | None]],
+    ) -> int:
+        """Layer 3 persistence: save heuristic detections not already caught.
+
+        Skips any (anomaly_type, atm_id) the ML ensemble already caught this
+        cycle, and any already-active incident. Returns anomalies saved.
+        """
+        saved = 0
+        for a in heur_anomalies:
+            atype = a.get("anomaly_type")
+            a_atm = a.get("atm_id")
+            if not atype:
+                continue
+            if (atype, a_atm) in ml_ensemble_detections:
+                continue
+            if self._is_active(atype, a_atm):
+                continue
+            self._save_anomaly(
+                anomaly_type=atype,
+                atm_id=a_atm,
+                confidence=0.95 if atype in {"A1", "A2"} else 0.85,
+                source="HEURISTIC",
+                explanation=json.loads(a.get("explanation", "{}"))
+                if isinstance(a.get("explanation"), str)
+                else (a.get("explanation") or {}),
+                sources_involved=a.get("sources_involved"),
+                recommended_action=a.get("recommended_action"),
+                correlation_id=a.get("correlation_id"),
+            )
+            saved += 1
+            log.info("Heuristic detected: %s (atm=%s)", atype, a_atm)
+        return saved
+
+    def _log_inference_cycle(
+        self,
+        rows: list[dict],
+        ml_ensemble_detections: set[tuple[str, str | None]],
+        heur_anomalies: list[dict],
+        saved: int,
+    ) -> None:
+        """Log the inference cycle to MLflow. Never blocks detection."""
+        try:
+            if not self._mlflow_available:
+                return
+            mlflow.log_metric("rows_processed", len(rows))
+            mlflow.log_param("window_seconds", WINDOW_SECONDS)
+            mlflow.log_param("models_loaded", self._loaded)
+            with mlflow.start_run(
+                run_name=f"inference_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
+                nested=True,
+            ):
+                mlflow.log_metric("ml_ensemble_anomalies", len(ml_ensemble_detections))
+                mlflow.log_metric("heuristic_anomalies", len(heur_anomalies))
+                mlflow.log_metric("anomalies_saved", saved)
+        except Exception as e:
+            log.debug("MLflow logging skipped (not critical): %s", e)
+
     def detect_and_save(self) -> int:
         """Run full detection cycle across all layers.
 
@@ -682,18 +896,6 @@ class MLAnomalyDetector:
                 WARMUP_SKIP_CYCLES,
             )
 
-        saved = 0
-        heur_anomalies: list = []
-        ml_ensemble_detections: set[tuple[str, str | None]] = set()
-
-        def _run_ml_logging():
-            """Internal: log to MLflow if available. Raises on failure."""
-            if not self._mlflow_available:
-                return
-            mlflow.log_metric("rows_processed", len(rows))
-            mlflow.log_param("window_seconds", WINDOW_SECONDS)
-            mlflow.log_param("models_loaded", self._loaded)
-
         # Group rows by atm_id for per-ATM classification and ZSCORE attribution
         atm_groups: dict[str | None, list[dict]] = {}
         for r in rows:
@@ -703,116 +905,12 @@ class MLAnomalyDetector:
         # Also extract global features for Z-score baseline (all data combined)
         global_features = extract_features(rows).reshape(1, -1)
 
-        # Most frequent ATM for ZSCORE UNKNOWN attribution
-        # NOTE: Z-score is a global detector — it can't identify the culprit entity.
-        # Using the most frequent ATM is misleading, so we attribute to None.
-        # The ML ensemble (per-entity) is responsible for correct attribution.
-
-        # ─────────────────────────────────────────────────────────────────────────
         # Layer 1: ML_ENSEMBLE DETECTION (Primary — XGBoost + IF ensemble)
-        # Groups rows by atm_id/pod and runs the ML ensemble on each group so
-        # it can detect multiple anomalies in a single cycle.
-        # ─────────────────────────────────────────────────────────────────────────
-        if self._loaded:
-            for entity_id, entity_rows in atm_groups.items():
-                if len(entity_rows) < 3:
-                    continue
+        saved, ml_ensemble_detections = self._run_ml_ensemble(atm_groups, in_warmup)
 
-                try:
-                    features = extract_features(entity_rows).reshape(1, -1)
-                    if self._scaler is not None:
-                        features_scaled = self._scaler.transform(features)
-                    else:
-                        features_scaled = features
-                    if self._if_feature_indices is not None:
-                        features_if = features_scaled[:, self._if_feature_indices]
-                    else:
-                        features_if = features_scaled
-                except Exception as e:
-                    log.warning(
-                        "ML[%s]: feature extraction/inference failed, entity skipped: %s",
-                        entity_id,
-                        e,
-                    )
-                    continue
-
-                is_anomaly = self._iso.predict(features_if)[0] == -1
-
-                if not is_anomaly:
-                    continue
-
-                if_score = float(self._iso.score_samples(features_if)[0])
-                proba = self._clf.predict_proba(features)[0]
-                pred_idx = int(np.argmax(proba))
-                confidence = float(proba[pred_idx])
-                label = self._le.inverse_transform([pred_idx])[0]
-                log.info(
-                    "ML[%s]: IF score=%.3f, XGB=%s (conf=%.2f)",
-                    entity_id,
-                    if_score,
-                    label,
-                    confidence,
-                )
-
-                if label != "NORMAL" and confidence >= CONFIDENCE_THRESHOLD:
-                    if not self._is_active(label, entity_id):
-                        self._save_anomaly(
-                            anomaly_type=label,
-                            atm_id=entity_id,
-                            confidence=confidence,
-                            source="ML_ENSEMBLE",
-                            explanation={"if_score": if_score},
-                        )
-                        saved += 1
-                        ml_ensemble_detections.add((label, entity_id))
-                        log.info(
-                            "ML Ensemble detected: %s (atm=%s, conf=%.2f)",
-                            label,
-                            entity_id,
-                            confidence,
-                        )
-
-                elif (
-                    not in_warmup
-                    and label == "NORMAL"
-                    and if_score <= self._if_unknown_threshold
-                ):
-                    unknown_confidence = (
-                        min(abs(if_score) / abs(self._if_unknown_threshold), 1.0)
-                        if self._if_unknown_threshold != 0
-                        else 0.5
-                    )
-                    if not self._is_active("UNKNOWN", entity_id):
-                        self._save_anomaly(
-                            anomaly_type="UNKNOWN",
-                            atm_id=entity_id,
-                            confidence=round(unknown_confidence, 3),
-                            source="ML_ENSEMBLE",
-                            explanation={
-                                "if_score": if_score,
-                                "xgb_predicted": "NORMAL",
-                                "xgb_confidence": confidence,
-                            },
-                        )
-                        saved += 1
-                        ml_ensemble_detections.add(("UNKNOWN", entity_id))
-                        log.warning(
-                            "ML Ensemble detected: UNKNOWN (atm=%s, if_score=%.3f)",
-                            entity_id,
-                            if_score,
-                        )
-
-            log.info(
-                "ML: %d entity groups classified, %d anomalies saved",
-                len(atm_groups),
-                saved,
-            )
-
-        # ─────────────────────────────────────────────────────────────────────────
         # SageMaker cross-check: invoke the SageMaker endpoint for verification
         # alongside local inference. Runs if SAGEMAKER_ENDPOINT_NAME is configured.
         # Logs the prediction; cross-references with local ML ensemble results.
-        # ─────────────────────────────────────────────────────────────────────────
         sm_result = self._sagemaker_predict(global_features)
         if sm_result is not None:
             raw = sm_result.get("raw_prediction", "").strip()
@@ -823,89 +921,18 @@ class MLAnomalyDetector:
                 len(ml_ensemble_detections),
             )
 
-        # ─────────────────────────────────────────────────────────────────────────
         # Layer 2: ZSCORE DETECTION (Novel patterns — always runs)
-        # Detects: UNKNOWN via rolling Z-score >3σ deviation from historical median
-        # ─────────────────────────────────────────────────────────────────────────
-        if self._baseline.ready:
-            z_scores = self._baseline.compute_z_scores(global_features.flatten())
-            max_z = float(np.max(np.abs(z_scores)))
-            n_deviating = int(np.sum(np.abs(z_scores) > ZSCORE_THRESHOLD))
-            if not in_warmup and max_z > ZSCORE_THRESHOLD:
-                base_confidence = min(max_z / 5.0, 1.0)
-                attributed_atm = (
-                    None  # Z-score is global — can't identify the culprit entity
-                )
-                if not self._is_active("UNKNOWN", attributed_atm):
-                    self._save_anomaly(
-                        anomaly_type="UNKNOWN",
-                        atm_id=attributed_atm,
-                        confidence=round(base_confidence, 3),
-                        source="ZSCORE",
-                        explanation={
-                            "max_z_score": round(max_z, 3),
-                            "n_features_deviating": n_deviating,
-                            "z_threshold": ZSCORE_THRESHOLD,
-                            "zscore_window": len(self._baseline._history),
-                        },
-                    )
-                    saved += 1
-                    log.warning(
-                        "Z-score detected: UNKNOWN (max_z=%.2f, n_deviating=%d, atm=%s)",
-                        max_z,
-                        n_deviating,
-                        attributed_atm,
-                    )
+        saved += self._run_zscore_layer(global_features, in_warmup)
 
         # Update the baseline only after scoring: the current window must not
         # be part of its own reference history, or sustained anomalies normalize.
         self._baseline.update(global_features.flatten())
 
-        # ─────────────────────────────────────────────────────────────────────────
         # Layer 3: HEURISTIC DETECTION (Final fallback — deterministic)
-        # Detects: A1–7 via multi-signal correlation patterns
-        # Skips any (type, atm_id) the ML ensemble already caught this cycle.
-        # ─────────────────────────────────────────────────────────────────────────
         heur_anomalies = self._detect_heuristic(rows, window_start, window_end)
-        for a in heur_anomalies:
-            atype = a.get("anomaly_type")
-            a_atm = a.get("atm_id")
-            if not atype:
-                continue
-            if (atype, a_atm) in ml_ensemble_detections:
-                continue
-            if self._is_active(atype, a_atm):
-                continue
-            self._save_anomaly(
-                anomaly_type=atype,
-                atm_id=a_atm,
-                confidence=0.95 if atype in {"A1", "A2"} else 0.85,
-                source="HEURISTIC",
-                explanation=json.loads(a.get("explanation", "{}"))
-                if isinstance(a.get("explanation"), str)
-                else (a.get("explanation") or {}),
-                sources_involved=a.get("sources_involved"),
-                recommended_action=a.get("recommended_action"),
-                correlation_id=a.get("correlation_id"),
-            )
-            saved += 1
-            log.info("Heuristic detected: %s (atm=%s)", atype, a_atm)
+        saved += self._save_heuristic_anomalies(heur_anomalies, ml_ensemble_detections)
 
-        # Log to MLflow only if available — does NOT block detection
-        try:
-            _run_ml_logging()
-            if self._mlflow_available:
-                with mlflow.start_run(
-                    run_name=f"inference_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
-                    nested=True,
-                ):
-                    mlflow.log_metric(
-                        "ml_ensemble_anomalies", len(ml_ensemble_detections)
-                    )
-                    mlflow.log_metric("heuristic_anomalies", len(heur_anomalies))
-                    mlflow.log_metric("anomalies_saved", saved)
-        except Exception as e:
-            log.debug("MLflow logging skipped (not critical): %s", e)
+        self._log_inference_cycle(rows, ml_ensemble_detections, heur_anomalies, saved)
 
         log.info(
             "Inference cycle complete: %d rows, %d anomalies saved", len(rows), saved

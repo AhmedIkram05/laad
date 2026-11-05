@@ -1,5 +1,5 @@
 python-dateutil>=2.9.0.post0
-pytest>=7.0.0
+pytest>=9.2.0
 fastapi>=0.143.2
 uvicorn>=0.22.0
 PyJWT>=2.15.1
@@ -35,15 +35,15 @@ ragas>=0.4.3
 requests>=2.34.2
 scipy>=1.18.1
 redis>=8.1.0
-boto3>=1.43.118
+boto3>=1.43.122
 pytest-cov>=7.1.0
-# OpenTelemetry — one release family per repo (core 1.44.x / contrib 0.65b0 / OpenLLMetry 0.62.3), see docs/adr/0001
-opentelemetry-api==1.45.1
-opentelemetry-sdk==1.45.1
-opentelemetry-exporter-otlp-proto-grpc==1.45.1
-opentelemetry-instrumentation-fastapi==0.66b1
-opentelemetry-instrumentation-redis==0.66b1
-opentelemetry-instrumentation-psycopg2==0.66b1
+# OpenTelemetry — one release family per repo (core 1.45.x / contrib 0.66bx / OpenLLMetry 0.62.4), see docs/adr/0001
+opentelemetry-api==1.45.2
+opentelemetry-sdk==1.45.2
+opentelemetry-exporter-otlp-proto-grpc==1.45.2
+opentelemetry-instrumentation-fastapi==0.66b2
+opentelemetry-instrumentation-redis==0.66b2
+opentelemetry-instrumentation-psycopg2==0.66b2
 opentelemetry-instrumentation-requests==0.66b2
 opentelemetry-instrumentation-openai==0.62.4
 opentelemetry-instrumentation-langchain==0.62.4

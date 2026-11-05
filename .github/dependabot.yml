@@ -22,6 +22,11 @@ updates:
       # pins mcp<2.0.0. Revisit when upstream supports 2.x.
       - dependency-name: "mcp"
         update-types: ["version-update:semver-major"]
+      # openai 3.x is not installable: instructor (via ragas, latest 1.17.0)
+      # pins jiter<0.15, but openai>=3 requires jiter>=0.16.
+      # Revisit when instructor allows jiter>=0.16.
+      - dependency-name: "openai"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-patch:
         update-types: ["minor", "patch"]

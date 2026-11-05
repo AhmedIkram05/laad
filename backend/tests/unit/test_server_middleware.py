@@ -79,3 +79,57 @@ class TestRequestBodyLimit:
         # (404/422, never 413).
         resp = _client().post("/nonexistent", content=b"12345")
         assert resp.status_code != 413
+
+    def test_oversized_413_carries_cors_headers(self, monkeypatch):
+        import backend.src.api.server as server_module
+
+        monkeypatch.setattr(server_module, "MAX_REQUEST_BODY_BYTES", 10)
+        resp = _client().post(
+            "/auth/login",
+            content=b"x" * 100,
+            headers={"origin": "http://localhost:5173"},
+        )
+        assert resp.status_code == 413
+        # CORS is registered after the limit middleware so its headers are on
+        # the 413 too.
+        assert (
+            resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
+        )
+
+    def test_chunked_oversized_body_rejected(self, monkeypatch):
+        import backend.src.api.server as server_module
+
+        monkeypatch.setattr(server_module, "MAX_REQUEST_BODY_BYTES", 32)
+
+        def chunks():
+            # Three chunks totalling 75 bytes, sent without Content-Length.
+            yield b'{"query": "'
+            yield b"x" * 64
+            yield b'"}'
+
+        # A JSON body forces FastAPI to read the body, so the counting
+        # receive runs; auth/validation happen only after.
+        resp = _client().post(
+            "/api/rag/query",
+            content=chunks(),
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code == 413
+
+    def test_chunked_small_body_passes_through(self, monkeypatch):
+        import backend.src.api.server as server_module
+
+        monkeypatch.setattr(server_module, "MAX_REQUEST_BODY_BYTES", 1024)
+
+        def chunks():
+            yield b'{"query": '
+            yield b'"hello"}'
+
+        # Under the cap the body streams through; the request reaches routing
+        # (auth/validation errors are fine, but it must not be a 413).
+        resp = _client().post(
+            "/api/rag/query",
+            content=chunks(),
+            headers={"content-type": "application/json"},
+        )
+        assert resp.status_code != 413
