@@ -35,7 +35,7 @@ ragas>=0.4.3
 requests>=2.34.2
 scipy>=1.18.1
 redis>=8.1.0
-boto3>=1.43.118
+boto3>=1.43.122
 pytest-cov>=7.1.0
 # OpenTelemetry — one release family per repo (core 1.45.x / contrib 0.66bx / OpenLLMetry 0.62.4), see docs/adr/0001
 opentelemetry-api==1.45.2
