@@ -197,7 +197,26 @@ make all   # everything in Docker: frontend, API, Kafka, detection, RAG
 
 Frontend on `:5173` · API on `:8000/docs` · MLflow on `:5001` · Postgres on `:5434`. Default login `admin`/`admin`. [Configuration reference](docs/configuration.md)
 
+> **Security warning:** The default `admin`/`admin` login is for local development only. Change the admin password on first deploy and set a strong `JWT_SECRET_KEY` (generate with `python -c "import secrets; print(secrets.token_hex(32))"`). Never deploy with default credentials or the example secret.
+
 > **Running tests locally:** a bare `pytest --collect-only` can report module-collection errors unless the optional extras (chromadb, kafka, ML dependencies) are installed - the full 1,439-backend-test expanded count (1,395 base + 44 param) materializes when all extras are present ([ci.yml](.github/workflows/ci.yml)).
+
+## Troubleshooting
+
+- **Port already in use (5434/8000/5173):** stop the conflicting service or change the port in `.env` / `docker-compose.yml` and re-run `make all`.
+- **Database connection refused:** ensure Postgres is up (`docker compose ps`) and `POSTGRES_HOST`/`POSTGRES_PORT` match your environment (Docker uses `postgres:5432`, local uses `localhost:5434`).
+- **Frontend builds but login fails:** verify the API is healthy at `:8000/docs` and that `JWT_SECRET_KEY` is set in `.env` (see `docs/configuration.md`).
+- **MLflow not reachable on `:5001`:** the `ml` compose profile is opt-in — enable it explicitly if you need MLflow.
+
+## Local dev without Docker
+
+Run services natively for faster iteration:
+
+1. Start Postgres, Redis, Kafka/KRaft, and ChromaDB locally (or point `.env` at existing instances).
+2. Backend: `cd backend && .venv/bin/python -m uvicorn src.main:app --reload --port 8000` (or your project virtualenv).
+3. Frontend: `cd frontend && npm install && npm run dev` (Vite on `:5173`).
+
+See `docs/configuration.md` for environment variables and `docs/README-full.md` for the full local setup.
 
 ## Documentation
 

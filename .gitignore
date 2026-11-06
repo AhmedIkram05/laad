@@ -11,7 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
-*__pycache__
+__pycache__/
 .pytest_cache
 .venv
 .env
@@ -60,3 +60,7 @@ backend/tests/eval/cached_results.json
 backend/tests/eval/results.json
 eval_results/
 mlruns/1/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/

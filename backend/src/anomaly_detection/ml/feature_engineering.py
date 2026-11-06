@@ -130,9 +130,11 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
         return np.zeros(FEATURE_COUNT)
 
     def safe_float(series):
+        """Coerce series to numeric, invalid values become NaN."""
         return pd.to_numeric(series, errors="coerce")
 
     def parse_payload(p):
+        """Parse raw payload as dict, JSON string, or empty dict."""
         if isinstance(p, dict):
             return p
         if isinstance(p, str):
@@ -143,6 +145,7 @@ def extract_features(rows: list[dict[str, Any]]) -> np.ndarray:
         return {}
 
     def metric_stats(name: str) -> dict[str, float]:
+        """Compute mean/max/rate/percentiles/slope for a metric name."""
         vals = safe_float(df.loc[df["metric_name"] == name, "metric_value"])
         if vals.empty or vals.isna().all():
             return {
