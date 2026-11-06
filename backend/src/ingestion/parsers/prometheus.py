@@ -30,6 +30,7 @@ PROMETHEUS_HEADERS = [
 
 class PrometheusParser(MetricDataParser):
     def parse_line(self, line: str) -> Optional[Dict[str, Any]]:
+        """Parse one Prometheus text line into a metric dict, or None."""
         if not line:
             raise ValueError("empty line")
 
