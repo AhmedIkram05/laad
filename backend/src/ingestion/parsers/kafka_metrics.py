@@ -15,6 +15,7 @@ from ..utils import parse_to_utc_iso
 
 class KafkaMetricsParser(MetricDataParser):
     def parse_line(self, line: str) -> Optional[Dict[str, Any]]:
+        """Parse one Kafka metrics line into a dict, or None."""
         if not line:
             raise ValueError("empty line")
         obj = json.loads(line)

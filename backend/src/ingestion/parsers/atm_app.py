@@ -19,6 +19,7 @@ class AtmAppParser(EventDataParser):
     """
 
     def parse_line(self, line: str) -> Optional[Dict[str, Any]]:
+        """Parse one ATM application log line into a metric dict, or None."""
         payload_obj = None
         if not line:
             raise ValueError("empty line")
