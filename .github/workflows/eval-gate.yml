@@ -18,6 +18,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: eval-gate-${{ github.ref }}
   cancel-in-progress: true
