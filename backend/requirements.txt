@@ -16,11 +16,11 @@ pyarrow>=23.0.1  # PYSEC-2026-113 (Arrow C++ IPC Use-After-Free; not exposed in 
 pandas>=3.1.0
 numpy>=1.26.0
 joblib>=1.3.0
-kafka-python>=3.0.11
+kafka-python>=3.0.13
 chromadb>=1.5.9
-cryptography>=49.0.0,<50  # mlflow 3.x pins cryptography<50; PYSEC-2026-3552 (pkcs7 S/MIME oracle) ignored via --ignore-vuln
+cryptography>=50.0.2,<51  # mlflow 3.x pins cryptography<50; PYSEC-2026-3552 (pkcs7 S/MIME oracle) ignored via --ignore-vuln
 langchain>=1.5.0
-langchain-core>=1.6.10
+langchain-core>=1.8.0
 langchain-ollama>=1.1.0
 langchain-openai>=1.7.4
 # openai pinned <3: instructor (via ragas) requires openai<3.0.0,>=2.0.0
@@ -35,7 +35,7 @@ ragas>=0.4.3
 requests>=2.34.2
 scipy>=1.18.1
 redis>=8.1.0
-boto3>=1.43.125
+boto3>=1.44.2
 pytest-cov>=7.1.0
 # OpenTelemetry — one release family per repo (core 1.45.x / contrib 0.66bx / OpenLLMetry 0.62.4), see docs/adr/0001
 opentelemetry-api==1.45.2
